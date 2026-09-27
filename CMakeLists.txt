@@ -54,6 +54,7 @@ endif()
 add_library(drumfreake_core STATIC
   src/core/params.cc
   src/core/presets.cc
+  src/core/scales.cc
   src/core/project.cc
   src/core/project_io.cc
   src/core/grids_gen.cc

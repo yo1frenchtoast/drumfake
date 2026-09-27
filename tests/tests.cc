@@ -13,6 +13,7 @@
 #include "core/grids_gen.h"
 #include "core/presets.h"
 #include "core/project_io.h"
+#include "core/scales.h"
 #include "grids/resources.h"
 
 using namespace drumfreake;
@@ -85,6 +86,24 @@ void TestParams() {
   CHECK(FormatValue(FORMAT_CRUSH, 0.0f) == "Off");
   CHECK_NEAR(CutoffToHz(0.0f), 20.0, 1e-3);
   CHECK_NEAR(CutoffToHz(1.0f), 20480.0, 1e-1);
+}
+
+void TestScales() {
+  // Pads 1-8 cover the first 8 degrees, continuing into the next octave.
+  const int kMajor[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
+  const int kPentatonicMinor[8] = { 0, 3, 5, 7, 10, 12, 15, 17 };
+  for (int pad = 0; pad < 8; ++pad) {
+    CHECK(KeyOffset(0, 0, 0, pad) == kMajor[pad]);
+    CHECK(KeyOffset(0, 8, 0, pad) == kPentatonicMinor[pad]);
+    CHECK(KeyOffset(0, 10, 0, pad) == pad);  // Chromatic.
+  }
+  // Root and octave transpose everything.
+  CHECK(KeyOffset(2, 1, -1, 0) == 2 - 12);  // D minor, one octave down.
+  CHECK(KeyOffset(2, 1, 0, 2) == 2 + 3);    // Its minor third.
+  CHECK(NoteName(60) == "C4");
+  CHECK(NoteName(61) == "C#4");
+  CHECK(NoteName(33) == "A1");
+  CHECK(std::string(scale(kNumScales - 1).name) == "Chromatic");
 }
 
 void TestGrids() {
@@ -370,6 +389,9 @@ void TestProjectRoundTrip() {
   project.sounds[6].params[P_MORPH] = 0.125f;
   project.chords[2] = 0x42;
   project.patterns[3].poly = true;
+  project.key_root = 9;
+  project.key_scale = 8;
+  project.key_octave = -2;
   project.song_length = 3;
   project.song[0] = 2;
   project.song[1] = 2;
@@ -393,6 +415,9 @@ void TestProjectRoundTrip() {
   CHECK(loaded->sounds[0].name == project.sounds[0].name);
   CHECK(loaded->chords[2] == 0x42);
   CHECK(loaded->patterns[3].poly);
+  CHECK(loaded->key_root == 9);
+  CHECK(loaded->key_scale == 8);
+  CHECK(loaded->key_octave == -2);
   CHECK(loaded->song_length == 3);
   CHECK(loaded->song[0] == 2 && loaded->song[1] == 2 && loaded->song[2] == 5);
   CHECK(!loaded->patterns[0].poly);
@@ -452,6 +477,7 @@ void TestFullRender() {
 
 int main() {
   TestParams();
+  TestScales();
   TestGrids();
   TestStepTiming();
   TestSwing();

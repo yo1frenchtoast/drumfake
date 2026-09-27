@@ -75,6 +75,10 @@ struct Project {
   float volume;
   // "Chords" mode: each of pads 1-8 plays a set of tracks (bit mask).
   uint8_t chords[8];
+  // Keys pad mode: root (0 = C), scale and octave shift, for the whole project.
+  int key_root;
+  int key_scale;
+  int key_octave;
   // Song: chain of pattern indices, played in order (a pattern may repeat).
   int song[kMaxSongLength];
   int song_length;

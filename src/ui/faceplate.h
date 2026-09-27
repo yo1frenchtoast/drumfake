@@ -36,6 +36,11 @@ class Faceplate {
   void DrawScreen(ImVec2 min, ImVec2 max);
   void DrawMainView(ImVec2 min, ImVec2 max);
   void DrawSongView(ImVec2 min, ImVec2 max);
+  void DrawKeysView(ImVec2 min, ImVec2 max);
+  void DrawSoundKnobs();
+  void DrawKeyKnobs();
+  void DrawPageButtons();
+  ImVec2 SoundKnobCenter(int knob) const;
   void DrawStepView(ImVec2 min, ImVec2 max);
   void DrawEditView(ImVec2 min, ImVec2 max);
   void DrawBrowseView(ImVec2 min, ImVec2 max);
@@ -59,6 +64,11 @@ class Faceplate {
   void Toast(const std::string& message);
 
   float* KnobTarget(int knob, bool* is_lock);
+  // Keys mode: offset of pad 1-8 from the track pitch, the track pitch as a
+  // MIDI note, and changes to the root (0), scale (1) or octave (2).
+  int KeyNote(int pad);
+  int TrackNote(int track);
+  void ChangeKey(int field, int delta);
   Pattern& pattern();
   int step_index(int button) const { return view_page_ * kStepsPerPage + button; }
 
@@ -75,6 +85,8 @@ class Faceplate {
   bool last_step_mode_ = false;
   bool song_edit_ = false;
   bool song_edit_fresh_ = false;  // The next pattern pressed starts a new chain.
+  bool keys_page_ = false;  // Sound Edit knobs and screen show the Keys settings.
+  int keys_field_ = 0;      // Field the encoder changes: root, scale, octave.
   bool select_mode_ = false;
   bool mute_mode_ = false;
   int held_step_ = -1;

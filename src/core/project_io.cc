@@ -8,6 +8,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "core/scales.h"
+
 namespace drumfreake {
 
 using nlohmann::json;
@@ -79,6 +81,11 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
   j["master"] = FloatArray(project.master);
   j["assign"] = FloatArray(project.assign);
   j["chords"] = std::vector<int>(project.chords, project.chords + 8);
+  j["keys"] = {
+    { "root", project.key_root },
+    { "scale", project.key_scale },
+    { "octave", project.key_octave },
+  };
   j["song"] = std::vector<int>(project.song, project.song + project.song_length);
   for (const TrackSound& sound : project.sounds) {
     j["sounds"].push_back({
@@ -142,6 +149,12 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
       for (size_t i = 0; i < 8 && i < j["chords"].size(); ++i) {
         loaded.chords[i] = static_cast<uint8_t>(j["chords"][i].get<int>());
       }
+    }
+    if (j.contains("keys")) {
+      const json& keys = j["keys"];
+      loaded.key_root = std::max(0, std::min(11, keys.value("root", 0)));
+      loaded.key_scale = std::max(0, std::min(kNumScales - 1, keys.value("scale", 0)));
+      loaded.key_octave = std::max(kMinKeyOctave, std::min(kMaxKeyOctave, keys.value("octave", 0)));
     }
     if (j.contains("song")) {
       for (const json& entry : j["song"]) {

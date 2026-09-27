@@ -6,6 +6,7 @@
 
 #include "core/presets.h"
 #include "core/project_io.h"
+#include "core/scales.h"
 #include "imgui_internal.h"
 
 namespace drumfreake {
@@ -13,8 +14,6 @@ namespace drumfreake {
 namespace {
 
 // Pads 1-8 in keyboard mode: a major scale.
-const int kScaleNotes[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
-
 // Panel grid. The right-hand side is 16 evenly spaced step columns; each pad
 // spans two columns, the screen the first eight and the Sound Edit block the
 // last eight. Rows are shared with the left "Perform" column.
@@ -165,9 +164,9 @@ void Faceplate::LowerPadDown(int pad) {
         PushUndo();
         Step& step = pattern().tracks[track].steps[held_step_];
         step.on = true;
-        step.note = kScaleNotes[pad];
+        step.note = KeyNote(pad);
       }
-      engine_->LiveTrigger(track, 0.8f, kScaleNotes[pad]);
+      engine_->LiveTrigger(track, 0.8f, KeyNote(pad));
       break;
   }
 }
@@ -308,6 +307,31 @@ void Faceplate::Save() {
     Toast("Saved");
   } else {
     Toast("Save failed: " + error);
+  }
+}
+
+int Faceplate::KeyNote(int pad) {
+  const Project& project = engine_->project();
+  return KeyOffset(project.key_root, project.key_scale, project.key_octave, pad);
+}
+
+int Faceplate::TrackNote(int track) {
+  return static_cast<int>(std::round(
+      PitchToNote(engine_->project().sounds[track].params[P_PITCH])));
+}
+
+void Faceplate::ChangeKey(int field, int delta) {
+  Project& project = engine_->project();
+  switch (field) {
+    case 0:
+      project.key_root = ((project.key_root + delta) % 12 + 12) % 12;
+      break;
+    case 1:
+      project.key_scale = ((project.key_scale + delta) % kNumScales + kNumScales) % kNumScales;
+      break;
+    default:
+      project.key_octave = std::clamp(project.key_octave + delta, kMinKeyOctave, kMaxKeyOctave);
+      break;
   }
 }
 
@@ -487,6 +511,7 @@ void Faceplate::DrawTopLeft() {
         Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
       }
       pad_mode_ = m.mode;
+      keys_page_ = false;
     }
   }
   cell(3, &min, &max);
@@ -503,6 +528,8 @@ void Faceplate::DrawTopLeft() {
   cell(5, &min, &max);
   if (Button(c, "##keys", min, max, "", "", ICON_KEYBOARD, pad_mode_ == PADS_KEYS,
              colors::kAccent).pressed) {
+    // First press: Keys mode and its page; next presses show or hide the page.
+    keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
     pad_mode_ = PADS_KEYS;
   }
   UpdateRepeat();
@@ -643,7 +670,9 @@ void Faceplate::DrawScreenSection() {
     encoder_accumulator_ -= steps * 0.04f;
     int track = engine_->selected_track;
     TrackSound& sound = engine_->project().sounds[track];
-    if (view_ == VIEW_BROWSE) {
+    if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
+      ChangeKey(keys_field_, steps);
+    } else if (view_ == VIEW_BROWSE) {
       browse_index_ = (browse_index_ + steps + kNumPresets * 4) % kNumPresets;
       ApplyPreset(browse_index_, &sound);
       engine_->LiveTrigger(track, 0.8f, 0);
@@ -723,17 +752,30 @@ void Faceplate::DrawScreenSection() {
   }
 }
 
+ImVec2 Faceplate::SoundKnobCenter(int knob) const {
+  const float column = (layout::kRightX1 - layout::kSoundX0) / 4.0f;
+  return ImVec2(layout::kSoundX0 + column * (knob % 4 + 0.5f),
+                knob < 4 ? layout::kTopY0 + 58 : layout::kTopY0 + 132);
+}
+
 void Faceplate::DrawSoundEdit() {
+  if (keys_page_) {
+    DrawKeyKnobs();
+  } else {
+    DrawSoundKnobs();
+  }
+  DrawPageButtons();
+}
+
+void Faceplate::DrawSoundKnobs() {
   const Canvas& c = canvas_;
   int track = engine_->selected_track;
   bool track_page = page_ == PAGE_SOUND || page_ == PAGE_FILTER || page_ == PAGE_TRACK;
   Step* held = held_step_ >= 0 && track_page
       ? &pattern().tracks[track].steps[held_step_] : nullptr;
 
-  const float column = (layout::kRightX1 - layout::kSoundX0) / 4.0f;
   for (int k = 0; k < kKnobsPerPage; ++k) {
-    ImVec2 center(layout::kSoundX0 + column * (k % 4 + 0.5f),
-                  k < 4 ? layout::kTopY0 + 58 : layout::kTopY0 + 132);
+    ImVec2 center = SoundKnobCenter(k);
     bool unused;
     float* base = KnobTarget(k, &unused);
     int param = track_page ? page_ * kKnobsPerPage + k : -1;
@@ -789,7 +831,49 @@ void Faceplate::DrawSoundEdit() {
       ImGui::SetTooltip("%s", tip.c_str());
     }
   }
+}
 
+void Faceplate::DrawKeyKnobs() {
+  // Keys page: knobs 1-3 set the root, scale and octave of the Keys mode.
+  const Canvas& c = canvas_;
+  Project& project = engine_->project();
+  struct KeyKnob {
+    const char* id;
+    const char* name;
+    int* value;
+    int min;
+    int count;
+  };
+  const KeyKnob kKnobs[3] = {
+    { "##key_root", "Root", &project.key_root, 0, 12 },
+    { "##key_scale", "Scale", &project.key_scale, 0, kNumScales },
+    { "##key_octave", "Octave", &project.key_octave, kMinKeyOctave,
+      kMaxKeyOctave - kMinKeyOctave + 1 },
+  };
+  for (int k = 0; k < 3; ++k) {
+    const KeyKnob& knob = kKnobs[k];
+    ImVec2 center = SoundKnobCenter(k);
+    float value = DiscreteToNormalized(*knob.value - knob.min, knob.count);
+    float default_value = DiscreteToNormalized(-knob.min, knob.count);
+    Interaction in;
+    if (Knob(c, knob.id, center, 22, &value, default_value, KNOB_SILVER, true,
+             colors::kAccent, &in)) {
+      *knob.value = knob.min + Discrete(value, knob.count);
+    }
+    if (in.pressed) {
+      keys_field_ = k;
+    }
+    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim, knob.name, true, true);
+  }
+  // The other knobs are unused on this page.
+  for (int k = 3; k < kKnobsPerPage; ++k) {
+    ImVec2 center = SoundKnobCenter(k);
+    c.draw_list->AddCircle(c.P(center), c.S(22 * 1.32f), colors::kLedOff, 48, c.S(1.2f));
+  }
+}
+
+void Faceplate::DrawPageButtons() {
+  const Canvas& c = canvas_;
   const Icon kPageIcons[PAGE_LAST] = {
     ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ASSIGN
   };
@@ -800,8 +884,10 @@ void Faceplate::DrawSoundEdit() {
     char id[16];
     snprintf(id, sizeof(id), "##page_%d", i);
     if (Button(c, id, ImVec2(x0, layout::kButtonRowY0), ImVec2(x0 + w, layout::kButtonRowY1),
-               page_name(page), "", kPageIcons[i], page_ == page, colors::kAccent).pressed) {
+               page_name(page), "", kPageIcons[i], !keys_page_ && page_ == page,
+               colors::kAccent).pressed) {
       page_ = page;
+      keys_page_ = false;
     }
   }
 }
@@ -1122,12 +1208,9 @@ void Faceplate::DrawPads() {
       case PADS_SOUNDS: function = preset_name(preset_bank_ * 8 + i); break;
       case PADS_REPEATS: function = kRepeatNames[i]; break;
       case PADS_CHORDS: function = ChordName(project.chords[i]); break;
-      case PADS_KEYS: {
-        char text[8];
-        snprintf(text, sizeof(text), "+%d", kScaleNotes[i]);
-        function = text;
+      case PADS_KEYS:
+        function = NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
         break;
-      }
     }
     c.Text((min.x + max.x) * 0.5f, min.y + 40, 10, IM_COL32(95, 104, 110, 255),
            function.c_str(), true, true);
@@ -1155,6 +1238,8 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawStepView(min, max);
   } else if (view_ == VIEW_EDIT) {
     DrawEditView(min, max);
+  } else if (keys_page_ && view_ == VIEW_MAIN) {
+    DrawKeysView(min, max);
   } else if (view_ == VIEW_BROWSE) {
     DrawBrowseView(min, max);
   } else {
@@ -1269,6 +1354,62 @@ void Faceplate::DrawSongView(ImVec2 min, ImVec2 max) {
   }
 }
 
+void Faceplate::DrawKeysView(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  const Project& project = engine_->project();
+  int track = engine_->selected_track;
+  char text[64];
+  snprintf(text, sizeof(text), "KEYS  |  %c %s", 'A' + track,
+           project.sounds[track].name.c_str());
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+
+  // Root, scale and octave: click a field to point the encoder at it.
+  char octave[8];
+  snprintf(octave, sizeof(octave), "%+d", project.key_octave);
+  const char* const kNames[3] = { "ROOT", "SCALE", "OCTAVE" };
+  const char* const kValues[3] = {
+    PitchClassName(project.key_root), scale(project.key_scale).name, octave
+  };
+  const float kWidths[3] = { 0.25f, 0.5f, 0.25f };
+  float x = min.x + 6;
+  float width = max.x - min.x - 12 - 2 * 6;
+  for (int i = 0; i < 3; ++i) {
+    float w = width * kWidths[i];
+    ImVec2 a(x, min.y + 22);
+    ImVec2 b(x + w, min.y + 62);
+    char id[16];
+    snprintf(id, sizeof(id), "##keyfield%d", i);
+    if (HitBox(c, id, a, b).pressed) {
+      keys_field_ = i;
+    }
+    bool selected = keys_field_ == i;
+    dl->AddRectFilled(c.P(a), c.P(b), IM_COL32(22, 36, 40, 255), c.S(3));
+    if (selected) {
+      dl->AddRect(c.P(a), c.P(b), colors::kScreenAccent, c.S(3), 0, c.S(1.5f));
+    }
+    c.Text(a.x + 6, a.y + 4, 8, colors::kScreenDim, kNames[i], false);
+    c.Text(a.x + 6, a.y + 16, 14, selected ? colors::kScreenAccent : colors::kScreenText,
+           kValues[i], false, true);
+    x += w + 6;
+  }
+
+  // The notes of pads 1-8.
+  float cell = (max.x - min.x - 12) / 8.0f;
+  int base = TrackNote(track);
+  for (int i = 0; i < 8; ++i) {
+    float cx = min.x + 6 + i * cell;
+    dl->AddRectFilled(c.P(cx, min.y + 72), c.P(cx + cell - 4, min.y + 104),
+                      IM_COL32(30, 50, 56, 255), c.S(2));
+    snprintf(text, sizeof(text), "%d", i + 1);
+    c.Text(cx + 4, min.y + 74, 7.5f, colors::kScreenDim, text, false);
+    c.Text(cx + (cell - 4) * 0.5f, min.y + 93, 10, colors::kScreenText,
+           NoteName(base + KeyNote(i)).c_str(), true, true);
+  }
+  c.Text(min.x + 6, min.y + 114, 8, colors::kScreenDim,
+         "Encoder: change field   Arrows: octave / root   Tab: scale", false);
+}
+
 void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   const Canvas& c = canvas_;
   int track = engine_->selected_track;
@@ -1292,7 +1433,7 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 78));
   ImGui::SliderInt("##rat", &step.ratchets, 1, kMaxRatchets, "Ratchets %d");
   ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 96));
-  ImGui::SliderInt("##note", &step.note, -24, 24, "Note %+d");
+  ImGui::SliderInt("##note", &step.note, -48, 48, "Note %+d");
   ImGui::PopItemWidth();
 
   std::string locks;
@@ -1436,6 +1577,13 @@ void Faceplate::HandleKeyboard() {
   if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) view_page_ = std::max(0, view_page_ - 1);
   if (ImGui::IsKeyPressed(ImGuiKey_X, false)) view_page_ = std::min(kNumPages - 1, view_page_ + 1);
   if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) Erase();
+  if (pad_mode_ == PADS_KEYS) {
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) ChangeKey(2, 1);
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) ChangeKey(2, -1);
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) ChangeKey(0, 1);
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) ChangeKey(0, -1);
+    if (ImGui::IsKeyPressed(ImGuiKey_Tab)) ChangeKey(1, io.KeyShift ? -1 : 1);
+  }
   if (ImGui::IsKeyPressed(ImGuiKey_L, false)) last_step_mode_ = !last_step_mode_;
   if (ImGui::IsKeyPressed(ImGuiKey_P, false)) pattern().poly = !pattern().poly;
   const ImGuiKey kPageKeys[PAGE_LAST] = {

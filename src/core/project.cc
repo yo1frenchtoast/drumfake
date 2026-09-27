@@ -142,6 +142,9 @@ void Project::Init() {
     song[i] = 0;
   }
   song_length = 0;
+  key_root = 0;
+  key_scale = 0;
+  key_octave = 0;
 }
 
 }  // namespace drumfreake

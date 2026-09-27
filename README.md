@@ -59,8 +59,14 @@ Rendu hors ligne :
   assignés sur la page Assign.
 - **Pads 1–8** : *Chords* joue des combinaisons de pistes (clic droit sur un pad pour l'éditer) ;
   *Sounds* charge un son d'usine (re-cliquer Sounds = banque 2) ; *Repeats* répète les pistes tenues
-  à la division choisie ; *clavier* joue la piste sélectionnée sur une gamme majeure et écrit la note
+  à la division choisie ; *Keys* joue la piste sélectionnée sur la gamme choisie et écrit la note
   du pas sélectionné.
+- **Mode Keys** : tonique, gamme (majeure, mineure, modes, mineure harmonique, pentatoniques,
+  blues, chromatique) et octave, communes à tout le projet. Le bouton *Keys* affiche une page
+  « Keys » (potards 1–3 = tonique, gamme, octave ; re-cliquer Keys pour revenir aux pages de son) ;
+  l'écran montre les réglages et les notes des pads, et l'encodeur modifie le champ sélectionné.
+  Raccourcis : `←`/`→` octave, `↑`/`↓` tonique, `Tab`/`Maj+Tab` gamme. Les notes s'ajoutent au
+  Pitch de la piste : une piste réglée sur C joue dans la tonalité choisie.
 - **Encodeur** : change le moteur Plaits de la piste (ou le son dans Browse).
 - **Song** (chaîne de patterns, comme sur les Arturia) : appuyer sur *Song* (il clignote), puis
   sur les boutons de pas 1–16 dans l'ordre voulu ; un pattern peut revenir plusieurs fois
