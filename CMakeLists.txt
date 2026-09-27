@@ -68,15 +68,27 @@ target_compile_options(drumfreake_core PRIVATE -Wall -Wextra -O2)
 
 # --- Tests -------------------------------------------------------------------
 
-add_executable(drumfreake_tests tests/tests.cc)
-target_link_libraries(drumfreake_tests PRIVATE drumfreake_core)
-enable_testing()
-add_test(NAME drumfreake_tests COMMAND drumfreake_tests)
+if(NOT ANDROID)
+  add_executable(drumfreake_tests tests/tests.cc)
+  target_link_libraries(drumfreake_tests PRIVATE drumfreake_core)
+  enable_testing()
+  add_test(NAME drumfreake_tests COMMAND drumfreake_tests)
+endif()
 
 # --- GUI application ---------------------------------------------------------
 
-if(DRUMFREAKE_GUI)
+if(ANDROID)
+  # Android (built by android/app/build.gradle): SDL3 from the submodule, and
+  # the app as libmain.so, loaded by SDLActivity.
+  set(SDL_SHARED ON CACHE BOOL "" FORCE)
+  set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/SDL EXCLUDE_FROM_ALL)
+elseif(DRUMFREAKE_GUI)
   find_package(SDL3 REQUIRED CONFIG)
+endif()
+
+if(ANDROID OR DRUMFREAKE_GUI)
 
   FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -92,16 +104,29 @@ if(DRUMFREAKE_GUI)
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
   target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-  # No OpenGL link: the ImGui backend loads GL at run time (see app.cc).
-  target_link_libraries(imgui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
+  if(ANDROID)
+    target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
+    target_link_libraries(imgui PUBLIC SDL3::SDL3 GLESv3)
+  else()
+    # No OpenGL link: the ImGui backend loads GL at run time (see app.cc).
+    target_link_libraries(imgui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
+  endif()
 
-  add_executable(drumfreake
+  set(APP_SOURCES
     src/main.cc
     src/app.cc
     src/ui/widgets.cc
     src/ui/faceplate.cc)
-  target_link_libraries(drumfreake PRIVATE drumfreake_core imgui SDL3::SDL3)
-  target_compile_options(drumfreake PRIVATE -Wall -Wextra)
+  if(ANDROID)
+    add_library(main SHARED ${APP_SOURCES})
+    set(APP_TARGET main)
+    target_link_libraries(main PRIVATE android log)
+  else()
+    add_executable(drumfreake ${APP_SOURCES})
+    set(APP_TARGET drumfreake)
+  endif()
+  target_link_libraries(${APP_TARGET} PRIVATE drumfreake_core imgui SDL3::SDL3)
+  target_compile_options(${APP_TARGET} PRIVATE -Wall -Wextra)
 else()
   add_executable(drumfreake src/main.cc)
   target_compile_definitions(drumfreake PRIVATE DRUMFREAKE_HEADLESS)

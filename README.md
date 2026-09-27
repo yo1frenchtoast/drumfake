@@ -22,6 +22,20 @@ cmake --build build -j
 Dépendances : SDL3 et nlohmann-json (Homebrew sur ce système). Dear ImGui est téléchargé par CMake.
 `-DDRUMFREAKE_GUI=OFF` compile une version sans interface.
 
+### Android
+
+Prérequis : SDK Android avec le NDK 30.0.16248370 et CMake 4.1.2 (`sdkmanager`), Java récent.
+SDL3 est compilé depuis le sous-module `third_party/SDL`.
+
+```sh
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+L'APK (arm64-v8a, Android 8 minimum) s'ouvre en plein écran paysage. Les polices Noto Sans
+(licence OFL) sont embarquées, le projet est sauvegardé dans le stockage privé de l'application.
+
 Rendu hors ligne :
 
 ```sh

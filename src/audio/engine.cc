@@ -545,6 +545,11 @@ void Engine::Render(float* out, size_t frames) {
   // reverb, filter and envelope tails otherwise make x86 rendering 10-100x
   // slower in bursts, and the audio device underruns.
   _mm_setcsr(_mm_getcsr() | 0x8040);
+#elif defined(__aarch64__)
+  // Same on ARM64: set FPCR.FZ.
+  uint64_t fpcr;
+  __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+  __asm__ volatile("msr fpcr, %0" : : "r"(fpcr | (1ull << 24)));
 #endif
   auto t0 = std::chrono::steady_clock::now();
   for (size_t i = 0; i < frames; ++i) {

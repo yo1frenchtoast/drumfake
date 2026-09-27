@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -46,7 +47,7 @@ GlFunctions gl;
 // system's GL dispatch libraries first: SDL and ImGui open these libraries by
 // soname, so they will reuse the ones already loaded.
 void PreferSystemGlLibraries() {
-#ifdef __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
   const char* const kDirectories[] = {
     "/usr/lib64/", "/usr/lib/x86_64-linux-gnu/", "/usr/lib/aarch64-linux-gnu/", "/usr/lib/"
   };
@@ -81,6 +82,23 @@ void AudioCallback(void* user_data, SDL_AudioStream* stream,
 
 ImFont* LoadFont(const char* const* candidates, float size) {
   ImGuiIO& io = ImGui::GetIO();
+#ifdef __ANDROID__
+  // Fonts are bundled in the APK's assets, which SDL reads by relative path.
+  for (const char* const* path = candidates; *path; ++path) {
+    size_t length = 0;
+    void* data = SDL_LoadFile(*path, &length);
+    if (!data) {
+      continue;
+    }
+    // The atlas frees the font data with ImGui's allocator.
+    void* copy = IM_ALLOC(length);
+    memcpy(copy, data, length);
+    SDL_free(data);
+    ImFontConfig config;
+    config.OversampleH = 2;
+    return io.Fonts->AddFontFromMemoryTTF(copy, static_cast<int>(length), size, &config);
+  }
+#endif
   for (const char* const* path = candidates; *path; ++path) {
     if (std::filesystem::exists(*path)) {
       ImFontConfig config;
@@ -161,7 +179,16 @@ int RunApp(Engine* engine, const AppOptions& options) {
     SDL_ResumeAudioStreamDevice(stream);
   }
 
+#ifdef __ANDROID__
+  const char* glsl_version = "#version 300 es";
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+  const SDL_WindowFlags kExtraWindowFlags = SDL_WINDOW_FULLSCREEN;
+  // Keep the screen on while the app runs.
+  SDL_DisableScreenSaver();
+#else
   const char* glsl_version = "#version 130";
+  const SDL_WindowFlags kExtraWindowFlags = 0;
+#endif
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -169,13 +196,13 @@ int RunApp(Engine* engine, const AppOptions& options) {
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
   SDL_Window* window = SDL_CreateWindow(
       "Drumf(re)ake", 1400, 773,
-      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | kExtraWindowFlags);
   if (!window) {
     // Retry without multisampling.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
     window = SDL_CreateWindow("Drumf(re)ake", 1400, 773,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | kExtraWindowFlags);
   }
   if (!window) {
     fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
@@ -200,6 +227,7 @@ int RunApp(Engine* engine, const AppOptions& options) {
   SetupStyle();
 
   static const char* const kRegular[] = {
+    "fonts/NotoSans-Regular.ttf",  // Android assets.
     "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
     "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
@@ -207,6 +235,7 @@ int RunApp(Engine* engine, const AppOptions& options) {
     nullptr
   };
   static const char* const kBold[] = {
+    "fonts/NotoSans-Bold.ttf",  // Android assets.
     "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
     "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Bold.ttf",
     "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",

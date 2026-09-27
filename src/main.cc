@@ -10,6 +10,11 @@
 #include <memory>
 #include <string>
 
+#ifndef DRUMFREAKE_HEADLESS
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>  // Renames main() to SDL_main() where needed (Android).
+#endif
+
 #include "app.h"
 #include "audio/engine.h"
 #include "audio/wav_render.h"
@@ -29,7 +34,13 @@ void PrintUsage() {
 
 int main(int argc, char** argv) {
   std::string render_path;
+#ifdef __ANDROID__
+  // The app's private storage.
+  std::string project_path = std::string(SDL_GetPrefPath("drumfreake", "drumfreake")) +
+      "project.json";
+#else
   std::string project_path = DefaultProjectPath();
+#endif
   bool explicit_project = false;
   int bars = 4;
   int pattern = 0;
