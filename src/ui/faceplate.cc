@@ -15,15 +15,48 @@ namespace {
 // Pads 1-8 in keyboard mode: a major scale.
 const int kScaleNotes[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
 
-const float kSoundKnobX[4] = { 993.0f, 1103.0f, 1213.0f, 1323.0f };
-const float kSoundKnobY[2] = { 103.0f, 185.0f };
+// Panel grid. The right-hand side is 16 evenly spaced step columns; each pad
+// spans two columns, the screen the first eight and the Sound Edit block the
+// last eight. Rows are shared with the left "Perform" column.
+namespace layout {
+const float kPanelX0 = 20.0f;
+const float kPanelY0 = 15.0f;
+const float kPanelX1 = 1520.0f;
+const float kPanelY1 = 800.0f;
+const float kGap = 12.0f;
 
-const float kStepX0 = 390.0f;
-const float kStepPitch = 65.4f;
-const float kStepWidth = 50.0f;
-const float kPadX0 = 378.0f;
-const float kPadPitch = 136.3f;
-const float kPadWidth = 120.0f;
+const float kLeftX0 = 50.0f;
+const float kLeftX1 = 350.0f;
+
+const float kRightX0 = 396.0f;
+const float kRightX1 = 1490.0f;
+const float kStepPitch = (kRightX1 - kRightX0 + kGap) / 16.0f;
+const float kStepWidth = kStepPitch - kGap;
+const float kPadWidth = 2.0f * kStepPitch - kGap;
+const float kScreenX1 = kRightX0 + 8.0f * kStepPitch - kGap;
+const float kSoundX0 = kRightX0 + 8.0f * kStepPitch;
+
+const float kTopY0 = 45.0f;
+const float kButtonRowY0 = 236.0f;
+const float kButtonRowY1 = 284.0f;
+const float kSectionY = 312.0f;
+const float kFunctionRowY0 = 326.0f;
+const float kFunctionRowY1 = 366.0f;
+const float kStepRowY0 = 378.0f;
+const float kStepRowY1 = 428.0f;
+const float kPadRow1Y0 = 450.0f;
+const float kPadRow1Y1 = 602.0f;
+const float kPadRow2Y0 = 618.0f;
+const float kPadRow2Y1 = 770.0f;
+
+inline float StepX(int column) {
+  return kRightX0 + column * kStepPitch;
+}
+
+inline float PadX(int pad) {
+  return kRightX0 + pad * 2.0f * kStepPitch;
+}
+}  // namespace layout
 
 const ImGuiKey kTrackPadKeys[kNumTracks] = {
   ImGuiKey_Q, ImGuiKey_W, ImGuiKey_E, ImGuiKey_R,
@@ -331,117 +364,124 @@ void Faceplate::DrawChrome() {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
   dl->AddRectFilled(ImVec2(0, 0), ImGui::GetIO().DisplaySize, colors::kBackground);
-  dl->AddRectFilled(c.P(26, 21), c.P(1526, 841), IM_COL32(0, 0, 0, 140), c.S(20));
-  dl->AddRectFilled(c.P(20, 15), c.P(1520, 835), colors::kPanel, c.S(20));
-  dl->AddRect(c.P(20, 15), c.P(1520, 835), colors::kPanelEdge, c.S(20), 0, c.S(1.5f));
+  dl->AddRectFilled(c.P(layout::kPanelX0 + 5, layout::kPanelY0 + 7),
+                    c.P(layout::kPanelX1 + 5, layout::kPanelY1 + 7),
+                    IM_COL32(0, 0, 0, 150), c.S(20));
+  dl->AddRectFilled(c.P(layout::kPanelX0, layout::kPanelY0),
+                    c.P(layout::kPanelX1, layout::kPanelY1), colors::kPanel, c.S(20));
+  dl->AddRect(c.P(layout::kPanelX0, layout::kPanelY0),
+              c.P(layout::kPanelX1, layout::kPanelY1), colors::kPanelEdge, c.S(20), 0,
+              c.S(1.5f));
 
-  // Logo: "DRUMF(RE)AKE", with the "(RE)" lit.
-  const float kLogoSize = 24.0f;
-  float x = 207.0f;
+  // Logo: "DRUM" + bold "F(RE)AKE", like the Freak family logos, with the
+  // "(RE)" lit.
+  const float kLogoSize = 26.0f;
+  float x = layout::kLeftX0;
   auto logo_part = [&](const char* text, ImU32 color, bool use_bold) {
-    c.Text(x, 36, kLogoSize, color, text, false, use_bold);
+    c.Text(x, layout::kTopY0 - 4, kLogoSize, color, text, false, use_bold);
     ImFont* f = use_bold ? c.bold : c.font;
     x += f->CalcTextSizeA(c.S(kLogoSize), FLT_MAX, 0, text).x / c.scale;
   };
-  // "DRUM" + bold "F(RE)AK(E)", like the Freak family logos.
   logo_part("DRUM", colors::kLedWhite, false);
   logo_part("F", colors::kLedWhite, true);
-  logo_part("(RE)", colors::kOrange, true);
+  logo_part("(RE)", colors::kAccent, true);
   logo_part("AKE", colors::kLedWhite, true);
-  c.Text(209, 67, 6.5f, colors::kLabelDim, "OPEN SOURCE ALGORITHMIC DRUM MACHINE", false);
-  for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      dl->AddCircleFilled(c.P(x + 8 + i * 5.0f, 44 + j * 5.0f), c.S(1.3f), colors::kLabelDim);
-    }
-  }
-  c.Text(1272, 36, 11, colors::kLabel, "PLAITS  -  GRIDS  -  RINGS", true, true);
-  c.Text(1272, 50, 7, colors::kLabelDim, "Mutable Instruments open source DSP", true, false);
+  c.Text(layout::kLeftX0 + 1, layout::kTopY0 + 31, 8, colors::kLabel,
+         "OPEN SOURCE ALGORITHMIC DRUM MACHINE", false, true);
+  c.Text(layout::kLeftX0 + 1, layout::kTopY0 + 43, 7.5f, colors::kLabelDim,
+         "Plaits, Grids & Rings DSP by Mutable Instruments", false);
 
-  c.Text(952, 60, 10, colors::kLabel, "SOUND EDIT", false, true);
-  dl->AddLine(c.P(944, 68), c.P(1348, 68), colors::kLabelDim, c.S(1));
-  c.Text(412, 334, 11, colors::kLabel, "SEQUENCER", false, true);
-  dl->AddLine(c.P(412, 347), c.P(1412, 347), colors::kLabelDim, c.S(1));
-
-  // Separators between the groups of 4 steps.
-  for (int g = 1; g < 4; ++g) {
-    float x = kStepX0 + g * 4 * kStepPitch - (kStepPitch - kStepWidth) * 0.5f;
-    dl->AddLine(c.P(x, 418), c.P(x, 466), colors::kLabelDim, c.S(1));
-  }
+  // Section titles with a rule, all on the same baselines.
+  auto section = [&](float x0, float x1, float y, const char* title) {
+    c.Text(x0, y - 6, 9.5f, colors::kLabel, title, false, true);
+    float w = c.bold->CalcTextSizeA(c.S(9.5f), FLT_MAX, 0, title).x / c.scale;
+    dl->AddLine(c.P(x0 + w + 10, y), c.P(x1, y), colors::kPanelEdge, c.S(1.2f));
+  };
+  section(layout::kSoundX0, layout::kRightX1, layout::kTopY0 + 2, "SOUND EDIT");
+  section(layout::kLeftX0, layout::kLeftX1, layout::kSectionY, "PERFORM");
+  section(layout::kRightX0, layout::kRightX1, layout::kSectionY, "SEQUENCER");
 }
 
 void Faceplate::DrawTopLeft() {
   const Canvas& c = canvas_;
   Project& project = engine_->project();
+  const float knob_y = 150.0f;
+  const float label_y = knob_y + 42.0f;
 
-  Knob(c, "##volume", ImVec2(218, 103), 26, &project.volume, 0.8f, KNOB_BLACK, false, 0);
-  c.Text(213, 146, 10, colors::kLabel, "Volume", true, true);
+  Knob(c, "##volume", ImVec2(layout::kLeftX0 + 45, knob_y), 27, &project.volume, 0.8f,
+       KNOB_BLACK, false, 0);
+  c.Text(layout::kLeftX0 + 45, label_y, 9.5f, colors::kLabel, "Volume", true, true);
 
   float tempo = (project.bpm - 30.0f) / 270.0f;
-  if (Knob(c, "##tempo", ImVec2(368, 108), 26, &tempo, 90.0f / 270.0f, KNOB_ORANGE, false, 0)) {
+  if (Knob(c, "##tempo", ImVec2(layout::kLeftX0 + 150, knob_y), 27, &tempo, 90.0f / 270.0f,
+           KNOB_AMBER, false, 0)) {
     project.bpm = std::round((30.0f + tempo * 270.0f) * 10.0f) / 10.0f;
   }
-  c.Text(366, 146, 10, colors::kLabel, "Tempo", true, true);
+  c.Text(layout::kLeftX0 + 150, label_y, 9.5f, colors::kLabel, "Tempo", true, true);
 
-  // Metronome LED, blinking on the beat while enabled.
+  // TAP, with the metronome LED under it.
+  ImVec2 tap_min(layout::kLeftX1 - 76, knob_y - 26);
+  ImVec2 tap_max(layout::kLeftX1, knob_y + 20);
+  if (Button(c, "##tap", tap_min, tap_max, "TAP", "", ICON_NONE, false, 0).pressed) {
+    Tap();
+  }
   bool beat = engine_->pattern_step.load() >= 0 && (engine_->pattern_step.load() % 4) == 0;
-  ImU32 led = engine_->metronome ? (beat ? colors::kOrange : colors::kLedWhite) : colors::kLedOff;
-  c.draw_list->AddCircleFilled(c.P(404, 86), c.S(2.6f), led);
-  c.Text(398, 73, 7, colors::kLabel, "Metronome", true, true);
-  if (HitBox(c, "##metronome", ImVec2(378, 66), ImVec2(418, 92)).clicked) {
+  ImU32 led = engine_->metronome ? (beat ? colors::kAmber : colors::kAccent) : colors::kLedOff;
+  float metro_x = (tap_min.x + tap_max.x) * 0.5f;
+  c.draw_list->AddCircleFilled(c.P(tap_min.x + 8, label_y), c.S(3.0f), led);
+  c.Text(metro_x + 5, label_y, 8.5f, colors::kLabel, "Metronome", true, true);
+  if (HitBox(c, "##metronome", ImVec2(tap_min.x, label_y - 9), ImVec2(tap_max.x, label_y + 9))
+          .clicked) {
     engine_->metronome = !engine_->metronome;
     Toast(engine_->metronome ? "Metronome on" : "Metronome off");
   }
 
-  c.draw_list->AddLine(c.P(315, 173), c.P(365, 173), colors::kLabelDim, c.S(1));
-  c.draw_list->AddLine(c.P(365, 173), c.P(365, 148), colors::kLabelDim, c.S(1));
-  if (Button(c, "##tap", ImVec2(255, 152), ImVec2(315, 195), "TAP", "", ICON_NONE,
-             false, 0).pressed) {
-    Tap();
-  }
-
-  if (Button(c, "##rec", ImVec2(163, 213), ImVec2(226, 262), "", "", ICON_RECORD,
+  // Transport, on the same row as the buttons under the screen.
+  float w = (layout::kLeftX1 - layout::kLeftX0 - 2 * layout::kGap) / 3.0f;
+  auto column = [&](int i) { return layout::kLeftX0 + i * (w + layout::kGap); };
+  if (Button(c, "##rec", ImVec2(column(0), layout::kButtonRowY0),
+             ImVec2(column(0) + w, layout::kButtonRowY1), "", "", ICON_RECORD,
              engine_->recording, colors::kRed).pressed) {
     engine_->recording = !engine_->recording;
   }
-  if (Button(c, "##stop", ImVec2(240, 213), ImVec2(302, 262), "", "", ICON_STOP,
+  if (Button(c, "##stop", ImVec2(column(1), layout::kButtonRowY0),
+             ImVec2(column(1) + w, layout::kButtonRowY1), "", "", ICON_STOP,
              false, 0).pressed) {
     engine_->Stop();
   }
-  if (Button(c, "##play", ImVec2(316, 213), ImVec2(378, 262), "", "", ICON_PLAY,
-             engine_->playing(), colors::kLedWhite).pressed) {
+  if (Button(c, "##play", ImVec2(column(2), layout::kButtonRowY0),
+             ImVec2(column(2) + w, layout::kButtonRowY1), "", "", ICON_PLAY,
+             engine_->playing(), colors::kAccent).pressed) {
     TogglePlay();
   }
 
-  // Pad mode buttons.
-  if (Button(c, "##repeats", ImVec2(58, 643), ImVec2(133, 681), "Repeats", "", ICON_NONE,
-             pad_mode_ == PADS_REPEATS, colors::kLedWhite).pressed) {
-    pad_mode_ = PADS_REPEATS;
-  }
-  if (Button(c, "##chords", ImVec2(148, 643), ImVec2(223, 681), "Chords", "", ICON_NONE,
-             pad_mode_ == PADS_CHORDS, colors::kLedWhite).pressed) {
-    pad_mode_ = PADS_CHORDS;
-  }
-  if (Button(c, "##sounds", ImVec2(238, 643), ImVec2(313, 681), "Sounds", "", ICON_NONE,
-             pad_mode_ == PADS_SOUNDS, colors::kLedWhite).pressed) {
-    if (pad_mode_ == PADS_SOUNDS) {
-      preset_bank_ = 1 - preset_bank_;
-      Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
+  // Pad modes: a 2x2 block level with the lower row of pads.
+  struct ModeButton {
+    const char* id;
+    const char* label;
+    Icon icon;
+    PadMode mode;
+  };
+  const ModeButton kPadModes[4] = {
+    { "##chords", "Chords", ICON_NONE, PADS_CHORDS },
+    { "##sounds", "Sounds", ICON_NONE, PADS_SOUNDS },
+    { "##repeats", "Repeats", ICON_NONE, PADS_REPEATS },
+    { "##keys", "Keys", ICON_KEYBOARD, PADS_KEYS },
+  };
+  float half = (layout::kLeftX1 - layout::kLeftX0 - layout::kGap) * 0.5f;
+  float row_h = (layout::kPadRow2Y1 - layout::kPadRow2Y0 - layout::kGap) * 0.5f;
+  for (int i = 0; i < 4; ++i) {
+    const ModeButton& m = kPadModes[i];
+    float x0 = layout::kLeftX0 + (i % 2) * (half + layout::kGap);
+    float y0 = layout::kPadRow2Y0 + (i / 2) * (row_h + layout::kGap);
+    if (Button(c, m.id, ImVec2(x0, y0), ImVec2(x0 + half, y0 + row_h), m.label, "", m.icon,
+               pad_mode_ == m.mode, colors::kAccent).pressed) {
+      if (m.mode == PADS_SOUNDS && pad_mode_ == PADS_SOUNDS) {
+        preset_bank_ = 1 - preset_bank_;
+        Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
+      }
+      pad_mode_ = m.mode;
     }
-    pad_mode_ = PADS_SOUNDS;
-  }
-  if (Button(c, "##select", ImVec2(35, 725), ImVec2(115, 769), "Select", "", ICON_NONE,
-             select_mode_, colors::kLedWhite).pressed) {
-    select_mode_ = !select_mode_;
-    mute_mode_ = false;
-  }
-  if (Button(c, "##mute", ImVec2(130, 725), ImVec2(210, 769), "", "", ICON_MUTE,
-             mute_mode_, colors::kLedWhite).pressed) {
-    mute_mode_ = !mute_mode_;
-    select_mode_ = false;
-  }
-  if (Button(c, "##keys", ImVec2(222, 725), ImVec2(305, 769), "", "", ICON_KEYBOARD,
-             pad_mode_ == PADS_KEYS, colors::kLedWhite).pressed) {
-    pad_mode_ = PADS_KEYS;
   }
   UpdateRepeat();
 }
@@ -452,27 +492,29 @@ void Faceplate::DrawXySection() {
 
   struct ModeButton {
     const char* id;
-    float x0;
-    float x1;
     Icon icon;
     const char* label;
     XyMode mode;
   };
   const ModeButton kModes[4] = {
-    { "##spice", 140, 192, ICON_SPICE, "Spice", XY_GRIDS },
-    { "##fx", 200, 252, ICON_FX, "FX", XY_FX },
-    { "##looper", 258, 310, ICON_LOOPER, "Looper", XY_LOOPER },
-    { "##macros", 316, 368, ICON_XY, "Macros", XY_MACROS },
+    { "##spice", ICON_SPICE, "Spice", XY_GRIDS },
+    { "##fx", ICON_FX, "FX", XY_FX },
+    { "##looper", ICON_LOOPER, "Looper", XY_LOOPER },
+    { "##macros", ICON_XY, "Macros", XY_MACROS },
   };
-  for (const ModeButton& m : kModes) {
+  float w = (layout::kLeftX1 - layout::kLeftX0 - 3 * layout::kGap) / 4.0f;
+  for (int i = 0; i < 4; ++i) {
+    const ModeButton& m = kModes[i];
+    float x0 = layout::kLeftX0 + i * (w + layout::kGap);
     bool lit = engine_->xy_mode == m.mode;
-    if (m.mode == XY_GRIDS) {
-      lit = lit || engine_->grids_enabled;
+    ImU32 led = colors::kLedWhite;
+    if (m.mode == XY_GRIDS && engine_->grids_enabled) {
+      lit = true;
+      led = colors::kAccent;
     }
-    ImU32 led = m.mode == XY_GRIDS && engine_->grids_enabled ? colors::kOrange : colors::kLedWhite;
-    Interaction in = Button(c, m.id, ImVec2(m.x0, 306), ImVec2(m.x1, 358), "", "", m.icon,
+    Interaction in = Button(c, m.id, ImVec2(x0, layout::kFunctionRowY0),
+                            ImVec2(x0 + w, layout::kFunctionRowY1), m.label, "", m.icon,
                             lit, led, true);
-    c.Text((m.x0 + m.x1) * 0.5f, 350, 7.5f, colors::kLabelDim, m.label, true, true);
     if (in.pressed) {
       if (m.mode == XY_GRIDS && engine_->xy_mode == XY_GRIDS) {
         engine_->grids_enabled = !engine_->grids_enabled;
@@ -482,18 +524,16 @@ void Faceplate::DrawXySection() {
     }
   }
 
-  // Touch surface with the wavy print of the prototype.
-  ImVec2 min(97, 372);
-  ImVec2 max(353, 586);
-  dl->AddRectFilled(c.P(min.x - 6, min.y - 6), c.P(max.x + 6, max.y + 6),
-                    IM_COL32(40, 41, 44, 255), c.S(6));
-  dl->AddRectFilled(c.P(min), c.P(max), IM_COL32(30, 31, 33, 255), c.S(3));
-  for (int row = 0; row < 3; ++row) {
-    float y = 410.0f + row * 62.0f;
-    for (int i = 0; i < 9; ++i) {
-      float x = 125.0f + i * 23.0f;
-      dl->AddLine(c.P(x, y), c.P(x + 11, y + 40), IM_COL32(160, 160, 160, 90), c.S(1.2f));
-      dl->AddLine(c.P(x + 11, y + 40), c.P(x + 23, y), IM_COL32(160, 160, 160, 90), c.S(1.2f));
+  // Touch surface, from the top of the steps to the bottom of the upper pads.
+  ImVec2 min(layout::kLeftX0, layout::kStepRowY0);
+  ImVec2 max(layout::kLeftX1, layout::kPadRow1Y1);
+  dl->AddRectFilled(c.P(min.x, min.y + 3), c.P(max.x, max.y + 3), IM_COL32(0, 0, 0, 110), c.S(8));
+  dl->AddRectFilled(c.P(min), c.P(max), colors::kSurface, c.S(8));
+  dl->AddRect(c.P(min), c.P(max), colors::kPanelEdge, c.S(8), 0, c.S(1.2f));
+  // Dot grid print.
+  for (float gx = min.x + 25; gx < max.x - 10; gx += 25) {
+    for (float gy = min.y + 22; gy < max.y - 10; gy += 22) {
+      dl->AddCircleFilled(c.P(gx, gy), c.S(1.1f), IM_COL32(120, 135, 145, 110));
     }
   }
 
@@ -525,11 +565,11 @@ void Faceplate::DrawXySection() {
   bool show_cursor = grids_mode || in.active;
   if (show_cursor) {
     ImVec2 p(min.x + x * (max.x - min.x), max.y - y * (max.y - min.y));
-    ImU32 color = grids_mode && !engine_->grids_enabled ? colors::kLabelDim : colors::kOrange;
+    ImU32 color = grids_mode && !engine_->grids_enabled ? colors::kLabelDim : colors::kAccent;
     dl->AddLine(c.P(p.x, min.y), c.P(p.x, max.y), WithAlpha(color, 70), c.S(1));
     dl->AddLine(c.P(min.x, p.y), c.P(max.x, p.y), WithAlpha(color, 70), c.S(1));
-    dl->AddCircleFilled(c.P(p), c.S(9), WithAlpha(color, 90));
-    dl->AddCircleFilled(c.P(p), c.S(4.5f), color);
+    dl->AddCircleFilled(c.P(p), c.S(10), WithAlpha(color, 80));
+    dl->AddCircleFilled(c.P(p), c.S(5), color);
   }
 
   char text[64];
@@ -550,19 +590,28 @@ void Faceplate::DrawXySection() {
       snprintf(text, sizeof(text), "MACROS  (Assign page)");
       break;
   }
-  c.Text(min.x + 6, max.y - 16, 9, colors::kLabelDim, text, false);
+  c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
 }
 
 void Faceplate::DrawScreenSection() {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
-  dl->AddRectFilled(c.P(425, 55), c.P(886, 233), IM_COL32(12, 12, 13, 255), c.S(6));
-  DrawScreen(ImVec2(442, 68), ImVec2(738, 222));
+  // Bezel with the screen on the left and the encoder column on the right.
+  const float bezel_y1 = layout::kButtonRowY0 - 14;
+  dl->AddRectFilled(c.P(layout::kRightX0, layout::kTopY0 + 3),
+                    c.P(layout::kScreenX1, bezel_y1 + 3), IM_COL32(0, 0, 0, 110), c.S(10));
+  dl->AddRectFilled(c.P(layout::kRightX0, layout::kTopY0),
+                    c.P(layout::kScreenX1, bezel_y1), colors::kBezel, c.S(10));
+  const float screen_x1 = layout::kScreenX1 - 150;
+  DrawScreen(ImVec2(layout::kRightX0 + 12, layout::kTopY0 + 12),
+             ImVec2(screen_x1, bezel_y1 - 12));
 
   // Encoder: turns change the engine of the selected track (or the preset in
   // the browser).
+  const float encoder_x = (screen_x1 + layout::kScreenX1) * 0.5f;
   float before = encoder_;
-  Knob(c, "##encoder", ImVec2(790, 104), 31, &encoder_, 0.5f, KNOB_ENCODER, false, 0);
+  Knob(c, "##encoder", ImVec2(encoder_x, layout::kTopY0 + 58), 34, &encoder_, 0.5f,
+       KNOB_ENCODER, false, 0);
   encoder_accumulator_ += encoder_ - before;
   if (encoder_ <= 0.0f || encoder_ >= 1.0f) {
     encoder_ = 0.5f;
@@ -583,7 +632,8 @@ void Faceplate::DrawScreenSection() {
     }
   }
 
-  if (Button(c, "##back", ImVec2(760, 176), ImVec2(815, 206), "", "", ICON_BACK,
+  if (Button(c, "##back", ImVec2(encoder_x - 30, layout::kTopY0 + 106),
+             ImVec2(encoder_x + 30, layout::kTopY0 + 134), "", "", ICON_BACK,
              false, 0).pressed) {
     view_ = VIEW_MAIN;
     held_step_ = -1;
@@ -591,63 +641,65 @@ void Faceplate::DrawScreenSection() {
     song_edit_ = false;
   }
 
-  // Song: first press edits the chain (pattern buttons append to it), second
-  // press plays it.
-  bool song_blink = std::fmod(ImGui::GetTime(), 0.5) < 0.25;
-  bool song_lit = song_edit_ ? song_blink : engine_->song_mode();
-  if (Button(c, "##song", ImVec2(413, 248), ImVec2(490, 286), "", "Song", ICON_SONG,
-             song_lit, song_edit_ ? colors::kOrange : colors::kLedWhite).pressed) {
-    if (!song_edit_) {
-      song_edit_ = true;
-      song_edit_fresh_ = true;
-      patterns_mode_ = false;
-      last_step_mode_ = false;
-      Toast("Song: press patterns in order");
-    } else {
-      song_edit_ = false;
-      engine_->SetSongMode(true);
-      int length = engine_->project().song_length;
-      char message[48];
-      snprintf(message, sizeof(message), length ? "Song: %d patterns" : "Song empty", length);
-      Toast(message);
-    }
-  }
-  if (Button(c, "##sample", ImVec2(505, 248), ImVec2(585, 286), "", "Sample", ICON_SAMPLE,
-             false, 0).pressed) {
-    Toast("Sampler not emulated (Plaits only)");
-  }
   // 2x4 LEDs: playing page (top) and edited page (bottom).
   int play_page = engine_->pattern_step.load() >= 0 ? engine_->pattern_step.load() / kStepsPerPage : -1;
   for (int i = 0; i < 4; ++i) {
-    dl->AddCircleFilled(c.P(618 + i * 14.0f, 259), c.S(2.8f),
-                        i == play_page ? colors::kOrange : colors::kLedOff);
-    dl->AddCircleFilled(c.P(618 + i * 14.0f, 275), c.S(2.8f),
-                        i == view_page_ ? colors::kLedWhite : colors::kLedOff);
+    float lx = encoder_x - 21 + i * 14.0f;
+    dl->AddCircleFilled(c.P(lx, bezel_y1 - 26), c.S(2.8f),
+                        i == play_page ? colors::kAmber : colors::kLedOff);
+    dl->AddCircleFilled(c.P(lx, bezel_y1 - 14), c.S(2.8f),
+                        i == view_page_ ? colors::kAccent : colors::kLedOff);
   }
-  if (Button(c, "##browse", ImVec2(688, 248), ImVec2(745, 286), "", "Browse", ICON_BROWSE,
-             view_ == VIEW_BROWSE, colors::kLedWhite).pressed) {
-    view_ = view_ == VIEW_BROWSE ? VIEW_MAIN : VIEW_BROWSE;
-  }
-  if (Button(c, "##edit", ImVec2(760, 248), ImVec2(815, 286), "", "Edit", ICON_EDIT,
-             view_ == VIEW_EDIT, colors::kLedWhite).pressed) {
-    view_ = view_ == VIEW_EDIT ? VIEW_MAIN : VIEW_EDIT;
-  }
-  if (Button(c, "##save", ImVec2(830, 248), ImVec2(888, 286), "", "Save", ICON_SAVE,
-             false, 0).pressed) {
-    Save();
+
+  // Buttons under the screen.
+  struct ScreenButton {
+    const char* id;
+    const char* label;
+    Icon icon;
+  };
+  const ScreenButton kButtons[4] = {
+    { "##sample", "Sample", ICON_SAMPLE },
+    { "##browse", "Browse", ICON_BROWSE },
+    { "##edit", "Edit", ICON_EDIT },
+    { "##save", "Save", ICON_SAVE },
+  };
+  float w = (layout::kScreenX1 - layout::kRightX0 - 3 * layout::kGap) / 4.0f;
+  for (int i = 0; i < 4; ++i) {
+    float x0 = layout::kRightX0 + i * (w + layout::kGap);
+    bool lit = (i == 1 && view_ == VIEW_BROWSE) || (i == 2 && view_ == VIEW_EDIT);
+    if (!Button(c, kButtons[i].id, ImVec2(x0, layout::kButtonRowY0),
+                ImVec2(x0 + w, layout::kButtonRowY1), kButtons[i].label, "",
+                kButtons[i].icon, lit, colors::kAccent).pressed) {
+      continue;
+    }
+    switch (i) {
+      case 0:
+        Toast("Sampler not emulated (Plaits only)");
+        break;
+      case 1:
+        view_ = view_ == VIEW_BROWSE ? VIEW_MAIN : VIEW_BROWSE;
+        break;
+      case 2:
+        view_ = view_ == VIEW_EDIT ? VIEW_MAIN : VIEW_EDIT;
+        break;
+      default:
+        Save();
+        break;
+    }
   }
 }
 
 void Faceplate::DrawSoundEdit() {
   const Canvas& c = canvas_;
-  Project& project = engine_->project();
   int track = engine_->selected_track;
   bool track_page = page_ == PAGE_SOUND || page_ == PAGE_FILTER || page_ == PAGE_TRACK;
   Step* held = held_step_ >= 0 && track_page
       ? &pattern().tracks[track].steps[held_step_] : nullptr;
 
+  const float column = (layout::kRightX1 - layout::kSoundX0) / 4.0f;
   for (int k = 0; k < kKnobsPerPage; ++k) {
-    ImVec2 center(kSoundKnobX[k % 4], kSoundKnobY[k / 4]);
+    ImVec2 center(layout::kSoundX0 + column * (k % 4 + 0.5f),
+                  k < 4 ? layout::kTopY0 + 58 : layout::kTopY0 + 132);
     bool unused;
     float* base = KnobTarget(k, &unused);
     int param = track_page ? page_ * kKnobsPerPage + k : -1;
@@ -664,10 +716,10 @@ void Faceplate::DrawSoundEdit() {
       if (lock_mask & (1u << param)) {
         float flash = ImClamp(static_cast<float>(1.0 - (ImGui::GetTime() - flash_time_[track]) / 0.25),
                               0.0f, 1.0f);
-        decor.halo = WithAlpha(colors::kOrange, static_cast<int>(90 + 150 * flash));
+        decor.halo = WithAlpha(colors::kAccent, static_cast<int>(90 + 150 * flash));
       }
       decor.marker = engine_->effective_param[track][param].load(std::memory_order_relaxed);
-      decor.marker_color = (lock_mask & (1u << param)) ? colors::kOrange : colors::kLockMod;
+      decor.marker_color = (lock_mask & (1u << param)) ? colors::kAccent : colors::kLockMod;
       int length = pattern().track_length(track);
       for (int s = 0; s < length && !decor.automated; ++s) {
         decor.automated = pattern().tracks[track].steps[s].has_lock(param);
@@ -678,7 +730,7 @@ void Faceplate::DrawSoundEdit() {
     snprintf(id, sizeof(id), "##knob%d", k);
     Interaction in;
     bool changed = Knob(c, id, center, 22, &value, default_value, KNOB_SILVER, true,
-                        locked ? colors::kOrange : colors::kLedWhite, &in,
+                        locked ? colors::kAccent : colors::kLedWhite, &in,
                         held ? nullptr : &decor);
     if (held && in.double_clicked) {
       held->locks[param] = NAN;
@@ -694,36 +746,28 @@ void Faceplate::DrawSoundEdit() {
         }
       }
     }
-    char number[4];
-    snprintf(number, sizeof(number), "%d", k + 1);
-    c.Text(center.x, center.y + 38, 9, colors::kLabel, number, true, true);
+    // Short parameter name under each knob.
+    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim,
+           page_param_info(page_, k).short_name, true, true);
     if (in.hovered || in.active) {
       std::string tip = std::string(page_param_info(page_, k).name) + ": " +
           FormatValue(page_param_info(page_, k).format, value);
       ImGui::SetTooltip("%s", tip.c_str());
     }
   }
-  (void)project;
 
-  struct PageButton {
-    const char* id;
-    float x0;
-    float x1;
-    Icon icon;
-    Page page;
+  const Icon kPageIcons[PAGE_LAST] = {
+    ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ASSIGN
   };
-  const PageButton kPages[PAGE_LAST] = {
-    { "##p_sound", 965, 1025, ICON_SOUND, PAGE_SOUND },
-    { "##p_filter", 1040, 1100, ICON_FILTER, PAGE_FILTER },
-    { "##p_track", 1112, 1172, ICON_TRACK, PAGE_TRACK },
-    { "##p_master", 1185, 1245, ICON_MASTER, PAGE_MASTER },
-    { "##p_mods", 1258, 1318, ICON_MODS, PAGE_MODS },
-    { "##p_assign", 1330, 1392, ICON_ASSIGN, PAGE_ASSIGN },
-  };
-  for (const PageButton& b : kPages) {
-    if (Button(c, b.id, ImVec2(b.x0, 243), ImVec2(b.x1, 285), "", page_name(b.page), b.icon,
-               page_ == b.page, colors::kLedWhite).pressed) {
-      page_ = b.page;
+  float w = (layout::kRightX1 - layout::kSoundX0 - (PAGE_LAST - 1) * layout::kGap) / PAGE_LAST;
+  for (int i = 0; i < PAGE_LAST; ++i) {
+    Page page = static_cast<Page>(i);
+    float x0 = layout::kSoundX0 + i * (w + layout::kGap);
+    char id[16];
+    snprintf(id, sizeof(id), "##page_%d", i);
+    if (Button(c, id, ImVec2(x0, layout::kButtonRowY0), ImVec2(x0 + w, layout::kButtonRowY1),
+               page_name(page), "", kPageIcons[i], page_ == page, colors::kAccent).pressed) {
+      page_ = page;
     }
   }
 }
@@ -736,57 +780,104 @@ void Faceplate::DrawSequencer() {
   double now = ImGui::GetTime();
   bool blink = std::fmod(now, 0.5) < 0.25;
 
-  if (Button(c, "##patterns", ImVec2(397, 364), ImVec2(480, 405), "Patterns", "", ICON_NONE,
-             patterns_mode_, colors::kLedWhite).pressed) {
+  // Function row: one button per step column.
+  auto function_button = [&](int column, const char* id, const char* label, bool lit,
+                             ImU32 color) {
+    float x0 = layout::StepX(column);
+    return Button(c, id, ImVec2(x0, layout::kFunctionRowY0),
+                  ImVec2(x0 + layout::kStepWidth, layout::kFunctionRowY1), label, "",
+                  ICON_NONE, lit, color);
+  };
+
+  // Group 1: what the step buttons do.
+  if (function_button(0, "##patterns", "Patterns", patterns_mode_, colors::kAccent).pressed) {
     patterns_mode_ = !patterns_mode_;
     last_step_mode_ = false;
     song_edit_ = false;
   }
-  if (Button(c, "##steps", ImVec2(495, 364), ImVec2(575, 405), "Steps", "", ICON_NONE,
-             !patterns_mode_ && !last_step_mode_ && !song_edit_, colors::kLedWhite).pressed) {
+  if (function_button(1, "##steps", "Steps", !patterns_mode_ && !last_step_mode_ && !song_edit_,
+                      colors::kAccent).pressed) {
     patterns_mode_ = false;
     last_step_mode_ = false;
     song_edit_ = false;
   }
+  if (function_button(2, "##notes", "Notes", notes_mode_, colors::kAccent).pressed) {
+    notes_mode_ = !notes_mode_;
+  }
+  if (function_button(3, "##last", "Last Step", last_step_mode_, colors::kAccent).pressed) {
+    last_step_mode_ = !last_step_mode_;
+    patterns_mode_ = false;
+    song_edit_ = false;
+  }
+
+  // Group 2: step pages.
   int play_page = engine_->pattern_step.load() >= 0 ? engine_->pattern_step.load() / kStepsPerPage : -1;
   const char* const kPageLabels[kNumPages] = { "A|1", "B|2", "C|3", "D|4" };
   for (int i = 0; i < kNumPages; ++i) {
-    float x0 = 590.0f + i * 64.0f;
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
         last_step_mode_;
-    ImU32 color = i == view_page_ ? colors::kLedWhite
-        : (i == play_page ? colors::kOrange : colors::kLabelDim);
-    if (Button(c, id, ImVec2(x0, 364), ImVec2(x0 + 50, 405), kPageLabels[i], "", ICON_NONE,
-               i == view_page_ || i == play_page || !in_pattern, in_pattern ? color : IM_COL32(80, 80, 80, 255)).pressed) {
+    ImU32 color = i == view_page_ ? colors::kAccent
+        : (i == play_page ? colors::kAmber : colors::kLabelDim);
+    if (function_button(4 + i, id, kPageLabels[i],
+                        in_pattern && (i == view_page_ || i == play_page),
+                        color).pressed) {
       view_page_ = i;
     }
+    if (!in_pattern) {
+      float x0 = layout::StepX(4 + i);
+      dl->AddRectFilled(c.P(x0 + 2, layout::kFunctionRowY0 + 2),
+                        c.P(x0 + layout::kStepWidth - 2, layout::kFunctionRowY1 - 3),
+                        IM_COL32(0, 0, 0, 90), c.S(4));
+    }
   }
-  if (Button(c, "##notes", ImVec2(846, 364), ImVec2(894, 405), "Notes", "", ICON_NONE,
-             notes_mode_, colors::kLedWhite).pressed) {
-    notes_mode_ = !notes_mode_;
+
+  // Group 3: song, polyrhythm and pad behavior.
+  // Song: first press edits the chain (pattern buttons append to it), second
+  // press plays it.
+  bool song_lit = song_edit_ ? blink : engine_->song_mode();
+  if (function_button(8, "##song", "Song", song_lit,
+                      song_edit_ ? colors::kAmber : colors::kAccent).pressed) {
+    if (!song_edit_) {
+      song_edit_ = true;
+      song_edit_fresh_ = true;
+      patterns_mode_ = false;
+      last_step_mode_ = false;
+      Toast("Song: press patterns in order");
+    } else {
+      song_edit_ = false;
+      engine_->SetSongMode(true);
+      int length = engine_->project().song_length;
+      char message[48];
+      snprintf(message, sizeof(message), length ? "Song: %d patterns" : "Song empty", length);
+      Toast(message);
+    }
   }
-  if (Button(c, "##poly", ImVec2(920, 364), ImVec2(975, 405), "Poly", "", ICON_NONE,
-             p.poly, colors::kOrange).pressed) {
+  if (function_button(9, "##poly", "Poly", p.poly, colors::kAccent).pressed) {
     p.poly = !p.poly;
     Toast(p.poly ? "Poly: tracks cycle on their own length" : "Poly off: tracks restart with the pattern");
   }
-  if (Button(c, "##last", ImVec2(988, 364), ImVec2(1068, 405), "Last Step", "", ICON_NONE,
-             last_step_mode_, colors::kOrange).pressed) {
-    last_step_mode_ = !last_step_mode_;
-    patterns_mode_ = false;
+  if (function_button(10, "##select", "Select", select_mode_, colors::kAccent).pressed) {
+    select_mode_ = !select_mode_;
+    mute_mode_ = false;
   }
-  if (Button(c, "##copy", ImVec2(1170, 362), ImVec2(1222, 402), "Copy", "", ICON_NONE, false, 0).pressed) {
+  if (function_button(11, "##mute", "Mute", mute_mode_, colors::kAccent).pressed) {
+    mute_mode_ = !mute_mode_;
+    select_mode_ = false;
+  }
+
+  // Group 4: editing.
+  if (function_button(12, "##copy", "Copy", false, 0).pressed) {
     Copy();
   }
-  if (Button(c, "##paste", ImVec2(1235, 362), ImVec2(1288, 402), "Paste", "", ICON_NONE, false, 0).pressed) {
+  if (function_button(13, "##paste", "Paste", false, 0).pressed) {
     Paste();
   }
-  if (Button(c, "##erase", ImVec2(1300, 362), ImVec2(1353, 402), "Erase", "", ICON_NONE, false, 0).pressed) {
+  if (function_button(14, "##erase", "Erase", false, 0).pressed) {
     Erase();
   }
-  if (Button(c, "##undo", ImVec2(1367, 362), ImVec2(1420, 402), "Undo", "", ICON_NONE, false, 0).pressed) {
+  if (function_button(15, "##undo", "Undo", false, 0).pressed) {
     Undo();
   }
 
@@ -794,9 +885,9 @@ void Faceplate::DrawSequencer() {
   int playing_step = engine_->track_step[track].load();
   int track_length = p.track_length(track);
   for (int i = 0; i < kStepsPerPage; ++i) {
-    float x0 = kStepX0 + i * kStepPitch;
-    ImVec2 min(x0, 420);
-    ImVec2 max(x0 + kStepWidth, 463);
+    float x0 = layout::StepX(i);
+    ImVec2 min(x0, layout::kStepRowY0);
+    ImVec2 max(x0 + layout::kStepWidth, layout::kStepRowY1);
     char id[16];
     snprintf(id, sizeof(id), "##step%d", i);
     char face[16];
@@ -812,18 +903,19 @@ void Faceplate::DrawSequencer() {
       }
       if (i == engine_->current_pattern() && engine_->playing()) {
         lit = true;
+        color = colors::kAmber;
       } else if (uses > 0) {
         lit = true;
-        color = colors::kOrange;
+        color = colors::kAccent;
       } else if (!project.patterns[i].IsEmpty()) {
         lit = true;
-        color = IM_COL32(120, 120, 120, 255);
+        color = IM_COL32(120, 130, 138, 255);
       }
       Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
       if (uses > 1) {
         char count[16];
         snprintf(count, sizeof(count), "x%d", uses);
-        c.Text(max.x - 12, min.y + 9, 8, colors::kOrange, count, true, true);
+        c.Text(max.x - 12, min.y + 9, 8, colors::kAccent, count, true, true);
       }
       if (in.pressed) {
         if (song_edit_fresh_) {
@@ -845,12 +937,13 @@ void Faceplate::DrawSequencer() {
       bool empty = engine_->project().patterns[i].IsEmpty();
       if (i == engine_->current_pattern()) {
         lit = true;
+        color = colors::kAccent;
       } else if (i == engine_->queued_pattern()) {
         lit = blink;
-        color = colors::kOrange;
+        color = colors::kAmber;
       } else if (!empty) {
         lit = true;
-        color = IM_COL32(120, 120, 120, 255);
+        color = IM_COL32(120, 130, 138, 255);
       }
       Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
       if (in.pressed) {
@@ -867,7 +960,7 @@ void Faceplate::DrawSequencer() {
       // DrumBrute-style: press the step that ends the track.
       snprintf(face, sizeof(face), "%d", index + 1);
       lit = in_range;
-      color = index == track_length - 1 ? colors::kOrange : IM_COL32(150, 150, 150, 255);
+      color = index == track_length - 1 ? colors::kAccent : IM_COL32(150, 158, 165, 255);
       Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
       if (in.pressed) {
         PushUndo();
@@ -888,10 +981,10 @@ void Faceplate::DrawSequencer() {
     }
     if (index == playing_step && engine_->playing()) {
       lit = true;
-      color = colors::kOrange;
+      color = colors::kAmber;
     } else if (step.on) {
       lit = true;
-      color = IM_COL32(245, 245, 240, static_cast<int>(120 + 135 * step.velocity));
+      color = WithAlpha(colors::kLedWhite, static_cast<int>(120 + 135 * step.velocity));
     }
     if (!in_range) {
       lit = false;
@@ -914,10 +1007,10 @@ void Faceplate::DrawSequencer() {
     }
     if (held_step_ == index) {
       dl->AddRect(c.P(min.x - 3, min.y - 3), c.P(max.x + 3, max.y + 3),
-                  colors::kOrange, c.S(5), 0, c.S(2));
+                  colors::kAccent, c.S(6), 0, c.S(2));
     }
     if (step.has_any_lock()) {
-      dl->AddCircleFilled(c.P(max.x - 7, min.y + 7), c.S(2.5f), colors::kOrange);
+      dl->AddCircleFilled(c.P(max.x - 7, min.y + 7), c.S(2.5f), colors::kAccent);
     }
     if (step.ratchets > 1 && step.on) {
       for (int r = 0; r < step.ratchets; ++r) {
@@ -932,11 +1025,12 @@ void Faceplate::DrawPads() {
   ImDrawList* dl = c.draw_list;
   Project& project = engine_->project();
   double now = ImGui::GetTime();
+  const ImU32 kPadInk = IM_COL32(38, 44, 50, 255);
 
   for (int t = 0; t < kNumTracks; ++t) {
-    float x0 = kPadX0 + t * kPadPitch;
-    ImVec2 min(x0, 508);
-    ImVec2 max(x0 + kPadWidth, 622);
+    float x0 = layout::PadX(t);
+    ImVec2 min(x0, layout::kPadRow1Y0);
+    ImVec2 max(x0 + layout::kPadWidth, layout::kPadRow1Y1);
     char id[16];
     snprintf(id, sizeof(id), "##pad%d", t);
     Interaction in = HitBox(c, id, min, max);
@@ -953,46 +1047,45 @@ void Faceplate::DrawPads() {
     bool muted = engine_->muted[t];
     bool in_chord = chord_edit_ >= 0 && (project.chords[chord_edit_] & (1 << t));
 
-    float split = min.y + (max.y - min.y) * 0.55f;
-    dl->AddRectFilled(c.P(min.x + 2, min.y + 4), c.P(max.x + 2, max.y + 4),
-                      IM_COL32(0, 0, 0, 120), c.S(5));
-    // Lower light part.
-    ImU32 face = muted ? IM_COL32(120, 120, 118, 255) : colors::kPadFace;
+    float split = min.y + (max.y - min.y) * 0.5f;
+    dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
+    // Lower light part, lit by the pad's LED on each hit.
+    ImU32 face = muted ? IM_COL32(128, 134, 136, 255) : colors::kPadFace;
     if (flash > 0.0f || in_chord) {
       float f = in_chord ? 1.0f : flash;
       face = ImGui::ColorConvertFloat4ToU32(ImLerp(
           ImGui::ColorConvertU32ToFloat4(face),
-          ImVec4(1.0f, 0.55f, 0.25f, 1.0f), f * 0.85f));
+          ImGui::ColorConvertU32ToFloat4(colors::kAccent), f * 0.8f));
     }
-    dl->AddRectFilled(c.P(min), c.P(max), face, c.S(5));
-    dl->AddRectFilled(c.P(min), c.P(max.x, split), colors::kPadDark, c.S(5),
+    dl->AddRectFilled(c.P(min), c.P(max), face, c.S(8));
+    dl->AddRectFilled(c.P(min), c.P(max.x, split), colors::kPadDark, c.S(8),
                       ImDrawFlags_RoundCornersTop);
     // Name, engine and level meter in the dark upper part.
     const TrackSound& sound = project.sounds[t];
-    c.Text(min.x + 8, min.y + 8, 10, colors::kLedWhite, sound.name.c_str(), false, true);
-    c.Text(min.x + 8, min.y + 24, 8.5f, colors::kLabelDim,
+    c.Text(min.x + 10, min.y + 10, 10.5f, colors::kLedWhite, sound.name.c_str(), false, true);
+    c.Text(min.x + 10, min.y + 27, 8.5f, colors::kLabelDim,
            kEngineNames[Discrete(sound.params[P_ENGINE], kNumEngines)], false);
     float level = std::min(1.0f, engine_->track_peak[t].load() * 1.6f);
-    dl->AddRectFilled(c.P(min.x + 8, split - 12), c.P(max.x - 8, split - 8),
-                      IM_COL32(50, 50, 52, 255));
-    dl->AddRectFilled(c.P(min.x + 8, split - 12),
-                      c.P(min.x + 8 + (max.x - min.x - 16) * level, split - 8),
-                      colors::kOrange);
+    dl->AddRectFilled(c.P(min.x + 10, split - 14), c.P(max.x - 10, split - 10),
+                      IM_COL32(52, 60, 68, 255), c.S(2));
+    dl->AddRectFilled(c.P(min.x + 10, split - 14),
+                      c.P(min.x + 10 + (max.x - min.x - 20) * level, split - 10),
+                      colors::kAccent, c.S(2));
     char letter[2] = { static_cast<char>('A' + t), 0 };
-    c.Text(min.x + 9, max.y - 22, 13, IM_COL32(40, 40, 40, 255), letter, false, true);
+    c.Text(min.x + 10, max.y - 26, 15, kPadInk, letter, false, true);
     if (muted) {
-      c.Text(max.x - 30, max.y - 20, 9, IM_COL32(40, 40, 40, 255), "MUTE", false, true);
+      c.Text(max.x - 36, max.y - 22, 9, kPadInk, "MUTE", false, true);
     }
     if (selected) {
-      dl->AddRect(c.P(min.x - 3, min.y - 3), c.P(max.x + 3, max.y + 3), colors::kOrange,
-                  c.S(7), 0, c.S(2.5f));
+      dl->AddRect(c.P(min.x - 4, min.y - 4), c.P(max.x + 4, max.y + 4), colors::kAccent,
+                  c.S(11), 0, c.S(2.5f));
     }
   }
 
   for (int i = 0; i < 8; ++i) {
-    float x0 = kPadX0 + i * kPadPitch;
-    ImVec2 min(x0, 640);
-    ImVec2 max(x0 + kPadWidth, 772);
+    float x0 = layout::PadX(i);
+    ImVec2 min(x0, layout::kPadRow2Y0);
+    ImVec2 max(x0 + layout::kPadWidth, layout::kPadRow2Y1);
     char id[16];
     snprintf(id, sizeof(id), "##lower%d", i);
     Interaction in = HitBox(c, id, min, max);
@@ -1007,16 +1100,17 @@ void Faceplate::DrawPads() {
     }
 
     bool held = lower_pad_held_[i] || in.active;
-    ImU32 face = held ? IM_COL32(255, 190, 150, 255) : colors::kPadFace;
-    if (chord_edit_ == i) {
-      face = IM_COL32(255, 160, 110, 255);
+    ImU32 face = colors::kPadFace;
+    if (held || chord_edit_ == i) {
+      face = ImGui::ColorConvertFloat4ToU32(ImLerp(
+          ImGui::ColorConvertU32ToFloat4(face),
+          ImGui::ColorConvertU32ToFloat4(colors::kAccent), chord_edit_ == i ? 0.7f : 0.5f));
     }
-    dl->AddRectFilled(c.P(min.x + 2, min.y + 4), c.P(max.x + 2, max.y + 4),
-                      IM_COL32(0, 0, 0, 120), c.S(5));
-    dl->AddRectFilled(c.P(min), c.P(max), face, c.S(5));
+    dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
+    dl->AddRectFilled(c.P(min), c.P(max), face, c.S(8));
     char number[4];
     snprintf(number, sizeof(number), "%d", i + 1);
-    c.Text(min.x + 9, max.y - 22, 13, IM_COL32(40, 40, 40, 255), number, false, true);
+    c.Text(min.x + 10, max.y - 26, 15, kPadInk, number, false, true);
 
     std::string function;
     switch (pad_mode_) {
@@ -1030,7 +1124,7 @@ void Faceplate::DrawPads() {
         break;
       }
     }
-    c.Text((min.x + max.x) * 0.5f, min.y + 40, 10, IM_COL32(90, 90, 90, 255),
+    c.Text((min.x + max.x) * 0.5f, min.y + 40, 10, IM_COL32(95, 104, 110, 255),
            function.c_str(), true, true);
   }
 }
@@ -1062,8 +1156,8 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawMainView(min, max);
   }
   if (ImGui::GetTime() - toast_time_ < 1.6) {
-    dl->AddRectFilled(c.P(min.x, max.y - 18), c.P(max), IM_COL32(255, 106, 42, 230));
-    c.Text(min.x + 6, max.y - 15, 9.5f, IM_COL32(20, 10, 5, 255), toast_.c_str(), false, true);
+    dl->AddRectFilled(c.P(min.x, max.y - 18), c.P(max), WithAlpha(colors::kAccent, 235));
+    c.Text(min.x + 6, max.y - 15, 9.5f, IM_COL32(8, 30, 26, 255), toast_.c_str(), false, true);
   }
   dl->PopClipRect();
 }
@@ -1166,7 +1260,7 @@ void Faceplate::DrawSongView(ImVec2 min, ImVec2 max) {
                       current ? colors::kScreenAccent : IM_COL32(30, 50, 56, 255), c.S(2));
     snprintf(text, sizeof(text), "%d", project.song[s] + 1);
     c.Text(x + (cell - 3) * 0.5f, y + 8, 9.5f,
-           current ? IM_COL32(20, 10, 5, 255) : colors::kScreenText, text, true, true);
+           current ? IM_COL32(8, 30, 26, 255) : colors::kScreenText, text, true, true);
   }
 }
 
@@ -1292,7 +1386,7 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
     bool current = engine_->project().sounds[track].name == preset_name(i);
     if (current || in.hovered) {
       c.draw_list->AddRectFilled(c.P(a), c.P(b),
-                                 current ? IM_COL32(255, 106, 42, 90) : IM_COL32(60, 80, 90, 120));
+                                 current ? WithAlpha(colors::kAccent, 90) : IM_COL32(60, 80, 90, 120));
     }
     snprintf(text, sizeof(text), "%2d  %s", i + 1, preset_name(i));
     c.Text(a.x + 4, a.y + 1, 9, colors::kScreenText, text, false);

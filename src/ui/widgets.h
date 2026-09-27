@@ -11,27 +11,32 @@
 namespace drumfreake {
 
 const float kPanelWidth = 1540.0f;
-const float kPanelHeight = 850.0f;
+const float kPanelHeight = 815.0f;
 
+// Slate panel, off-white pads, mint accent (LEDs, locks, selection), amber
+// for the playhead and red for recording.
 namespace colors {
-const ImU32 kBackground = IM_COL32(24, 24, 26, 255);
-const ImU32 kPanel = IM_COL32(52, 53, 56, 255);
-const ImU32 kPanelEdge = IM_COL32(70, 71, 75, 255);
-const ImU32 kButton = IM_COL32(30, 31, 33, 255);
-const ImU32 kButtonTop = IM_COL32(42, 43, 46, 255);
-const ImU32 kLabel = IM_COL32(200, 200, 200, 255);
-const ImU32 kLabelDim = IM_COL32(130, 130, 134, 255);
-const ImU32 kLedOff = IM_COL32(70, 70, 72, 255);
-const ImU32 kLedWhite = IM_COL32(245, 245, 240, 255);
-const ImU32 kOrange = IM_COL32(255, 106, 42, 255);
-const ImU32 kRed = IM_COL32(240, 50, 40, 255);
-const ImU32 kLockMod = IM_COL32(90, 200, 230, 255);  // LFO/macro modulation.
-const ImU32 kPadFace = IM_COL32(228, 228, 226, 255);
-const ImU32 kPadDark = IM_COL32(28, 28, 30, 255);
-const ImU32 kScreen = IM_COL32(8, 12, 14, 255);
-const ImU32 kScreenText = IM_COL32(210, 235, 240, 255);
-const ImU32 kScreenDim = IM_COL32(90, 120, 128, 255);
-const ImU32 kScreenAccent = IM_COL32(255, 140, 70, 255);
+const ImU32 kBackground = IM_COL32(18, 21, 24, 255);
+const ImU32 kPanel = IM_COL32(43, 49, 56, 255);
+const ImU32 kPanelEdge = IM_COL32(64, 73, 82, 255);
+const ImU32 kBezel = IM_COL32(17, 20, 23, 255);
+const ImU32 kSurface = IM_COL32(32, 37, 43, 255);
+const ImU32 kButton = IM_COL32(20, 24, 28, 255);
+const ImU32 kButtonTop = IM_COL32(34, 39, 46, 255);
+const ImU32 kLabel = IM_COL32(201, 209, 214, 255);
+const ImU32 kLabelDim = IM_COL32(126, 138, 147, 255);
+const ImU32 kLedOff = IM_COL32(58, 67, 76, 255);
+const ImU32 kLedWhite = IM_COL32(238, 242, 240, 255);
+const ImU32 kAccent = IM_COL32(79, 209, 181, 255);
+const ImU32 kAmber = IM_COL32(242, 184, 75, 255);
+const ImU32 kRed = IM_COL32(229, 72, 77, 255);
+const ImU32 kLockMod = IM_COL32(108, 166, 255, 255);  // LFO/macro modulation.
+const ImU32 kPadFace = IM_COL32(233, 236, 230, 255);
+const ImU32 kPadDark = IM_COL32(27, 31, 36, 255);
+const ImU32 kScreen = IM_COL32(11, 16, 19, 255);
+const ImU32 kScreenText = IM_COL32(214, 245, 238, 255);
+const ImU32 kScreenDim = IM_COL32(111, 143, 138, 255);
+const ImU32 kScreenAccent = kAccent;
 }  // namespace colors
 
 struct Canvas {
@@ -68,7 +73,7 @@ Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max);
 enum KnobStyle {
   KNOB_SILVER,
   KNOB_BLACK,
-  KNOB_ORANGE,
+  KNOB_AMBER,
   KNOB_ENCODER,
 };
 
@@ -112,7 +117,8 @@ enum Icon {
   ICON_XY,
 };
 
-// A rubber button. `face_text` is printed on the button, `label` below it.
+// A rubber button. `face_text` is printed on the button (under the icon when
+// there is one), `label` below it.
 // `led` draws a small LED in the top-left corner.
 Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
                    const char* face_text, const char* label, Icon icon,

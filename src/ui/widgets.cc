@@ -124,7 +124,7 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
     }
     if (decor && decor->automated) {
       ImVec2 badge(p.x + ring_radius * 0.95f, p.y - ring_radius * 0.95f);
-      dl->AddCircleFilled(badge, c.S(3.4f), colors::kOrange);
+      dl->AddCircleFilled(badge, c.S(3.4f), colors::kAccent);
       dl->AddCircle(badge, c.S(3.4f), IM_COL32(0, 0, 0, 160), 12, c.S(1.0f));
     }
   }
@@ -136,14 +136,14 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
   ImU32 pointer;
   switch (style) {
     case KNOB_BLACK:
-      body = IM_COL32(20, 20, 22, 255);
-      top = IM_COL32(40, 40, 44, 255);
-      pointer = IM_COL32(230, 230, 230, 255);
+      body = IM_COL32(17, 20, 24, 255);
+      top = IM_COL32(40, 46, 53, 255);
+      pointer = IM_COL32(230, 236, 234, 255);
       break;
-    case KNOB_ORANGE:
-      body = IM_COL32(220, 70, 30, 255);
-      top = IM_COL32(250, 100, 50, 255);
-      pointer = IM_COL32(40, 20, 10, 255);
+    case KNOB_AMBER:
+      body = IM_COL32(196, 146, 52, 255);
+      top = IM_COL32(242, 184, 75, 255);
+      pointer = IM_COL32(45, 32, 10, 255);
       break;
     case KNOB_ENCODER:
       body = IM_COL32(20, 20, 22, 255);
@@ -152,9 +152,9 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
       break;
     case KNOB_SILVER:
     default:
-      body = IM_COL32(150, 150, 154, 255);
-      top = IM_COL32(222, 222, 225, 255);
-      pointer = IM_COL32(50, 50, 55, 255);
+      body = IM_COL32(146, 154, 160, 255);
+      top = IM_COL32(220, 225, 228, 255);
+      pointer = IM_COL32(40, 46, 52, 255);
       break;
   }
   dl->AddCircleFilled(p, r, body, 40);
@@ -334,7 +334,7 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
     ImVec4 tint = ImGui::ColorConvertU32ToFloat4(lit_color);
     face = ImGui::ColorConvertFloat4ToU32(ImLerp(
         ImGui::ColorConvertU32ToFloat4(face), ImVec4(tint.x, tint.y, tint.z, 1.0f),
-        0.28f * tint.w));
+        0.42f * tint.w));
   }
   dl->AddRectFilled(fa, fb, colors::kButton, rounding);
   dl->AddRectFilled(ImVec2(fa.x + c.S(2), fa.y + c.S(1.5f)),
@@ -347,13 +347,27 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
     dl->AddRect(ImVec2(fa.x - c.S(1), fa.y - c.S(1)), ImVec2(fb.x + c.S(1), fb.y + c.S(1)),
                 (lit_color & 0x00ffffff) | 0x70000000, rounding, 0, c.S(2.0f));
   }
-  if (icon != ICON_NONE) {
-    float size = ImMin(max.x - min.x, max.y - min.y) * 0.5f;
-    DrawIcon(c, icon, mid, size, content);
-  }
-  if (face_text && *face_text) {
-    float size = ImMin(12.0f, (max.y - min.y) * 0.34f);
-    c.Text(mid.x, mid.y, size, content, face_text);
+  const float width = max.x - min.x;
+  const float height = max.y - min.y;
+  const bool has_text = face_text && *face_text;
+  // Text shrinks to fit the button's width.
+  auto fitted_size = [&](float size) {
+    if (!has_text) {
+      return size;
+    }
+    float text_width = c.font->CalcTextSizeA(c.S(size), FLT_MAX, 0, face_text).x / c.scale;
+    return text_width > width - 10.0f ? size * (width - 10.0f) / text_width : size;
+  };
+  if (icon != ICON_NONE && has_text) {
+    // Icon above, text below.
+    float icon_size = ImMin(width, height) * 0.36f;
+    DrawIcon(c, icon, ImVec2(mid.x, mid.y - height * 0.14f), icon_size, content);
+    c.Text(mid.x, mid.y + height * 0.24f, fitted_size(ImMin(9.5f, height * 0.2f)), content,
+           face_text);
+  } else if (icon != ICON_NONE) {
+    DrawIcon(c, icon, mid, ImMin(width, height) * 0.5f, content);
+  } else if (has_text) {
+    c.Text(mid.x, mid.y, fitted_size(ImMin(11.0f, height * 0.3f)), content, face_text);
   }
   if (led) {
     ImVec2 led_pos(min.x + 7.0f, min.y + 7.0f);
