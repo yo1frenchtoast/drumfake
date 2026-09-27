@@ -1,0 +1,110 @@
+// The DrumFreak front panel: layout, controls, screen and keyboard shortcuts.
+
+#ifndef DRUMFREAK_UI_FACEPLATE_H_
+#define DRUMFREAK_UI_FACEPLATE_H_
+
+#include <deque>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "audio/engine.h"
+#include "ui/widgets.h"
+
+namespace drumfreak {
+
+class Faceplate {
+ public:
+  void Init(Engine* engine, const std::string& project_path,
+            ImFont* font, ImFont* bold);
+
+  // Draws the whole panel in the current ImGui window. Takes the engine lock.
+  void Draw();
+
+ private:
+  enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
+  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE };
+  enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
+
+  void DrawChrome();
+  void DrawTopLeft();
+  void DrawXySection();
+  void DrawScreenSection();
+  void DrawSoundEdit();
+  void DrawSequencer();
+  void DrawPads();
+  void DrawScreen(ImVec2 min, ImVec2 max);
+  void DrawMainView(ImVec2 min, ImVec2 max);
+  void DrawSongView(ImVec2 min, ImVec2 max);
+  void DrawStepView(ImVec2 min, ImVec2 max);
+  void DrawEditView(ImVec2 min, ImVec2 max);
+  void DrawBrowseView(ImVec2 min, ImVec2 max);
+  void DrawScope(ImVec2 min, ImVec2 max);
+  void HandleKeyboard();
+
+  // Actions shared by the mouse and the keyboard.
+  void TogglePlay();
+  void TrackPadDown(int track);
+  void TrackPadUp(int track);
+  void LowerPadDown(int pad);
+  void LowerPadUp(int pad);
+  void UpdateRepeat();
+  void Tap();
+  void Copy();
+  void Paste();
+  void Erase();
+  void Undo();
+  void PushUndo();
+  void Save();
+  void Toast(const std::string& message);
+
+  float* KnobTarget(int knob, bool* is_lock);
+  Pattern& pattern();
+  int step_index(int button) const { return view_page_ * kStepsPerPage + button; }
+
+  Engine* engine_ = nullptr;
+  Canvas canvas_;
+  std::string project_path_;
+
+  Page page_ = PAGE_SOUND;
+  PadMode pad_mode_ = PADS_CHORDS;
+  ScreenView view_ = VIEW_MAIN;
+  int view_page_ = 0;
+  bool patterns_mode_ = false;
+  bool notes_mode_ = false;
+  bool last_step_mode_ = false;
+  bool song_edit_ = false;
+  bool song_edit_fresh_ = false;  // The next pattern pressed starts a new chain.
+  bool select_mode_ = false;
+  bool mute_mode_ = false;
+  int held_step_ = -1;
+  int preset_bank_ = 0;
+  int chord_edit_ = -1;
+  float encoder_ = 0.5f;
+  float encoder_accumulator_ = 0.0f;
+  int browse_index_ = 0;
+
+  bool track_pad_held_[kNumTracks] = {};
+  bool lower_pad_held_[8] = {};
+  uint32_t seen_triggers_[kNumTracks] = {};
+  double flash_time_[kNumTracks] = { -10, -10, -10, -10, -10, -10, -10, -10 };
+
+  std::vector<double> taps_;
+  std::string toast_;
+  double toast_time_ = -10.0;
+
+  ClipboardKind clipboard_kind_ = CLIP_NONE;
+  Step clip_step_;
+  TrackSequence clip_track_;
+  std::unique_ptr<Pattern> clip_pattern_;
+
+  struct UndoEntry {
+    int pattern;
+    std::unique_ptr<Pattern> data;
+  };
+  std::deque<UndoEntry> undo_;
+};
+
+}  // namespace drumfreak
+
+#endif  // DRUMFREAK_UI_FACEPLATE_H_
