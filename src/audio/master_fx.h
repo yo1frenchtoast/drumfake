@@ -1,8 +1,8 @@
 // Master section: Rings reverb and a tempo-synced ping-pong delay on the send
 // buses, then Rings chorus, a DJ filter, drive and volume on the mix.
 
-#ifndef DRUMFREAK_AUDIO_MASTER_FX_H_
-#define DRUMFREAK_AUDIO_MASTER_FX_H_
+#ifndef DRUMFREAKE_AUDIO_MASTER_FX_H_
+#define DRUMFREAKE_AUDIO_MASTER_FX_H_
 
 #include <cstdint>
 #include <memory>
@@ -16,7 +16,7 @@ class Chorus;
 class Reverb;
 }  // namespace rings
 
-namespace drumfreak {
+namespace drumfreake {
 
 class MasterFx {
  public:
@@ -48,6 +48,6 @@ class MasterFx {
   stmlib::Svf dj_r_;
 };
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_AUDIO_MASTER_FX_H_
+#endif  // DRUMFREAKE_AUDIO_MASTER_FX_H_

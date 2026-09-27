@@ -1,6 +1,6 @@
 #include "core/presets.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 namespace {
 
@@ -83,4 +83,4 @@ void ApplyPreset(int preset, TrackSound* sound) {
   s[P_VOLUME] = p.volume;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

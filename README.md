@@ -1,7 +1,8 @@
-# DrumFreak (simulateur)
+# Drumf(re)ake
 
-Groovebox inspirée du prototype Arturia DrumFreak, construite sur les DSP open source de
-Mutable Instruments (sous-module `third_party/eurorack`, non modifié) :
+Groovebox open source, inspirée du prototype de la DrumFreak d'Arturia (produit non commercialisé
+à ce jour). Projet indépendant, sans lien avec Arturia. Elle est construite sur les DSP open source
+de Mutable Instruments (sous-module `third_party/eurorack`, non modifié) :
 
 - **Plaits** : une voix par piste (8 pistes, 24 moteurs, dont grosse caisse, caisse claire et hi-hat
   analogiques ou synthétiques, modal, FM…) ;
@@ -14,17 +15,17 @@ Mutable Instruments (sous-module `third_party/eurorack`, non modifié) :
 git submodule update --init --recursive
 cmake -B build
 cmake --build build -j
-./build/drumfreak_tests   # tests du séquenceur, de Grids, de la sauvegarde et du rendu
-./build/drumfreak         # application
+./build/drumfreake_tests   # tests du séquenceur, de Grids, de la sauvegarde et du rendu
+./build/drumfreake         # application
 ```
 
 Dépendances : SDL3 et nlohmann-json (Homebrew sur ce système). Dear ImGui est téléchargé par CMake.
-`-DDRUMFREAK_GUI=OFF` compile une version sans interface.
+`-DDRUMFREAKE_GUI=OFF` compile une version sans interface.
 
 Rendu hors ligne :
 
 ```sh
-./build/drumfreak --render demo.wav --bars 4 [--grids] [--pattern N] [--project fichier.json]
+./build/drumfreake --render demo.wav --bars 4 [--grids] [--pattern N] [--project fichier.json]
 ```
 
 ## Contrôles
@@ -70,7 +71,7 @@ Rendu hors ligne :
 - **Edit** : longueur du pattern, swing, longueur par piste (polymétrie), BPM, lecture du Song,
   métronome, « Bake Grids » (écrit le rythme Grids dans A–C).
 - **Mute** / **Select** : les pads A–H coupent les pistes ou les sélectionnent sans les jouer.
-- La sauvegarde est dans `~/.local/share/drumfreak/project.json`, rechargée au démarrage.
+- La sauvegarde est dans `~/.local/share/drumfreake/project.json`, rechargée au démarrage.
 
 ## Architecture
 
@@ -88,5 +89,13 @@ passent par des atomiques.
 ## Limites
 
 - Le sampler (bouton Sample) n'est pas émulé.
-- Les fonctions exactes de la DrumFreak ne sont pas publiques : la façade reprend la photo du
-  prototype, et le comportement de chaque bouton est une interprétation.
+- Les fonctions exactes de la DrumFreak ne sont pas publiques : la façade reprend la disposition
+  de la photo du prototype, et le comportement de chaque bouton est une interprétation.
+
+## Licence
+
+Drumf(re)ake est distribué sous licence GNU GPL version 3 (voir `LICENSE`).
+
+Code tiers utilisé :
+- Plaits, Rings et stmlib (Émilie Gillet) : licence MIT ;
+- les tables de Grids (`grids/resources.cc`) : GPLv3.

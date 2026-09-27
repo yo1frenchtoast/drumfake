@@ -2,7 +2,7 @@
 
 #include "core/presets.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 void Step::Clear() {
   on = false;
@@ -144,4 +144,4 @@ void Project::Init() {
   song_length = 0;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

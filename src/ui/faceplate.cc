@@ -8,7 +8,7 @@
 #include "core/project_io.h"
 #include "imgui_internal.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 namespace {
 
@@ -335,17 +335,27 @@ void Faceplate::DrawChrome() {
   dl->AddRectFilled(c.P(20, 15), c.P(1520, 835), colors::kPanel, c.S(20));
   dl->AddRect(c.P(20, 15), c.P(1520, 835), colors::kPanelEdge, c.S(20), 0, c.S(1.5f));
 
-  // Logo.
-  c.Text(207, 36, 24, colors::kLedWhite, "DRUM", false, false);
-  float drum_width = c.font->CalcTextSizeA(c.S(24), FLT_MAX, 0, "DRUM").x / c.scale;
-  c.Text(207 + drum_width, 36, 24, colors::kLedWhite, "FREAK", false, true);
-  c.Text(242, 67, 6.5f, colors::kLabelDim, "ALGORITHMIC DRUM MACHINE", false);
+  // Logo: "DRUMF(RE)AKE", with the "(RE)" lit.
+  const float kLogoSize = 24.0f;
+  float x = 207.0f;
+  auto logo_part = [&](const char* text, ImU32 color, bool use_bold) {
+    c.Text(x, 36, kLogoSize, color, text, false, use_bold);
+    ImFont* f = use_bold ? c.bold : c.font;
+    x += f->CalcTextSizeA(c.S(kLogoSize), FLT_MAX, 0, text).x / c.scale;
+  };
+  // "DRUM" + bold "F(RE)AK(E)", like the Freak family logos.
+  logo_part("DRUM", colors::kLedWhite, false);
+  logo_part("F", colors::kLedWhite, true);
+  logo_part("(RE)", colors::kOrange, true);
+  logo_part("AKE", colors::kLedWhite, true);
+  c.Text(209, 67, 6.5f, colors::kLabelDim, "OPEN SOURCE ALGORITHMIC DRUM MACHINE", false);
   for (int i = 0; i < 3; ++i) {
     for (int j = 0; j < 4; ++j) {
-      dl->AddCircleFilled(c.P(378 + i * 5.0f, 44 + j * 5.0f), c.S(1.3f), colors::kLabelDim);
+      dl->AddCircleFilled(c.P(x + 8 + i * 5.0f, 44 + j * 5.0f), c.S(1.3f), colors::kLabelDim);
     }
   }
-  c.Text(1272, 42, 21, colors::kLedWhite, "ARTURIA", true, true);
+  c.Text(1272, 36, 11, colors::kLabel, "PLAITS  -  GRIDS  -  RINGS", true, true);
+  c.Text(1272, 50, 7, colors::kLabelDim, "Mutable Instruments open source DSP", true, false);
 
   c.Text(952, 60, 10, colors::kLabel, "SOUND EDIT", false, true);
   dl->AddLine(c.P(944, 68), c.P(1348, 68), colors::kLabelDim, c.S(1));
@@ -1337,4 +1347,4 @@ void Faceplate::HandleKeyboard() {
   }
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

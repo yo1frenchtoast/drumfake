@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(drumfreak CXX C)
+project(drumfreake CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-option(DRUMFREAK_GUI "Build the SDL3/ImGui front-end" ON)
+option(DRUMFREAKE_GUI "Build the SDL3/ImGui front-end" ON)
 
 # Homebrew (linuxbrew) provides SDL3, OpenGL and nlohmann-json on this system.
 if(EXISTS /home/linuxbrew/.linuxbrew)
@@ -51,7 +51,7 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
-add_library(drumfreak_core STATIC
+add_library(drumfreake_core STATIC
   src/core/params.cc
   src/core/presets.cc
   src/core/project.cc
@@ -61,20 +61,20 @@ add_library(drumfreak_core STATIC
   src/audio/master_fx.cc
   src/audio/engine.cc
   src/audio/wav_render.cc)
-target_include_directories(drumfreak_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(drumfreak_core PUBLIC mutable_dsp nlohmann_json::nlohmann_json)
-target_compile_options(drumfreak_core PRIVATE -Wall -Wextra -O2)
+target_include_directories(drumfreake_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(drumfreake_core PUBLIC mutable_dsp nlohmann_json::nlohmann_json)
+target_compile_options(drumfreake_core PRIVATE -Wall -Wextra -O2)
 
 # --- Tests -------------------------------------------------------------------
 
-add_executable(drumfreak_tests tests/tests.cc)
-target_link_libraries(drumfreak_tests PRIVATE drumfreak_core)
+add_executable(drumfreake_tests tests/tests.cc)
+target_link_libraries(drumfreake_tests PRIVATE drumfreake_core)
 enable_testing()
-add_test(NAME drumfreak_tests COMMAND drumfreak_tests)
+add_test(NAME drumfreake_tests COMMAND drumfreake_tests)
 
 # --- GUI application ---------------------------------------------------------
 
-if(DRUMFREAK_GUI)
+if(DRUMFREAKE_GUI)
   find_package(SDL3 REQUIRED CONFIG)
 
   FetchContent_Declare(imgui
@@ -94,15 +94,15 @@ if(DRUMFREAK_GUI)
   # No OpenGL link: the ImGui backend loads GL at run time (see app.cc).
   target_link_libraries(imgui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
 
-  add_executable(drumfreak
+  add_executable(drumfreake
     src/main.cc
     src/app.cc
     src/ui/widgets.cc
     src/ui/faceplate.cc)
-  target_link_libraries(drumfreak PRIVATE drumfreak_core imgui SDL3::SDL3)
-  target_compile_options(drumfreak PRIVATE -Wall -Wextra)
+  target_link_libraries(drumfreake PRIVATE drumfreake_core imgui SDL3::SDL3)
+  target_compile_options(drumfreake PRIVATE -Wall -Wextra)
 else()
-  add_executable(drumfreak src/main.cc)
-  target_compile_definitions(drumfreak PRIVATE DRUMFREAK_HEADLESS)
-  target_link_libraries(drumfreak PRIVATE drumfreak_core)
+  add_executable(drumfreake src/main.cc)
+  target_compile_definitions(drumfreake PRIVATE DRUMFREAKE_HEADLESS)
+  target_link_libraries(drumfreake PRIVATE drumfreake_core)
 endif()

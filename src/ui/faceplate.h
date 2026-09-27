@@ -1,7 +1,7 @@
-// The DrumFreak front panel: layout, controls, screen and keyboard shortcuts.
+// The Drumf(re)ake front panel: layout, controls, screen and keyboard shortcuts.
 
-#ifndef DRUMFREAK_UI_FACEPLATE_H_
-#define DRUMFREAK_UI_FACEPLATE_H_
+#ifndef DRUMFREAKE_UI_FACEPLATE_H_
+#define DRUMFREAKE_UI_FACEPLATE_H_
 
 #include <deque>
 #include <memory>
@@ -11,7 +11,7 @@
 #include "audio/engine.h"
 #include "ui/widgets.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 class Faceplate {
  public:
@@ -105,6 +105,6 @@ class Faceplate {
   std::deque<UndoEntry> undo_;
 };
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_UI_FACEPLATE_H_
+#endif  // DRUMFREAKE_UI_FACEPLATE_H_

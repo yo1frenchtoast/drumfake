@@ -1,7 +1,7 @@
 // Desktop replacement for avrlib/resources_manager.h: grids/resources.h only
-// names these templates in a typedef, which DrumFreak never uses.
-#ifndef DRUMFREAK_SHIMS_AVRLIB_RESOURCES_MANAGER_H_
-#define DRUMFREAK_SHIMS_AVRLIB_RESOURCES_MANAGER_H_
+// names these templates in a typedef, which Drumf(re)ake never uses.
+#ifndef DRUMFREAKE_SHIMS_AVRLIB_RESOURCES_MANAGER_H_
+#define DRUMFREAKE_SHIMS_AVRLIB_RESOURCES_MANAGER_H_
 
 namespace avrlib {
 
@@ -13,4 +13,4 @@ class ResourcesManager { };
 
 }  // namespace avrlib
 
-#endif  // DRUMFREAK_SHIMS_AVRLIB_RESOURCES_MANAGER_H_
+#endif  // DRUMFREAKE_SHIMS_AVRLIB_RESOURCES_MANAGER_H_

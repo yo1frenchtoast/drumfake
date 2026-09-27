@@ -3,12 +3,12 @@
 // Every parameter is stored normalized in [0, 1]. The audio engine maps the
 // normalized value to real units; the UI uses ParamInfo to print it.
 
-#ifndef DRUMFREAK_CORE_PARAMS_H_
-#define DRUMFREAK_CORE_PARAMS_H_
+#ifndef DRUMFREAKE_CORE_PARAMS_H_
+#define DRUMFREAKE_CORE_PARAMS_H_
 
 #include <string>
 
-namespace drumfreak {
+namespace drumfreake {
 
 const int kNumTracks = 8;
 const int kKnobsPerPage = 8;
@@ -181,6 +181,6 @@ float GateToSeconds(float value);        // 1 ms to 512 ms.
 float CrushToRatio(float value);         // 1 (off) down to 1/64.
 float NoteToNormalizedPitch(float note);
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_CORE_PARAMS_H_
+#endif  // DRUMFREAKE_CORE_PARAMS_H_

@@ -3,12 +3,12 @@
 // All positions are given in "panel" coordinates (the 1540x850 layout of the
 // prototype photo); Canvas converts them to screen pixels.
 
-#ifndef DRUMFREAK_UI_WIDGETS_H_
-#define DRUMFREAK_UI_WIDGETS_H_
+#ifndef DRUMFREAKE_UI_WIDGETS_H_
+#define DRUMFREAKE_UI_WIDGETS_H_
 
 #include "imgui.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 const float kPanelWidth = 1540.0f;
 const float kPanelHeight = 850.0f;
@@ -120,6 +120,6 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
 
 void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color);
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_UI_WIDGETS_H_
+#endif  // DRUMFREAKE_UI_WIDGETS_H_

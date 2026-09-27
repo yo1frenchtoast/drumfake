@@ -6,7 +6,7 @@
 
 #include "stmlib/utils/buffer_allocator.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 void TrackVoice::Init() {
   stmlib::BufferAllocator allocator(ram_block_, sizeof(ram_block_));
@@ -153,4 +153,4 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   peak_ = peak;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

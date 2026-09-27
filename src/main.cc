@@ -1,8 +1,8 @@
-// DrumFreak simulator: a groovebox built on Mutable Instruments Plaits.
+// Drumf(re)ake simulator: a groovebox built on Mutable Instruments Plaits.
 //
 // Usage:
-//   drumfreak [--project FILE]
-//   drumfreak --render OUT.wav [--bars N] [--project FILE] [--pattern N] [--grids]
+//   drumfreake [--project FILE]
+//   drumfreake --render OUT.wav [--bars N] [--project FILE] [--pattern N] [--grids]
 
 #include <cstdio>
 #include <cstdlib>
@@ -15,13 +15,13 @@
 #include "audio/wav_render.h"
 #include "core/project_io.h"
 
-using namespace drumfreak;
+using namespace drumfreake;
 
 namespace {
 
 void PrintUsage() {
-  printf("usage: drumfreak [--project FILE]\n"
-         "       drumfreak --render OUT.wav [--bars N] [--project FILE]"
+  printf("usage: drumfreake [--project FILE]\n"
+         "       drumfreake --render OUT.wav [--bars N] [--project FILE]"
          " [--pattern N] [--grids]\n");
 }
 
@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
   engine->Init();
 
   if (render_path.empty()) {
-#ifdef DRUMFREAK_HEADLESS
+#ifdef DRUMFREAKE_HEADLESS
     fprintf(stderr, "Built without GUI: use --render.\n");
     return 1;
 #else

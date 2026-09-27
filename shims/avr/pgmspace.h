@@ -1,6 +1,6 @@
 // Desktop replacement for <avr/pgmspace.h>: program memory is plain memory.
-#ifndef DRUMFREAK_SHIMS_AVR_PGMSPACE_H_
-#define DRUMFREAK_SHIMS_AVR_PGMSPACE_H_
+#ifndef DRUMFREAKE_SHIMS_AVR_PGMSPACE_H_
+#define DRUMFREAKE_SHIMS_AVR_PGMSPACE_H_
 
 #include <stdint.h>
 
@@ -15,4 +15,4 @@ typedef uint32_t prog_uint32_t;
 #define pgm_read_word(p) (*reinterpret_cast<const uint16_t*>(p))
 #define pgm_read_dword(p) (*reinterpret_cast<const uint32_t*>(p))
 
-#endif  // DRUMFREAK_SHIMS_AVR_PGMSPACE_H_
+#endif  // DRUMFREAKE_SHIMS_AVR_PGMSPACE_H_

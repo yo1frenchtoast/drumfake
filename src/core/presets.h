@@ -1,11 +1,11 @@
 // Factory sounds, selected with the "Sounds" mode and pads 1-8 (2 banks).
 
-#ifndef DRUMFREAK_CORE_PRESETS_H_
-#define DRUMFREAK_CORE_PRESETS_H_
+#ifndef DRUMFREAKE_CORE_PRESETS_H_
+#define DRUMFREAKE_CORE_PRESETS_H_
 
 #include "core/project.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 const int kNumPresets = 16;
 
@@ -31,6 +31,6 @@ enum PresetId {
 const char* preset_name(int preset);
 void ApplyPreset(int preset, TrackSound* sound);
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_CORE_PRESETS_H_
+#endif  // DRUMFREAKE_CORE_PRESETS_H_

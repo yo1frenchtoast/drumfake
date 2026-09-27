@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace drumfreak {
+namespace drumfreake {
 
 const char* const kEngineNames[kNumEngines] = {
   "VA + VCF",
@@ -248,4 +248,4 @@ std::string FormatValue(ParamFormat format, float value) {
   return buffer;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

@@ -3,8 +3,8 @@
 // The model is plain data. It is written by the UI thread (under the engine
 // lock) and read by the audio thread.
 
-#ifndef DRUMFREAK_CORE_PROJECT_H_
-#define DRUMFREAK_CORE_PROJECT_H_
+#ifndef DRUMFREAKE_CORE_PROJECT_H_
+#define DRUMFREAKE_CORE_PROJECT_H_
 
 #include <cmath>
 #include <cstdint>
@@ -12,7 +12,7 @@
 
 #include "core/params.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 const int kMaxSteps = 64;
 const int kStepsPerPage = 16;
@@ -86,6 +86,6 @@ struct Project {
 // Builds the demo groove in `pattern`.
 void MakeDemoPattern(Pattern* pattern);
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_CORE_PROJECT_H_
+#endif  // DRUMFREAKE_CORE_PROJECT_H_

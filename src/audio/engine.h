@@ -5,8 +5,8 @@
 // or writes them; Render() takes the same lock. The atomics (playhead, meters,
 // scope) can be read from any thread without the lock.
 
-#ifndef DRUMFREAK_AUDIO_ENGINE_H_
-#define DRUMFREAK_AUDIO_ENGINE_H_
+#ifndef DRUMFREAKE_AUDIO_ENGINE_H_
+#define DRUMFREAKE_AUDIO_ENGINE_H_
 
 #include <atomic>
 #include <cstdint>
@@ -18,7 +18,7 @@
 #include "core/grids_gen.h"
 #include "core/project.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 // What the XY pad does (the four buttons above it).
 enum XyMode {
@@ -169,6 +169,6 @@ class Engine {
 extern const float kRepeatPeriods[kNumRepeatRates];
 extern const char* const kRepeatNames[kNumRepeatRates];
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_AUDIO_ENGINE_H_
+#endif  // DRUMFREAKE_AUDIO_ENGINE_H_

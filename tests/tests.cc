@@ -1,5 +1,5 @@
-// Tests for the DrumFreak core: sequencer timing, Grids port, persistence and
-// a full render. Run: ./build/drumfreak_tests
+// Tests for the Drumf(re)ake core: sequencer timing, Grids port, persistence and
+// a full render. Run: ./build/drumfreake_tests
 
 #include <cmath>
 #include <cstdio>
@@ -15,7 +15,7 @@
 #include "core/project_io.h"
 #include "grids/resources.h"
 
-using namespace drumfreak;
+using namespace drumfreake;
 
 namespace {
 
@@ -376,7 +376,7 @@ void TestProjectRoundTrip() {
   project.song[2] = 5;
   project.patterns[3].tracks[4].length = 5;
 
-  std::string path = (std::filesystem::temp_directory_path() / "drumfreak_test.json").string();
+  std::string path = (std::filesystem::temp_directory_path() / "drumfreake_test.json").string();
   std::string error;
   CHECK(SaveProject(project, path, &error));
   auto loaded = std::make_unique<Project>();

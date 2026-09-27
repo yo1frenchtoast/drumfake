@@ -1,13 +1,13 @@
 // GUI application (SDL3 window, ImGui faceplate, SDL3 audio output).
 
-#ifndef DRUMFREAK_APP_H_
-#define DRUMFREAK_APP_H_
+#ifndef DRUMFREAKE_APP_H_
+#define DRUMFREAKE_APP_H_
 
 #include <string>
 
 #include "audio/engine.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 struct AppOptions {
   std::string project_path;
@@ -18,6 +18,6 @@ struct AppOptions {
 
 int RunApp(Engine* engine, const AppOptions& options);
 
-}  // namespace drumfreak
+}  // namespace drumfreake
 
-#endif  // DRUMFREAK_APP_H_
+#endif  // DRUMFREAKE_APP_H_

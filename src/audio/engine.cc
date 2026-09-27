@@ -9,7 +9,7 @@
 #include <xmmintrin.h>
 #endif
 
-namespace drumfreak {
+namespace drumfreake {
 
 const float kRepeatPeriods[kNumRepeatRates] = {
   4.0f, 2.0f, 1.0f, 0.5f, 8.0f / 3.0f, 4.0f / 3.0f, 2.0f / 3.0f, 1.0f / 3.0f
@@ -565,4 +565,4 @@ void Engine::Render(float* out, size_t frames) {
   }
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

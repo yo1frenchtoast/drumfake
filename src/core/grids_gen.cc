@@ -2,7 +2,7 @@
 
 #include "grids/resources.h"
 
-namespace drumfreak {
+namespace drumfreake {
 
 using namespace grids;
 
@@ -101,4 +101,4 @@ uint8_t GridsGenerator::EvaluateSixteenth(
   return state;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

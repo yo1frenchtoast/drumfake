@@ -8,7 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace drumfreak {
+namespace drumfreake {
 
 using nlohmann::json;
 
@@ -198,7 +198,7 @@ std::string DefaultProjectPath() {
     const char* home = std::getenv("HOME");
     base = std::string(home ? home : ".") + "/.local/share";
   }
-  return base + "/drumfreak/project.json";
+  return base + "/drumfreake/project.json";
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake

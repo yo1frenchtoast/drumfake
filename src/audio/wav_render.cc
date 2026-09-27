@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 
-namespace drumfreak {
+namespace drumfreake {
 
 namespace {
 
@@ -103,4 +103,4 @@ bool RenderBars(Engine* engine, int bars, const std::string& path,
   return true;
 }
 
-}  // namespace drumfreak
+}  // namespace drumfreake
