@@ -118,17 +118,20 @@ void SetupStyle() {
   style.GrabRounding = 2.0f;
   style.WindowPadding = ImVec2(0, 0);
   style.WindowBorderSize = 0.0f;
+  // Screen widgets, in the faceplate's colors (see ui/widgets.h).
+  const ImVec4 kAccent = ImGui::ColorConvertU32ToFloat4(colors::kAccent);
+  const ImVec4 kAccentLight(0.50f, 0.88f, 0.78f, 1.0f);
   ImVec4* c = style.Colors;
-  c[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.16f, 0.18f, 1.0f);
-  c[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.22f, 0.25f, 1.0f);
-  c[ImGuiCol_FrameBgActive] = ImVec4(0.18f, 0.28f, 0.30f, 1.0f);
-  c[ImGuiCol_SliderGrab] = ImVec4(1.0f, 0.42f, 0.16f, 1.0f);
-  c[ImGuiCol_SliderGrabActive] = ImVec4(1.0f, 0.55f, 0.30f, 1.0f);
-  c[ImGuiCol_CheckMark] = ImVec4(1.0f, 0.42f, 0.16f, 1.0f);
-  c[ImGuiCol_Button] = ImVec4(0.14f, 0.22f, 0.25f, 1.0f);
-  c[ImGuiCol_ButtonHovered] = ImVec4(0.20f, 0.30f, 0.34f, 1.0f);
-  c[ImGuiCol_ButtonActive] = ImVec4(1.0f, 0.42f, 0.16f, 1.0f);
-  c[ImGuiCol_Text] = ImVec4(0.82f, 0.92f, 0.94f, 1.0f);
+  c[ImGuiCol_FrameBg] = ImVec4(0.09f, 0.14f, 0.16f, 1.0f);
+  c[ImGuiCol_FrameBgHovered] = ImVec4(0.12f, 0.19f, 0.21f, 1.0f);
+  c[ImGuiCol_FrameBgActive] = ImVec4(0.15f, 0.24f, 0.26f, 1.0f);
+  c[ImGuiCol_SliderGrab] = kAccent;
+  c[ImGuiCol_SliderGrabActive] = kAccentLight;
+  c[ImGuiCol_CheckMark] = kAccent;
+  c[ImGuiCol_Button] = ImVec4(0.12f, 0.19f, 0.21f, 1.0f);
+  c[ImGuiCol_ButtonHovered] = ImVec4(0.16f, 0.26f, 0.28f, 1.0f);
+  c[ImGuiCol_ButtonActive] = kAccent;
+  c[ImGuiCol_Text] = ImGui::ColorConvertU32ToFloat4(colors::kScreenText);
 }
 
 bool SaveScreenshot(const std::string& path, int width, int height) {
@@ -162,6 +165,9 @@ int RunApp(Engine* engine, const AppOptions& options) {
 
   PreferSystemGlLibraries();
   SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "256");
+  // Fingers are handled by the faceplate (multitouch), not turned into mouse
+  // events.
+  SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
     return 1;
@@ -259,6 +265,23 @@ int RunApp(Engine* engine, const AppOptions& options) {
   while (!done) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_EVENT_FINGER_DOWN || event.type == SDL_EVENT_FINGER_MOTION ||
+          event.type == SDL_EVENT_FINGER_UP || event.type == SDL_EVENT_FINGER_CANCELED) {
+        // Finger positions are normalized to the window.
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSize(window, &width, &height);
+        ImVec2 position(event.tfinger.x * width, event.tfinger.y * height);
+        uint64_t finger = static_cast<uint64_t>(event.tfinger.fingerID);
+        if (event.type == SDL_EVENT_FINGER_DOWN) {
+          faceplate.FingerDown(finger, position);
+        } else if (event.type == SDL_EVENT_FINGER_MOTION) {
+          faceplate.FingerMove(finger, position);
+        } else {
+          faceplate.FingerUp(finger);
+        }
+        continue;
+      }
       ImGui_ImplSDL3_ProcessEvent(&event);
       if (event.type == SDL_EVENT_QUIT ||
           (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&

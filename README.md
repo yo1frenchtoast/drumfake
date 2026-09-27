@@ -33,6 +33,10 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Au doigt, l'écran est multitouch : plusieurs pads à la fois, un pad et un potard, le pad X/Y…
+Un appui long (0,5 s) remplace le clic droit (sélection d'un pas, édition d'un Chord sur les
+pads 1–8) et un double tap sur un potard le remet à sa valeur par défaut.
+
 L'APK (arm64-v8a, Android 8 minimum) s'ouvre en plein écran paysage. Les polices Noto Sans
 (licence OFL) sont embarquées, le projet est sauvegardé dans le stockage privé de l'application.
 

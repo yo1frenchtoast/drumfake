@@ -3,7 +3,9 @@
 #ifndef DRUMFREAKE_UI_FACEPLATE_H_
 #define DRUMFREAKE_UI_FACEPLATE_H_
 
+#include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,6 +22,14 @@ class Faceplate {
 
   // Draws the whole panel in the current ImGui window. Takes the engine lock.
   void Draw();
+
+  // Touchscreen fingers, in display coordinates. Each finger landing on a
+  // pad, a knob or the XY pad keeps controlling it until it lifts, so several
+  // can be played at once; one other finger at a time drives ImGui like a
+  // mouse (buttons, screen). These take the engine lock.
+  void FingerDown(uint64_t finger, ImVec2 position);
+  void FingerMove(uint64_t finger, ImVec2 position);
+  void FingerUp(uint64_t finger);
 
  private:
   enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
@@ -72,6 +82,17 @@ class Faceplate {
   Pattern& pattern();
   int step_index(int button) const { return view_page_ * kStepsPerPage + button; }
 
+  struct Finger {
+    TouchTarget target;
+    ImVec2 last;        // Panel coordinates.
+    double down_time;
+    bool long_press_done;
+  };
+
+  ImVec2 ToPanel(ImVec2 display) const;
+  void SetXyFromTouch(const TouchTarget& target, ImVec2 panel);
+  void UpdateLongPresses();
+
   Engine* engine_ = nullptr;
   Canvas canvas_;
   std::string project_path_;
@@ -100,6 +121,21 @@ class Faceplate {
   bool lower_pad_held_[8] = {};
   uint32_t seen_triggers_[kNumTracks] = {};
   double flash_time_[kNumTracks] = { -10, -10, -10, -10, -10, -10, -10, -10 };
+
+  // Multitouch state.
+  std::map<uint64_t, Finger> fingers_;
+  bool mouse_finger_active_ = false;
+  uint64_t mouse_finger_ = 0;
+  std::vector<TouchTarget> touch_targets_;
+  std::unordered_map<ImGuiID, KnobTouch> knob_touches_;
+  ImGuiID last_knob_tap_ = 0;
+  double last_knob_tap_time_ = -10.0;
+  bool track_pad_touched_[kNumTracks] = {};
+  bool lower_pad_touched_[8] = {};
+  bool xy_touched_ = false;
+  float xy_touch_x_ = 0.5f;
+  float xy_touch_y_ = 0.5f;
+  bool long_press_fired_ = false;  // The held step already got its long press.
 
   std::vector<double> taps_;
   std::string toast_;

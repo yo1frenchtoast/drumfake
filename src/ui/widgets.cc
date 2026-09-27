@@ -55,6 +55,14 @@ Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max) {
   }
   result.double_clicked = result.hovered &&
       ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+  // On a touchscreen, holding still stands in for the right button.
+  ImGuiIO& io = ImGui::GetIO();
+  result.touch = io.MouseSource == ImGuiMouseSource_TouchScreen;
+  const float kLongPress = 0.5f;
+  ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0.0f);
+  result.long_pressed = result.active && result.touch &&
+      io.MouseDownDuration[0] >= kLongPress && io.MouseDownDurationPrev[0] < kLongPress &&
+      drag.x * drag.x + drag.y * drag.y < 15.0f * 15.0f;
   return result;
 }
 
@@ -64,16 +72,32 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
           const KnobDecor* decor) {
   ImDrawList* dl = c.draw_list;
   const float hit = radius * (ring ? 1.45f : 1.15f);
-  Interaction in = HitBox(c, id, ImVec2(center.x - hit, center.y - hit),
-                          ImVec2(center.x + hit, center.y + hit));
-  if (interaction) {
-    *interaction = in;
+  ImVec2 hit_min(center.x - hit, center.y - hit);
+  ImVec2 hit_max(center.x + hit, center.y + hit);
+  Interaction in = HitBox(c, id, hit_min, hit_max);
+  const ImGuiID item = ImGui::GetItemID();
+  if (c.touch_targets) {
+    c.touch_targets->push_back({ TOUCH_KNOB, -1, item, hit_min, hit_max });
+  }
+  KnobTouch* touch = nullptr;
+  if (c.knob_touches) {
+    auto it = c.knob_touches->find(item);
+    if (it != c.knob_touches->end()) {
+      touch = &it->second;
+    }
   }
 
   float old_value = *value;
   ImGuiIO& io = ImGui::GetIO();
+  if (touch) {
+    in.touch_active = touch->active;
+    in.double_clicked = in.double_clicked || touch->double_tap;
+    touch->double_tap = false;
+  }
   if (in.double_clicked) {
     *value = default_value;
+  } else if (touch && touch->delta != 0.0f) {
+    *value += touch->delta * 0.006f;
   } else if (in.active) {
     float speed = io.KeyShift ? 0.0008f : 0.005f;
     *value -= io.MouseDelta.y * speed;
@@ -81,9 +105,15 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
   } else if (in.hovered && io.MouseWheel != 0.0f) {
     *value += io.MouseWheel * (io.KeyShift ? 0.002f : 0.01f);
   }
+  if (touch) {
+    touch->delta = 0.0f;
+  }
   *value = ImClamp(*value, 0.0f, 1.0f);
   if (in.active || in.hovered) {
     ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+  }
+  if (interaction) {
+    *interaction = in;
   }
 
   ImVec2 p = c.P(center);

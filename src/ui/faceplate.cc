@@ -360,6 +360,9 @@ void Faceplate::Draw() {
   canvas_.origin = ImVec2((size.x - kPanelWidth * scale) * 0.5f,
                           (size.y - kPanelHeight * scale) * 0.5f);
   canvas_.draw_list = ImGui::GetWindowDrawList();
+  canvas_.touch_targets = &touch_targets_;
+  canvas_.knob_touches = &knob_touches_;
+  touch_targets_.clear();
   // Fonts are rasterized at 28 px; ImGui widgets on the screen use ~11 px.
   ImGui::SetWindowFontScale(11.0f * scale / 28.0f);
 
@@ -374,6 +377,7 @@ void Faceplate::Draw() {
     }
   }
 
+  UpdateLongPresses();
   DrawChrome();
   DrawTopLeft();
   DrawXySection();
@@ -382,6 +386,155 @@ void Faceplate::Draw() {
   DrawSequencer();
   DrawPads();
   HandleKeyboard();
+
+  // Forget knobs whose finger lifted once their last input was applied.
+  for (auto it = knob_touches_.begin(); it != knob_touches_.end();) {
+    const KnobTouch& t = it->second;
+    it = !t.active && t.delta == 0.0f && !t.double_tap ? knob_touches_.erase(it) : ++it;
+  }
+}
+
+// --- Multitouch ------------------------------------------------------------------
+
+ImVec2 Faceplate::ToPanel(ImVec2 display) const {
+  return ImVec2((display.x - canvas_.origin.x) / canvas_.scale,
+                (display.y - canvas_.origin.y) / canvas_.scale);
+}
+
+void Faceplate::SetXyFromTouch(const TouchTarget& target, ImVec2 panel) {
+  xy_touch_x_ = ImClamp((panel.x - target.min.x) / (target.max.x - target.min.x), 0.0f, 1.0f);
+  xy_touch_y_ = ImClamp(1.0f - (panel.y - target.min.y) / (target.max.y - target.min.y),
+                        0.0f, 1.0f);
+}
+
+void Faceplate::FingerDown(uint64_t finger, ImVec2 position) {
+  std::lock_guard<std::mutex> lock(engine_->mutex());
+  if (canvas_.scale <= 0.0f) {
+    return;
+  }
+  ImVec2 panel = ToPanel(position);
+  const TouchTarget* target = nullptr;
+  for (const TouchTarget& t : touch_targets_) {
+    if (panel.x >= t.min.x && panel.x < t.max.x && panel.y >= t.min.y && panel.y < t.max.y) {
+      target = &t;
+      break;
+    }
+  }
+  if (!target) {
+    // Not a multitouch control: this finger drives ImGui, unless another one
+    // already does.
+    if (!mouse_finger_active_) {
+      mouse_finger_active_ = true;
+      mouse_finger_ = finger;
+      ImGuiIO& io = ImGui::GetIO();
+      io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+      io.AddMousePosEvent(position.x, position.y);
+      io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    }
+    return;
+  }
+
+  double now = ImGui::GetTime();
+  fingers_[finger] = { *target, panel, now, false };
+  switch (target->kind) {
+    case TOUCH_TRACK_PAD:
+      track_pad_touched_[target->index] = true;
+      TrackPadDown(target->index);
+      break;
+    case TOUCH_LOWER_PAD:
+      lower_pad_touched_[target->index] = true;
+      LowerPadDown(target->index);
+      break;
+    case TOUCH_KNOB: {
+      KnobTouch& knob = knob_touches_[target->id];
+      knob.active = true;
+      if (last_knob_tap_ == target->id && now - last_knob_tap_time_ < 0.3) {
+        knob.double_tap = true;
+      }
+      last_knob_tap_ = target->id;
+      last_knob_tap_time_ = now;
+      break;
+    }
+    case TOUCH_XY:
+      xy_touched_ = true;
+      SetXyFromTouch(*target, panel);
+      break;
+  }
+}
+
+void Faceplate::FingerMove(uint64_t finger, ImVec2 position) {
+  std::lock_guard<std::mutex> lock(engine_->mutex());
+  if (mouse_finger_active_ && finger == mouse_finger_) {
+    ImGui::GetIO().AddMousePosEvent(position.x, position.y);
+    return;
+  }
+  auto it = fingers_.find(finger);
+  if (it == fingers_.end()) {
+    return;
+  }
+  Finger& f = it->second;
+  ImVec2 panel = ToPanel(position);
+  switch (f.target.kind) {
+    case TOUCH_KNOB:
+      // Up (and a little to the right) turns the knob clockwise.
+      knob_touches_[f.target.id].delta +=
+          (f.last.y - panel.y) + 0.5f * (panel.x - f.last.x);
+      break;
+    case TOUCH_XY:
+      SetXyFromTouch(f.target, panel);
+      break;
+    default:
+      break;
+  }
+  f.last = panel;
+}
+
+void Faceplate::FingerUp(uint64_t finger) {
+  std::lock_guard<std::mutex> lock(engine_->mutex());
+  if (mouse_finger_active_ && finger == mouse_finger_) {
+    mouse_finger_active_ = false;
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    // No hover once the finger has lifted.
+    io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    return;
+  }
+  auto it = fingers_.find(finger);
+  if (it == fingers_.end()) {
+    return;
+  }
+  const TouchTarget& target = it->second.target;
+  switch (target.kind) {
+    case TOUCH_TRACK_PAD:
+      track_pad_touched_[target.index] = false;
+      TrackPadUp(target.index);
+      break;
+    case TOUCH_LOWER_PAD:
+      lower_pad_touched_[target.index] = false;
+      LowerPadUp(target.index);
+      break;
+    case TOUCH_KNOB:
+      knob_touches_[target.id].active = false;
+      break;
+    case TOUCH_XY:
+      xy_touched_ = false;
+      break;
+  }
+  fingers_.erase(it);
+}
+
+void Faceplate::UpdateLongPresses() {
+  // Holding a lower pad in Chords mode edits its chord (right click with a
+  // mouse).
+  double now = ImGui::GetTime();
+  for (auto& [id, f] : fingers_) {
+    if (f.target.kind == TOUCH_LOWER_PAD && !f.long_press_done && now - f.down_time >= 0.5) {
+      f.long_press_done = true;
+      if (pad_mode_ == PADS_CHORDS) {
+        chord_edit_ = chord_edit_ == f.target.index ? -1 : f.target.index;
+      }
+    }
+  }
 }
 
 void Faceplate::DrawChrome() {
@@ -587,10 +740,15 @@ void Faceplate::DrawXySection() {
   }
 
   Interaction in = HitBox(c, "##xy", min, max);
+  touch_targets_.push_back({ TOUCH_XY, 0, 0, min, max });
   ImGuiIO& io = ImGui::GetIO();
   float x = 0.5f;
   float y = 0.5f;
-  if (in.active) {
+  const bool active = in.active || xy_touched_;
+  if (xy_touched_) {
+    x = xy_touch_x_;
+    y = xy_touch_y_;
+  } else if (in.active) {
     ImVec2 a = c.P(min);
     ImVec2 b = c.P(max);
     x = ImClamp((io.MousePos.x - a.x) / (b.x - a.x), 0.0f, 1.0f);
@@ -598,7 +756,7 @@ void Faceplate::DrawXySection() {
   }
   bool grids_mode = engine_->xy_mode == XY_GRIDS;
   if (grids_mode) {
-    if (in.active) {
+    if (active) {
       engine_->grids_x = x;
       engine_->grids_y = y;
     }
@@ -606,12 +764,12 @@ void Faceplate::DrawXySection() {
     x = engine_->grids_x;
     y = engine_->grids_y;
   } else {
-    engine_->xy_touched = in.active;
+    engine_->xy_touched = active;
     engine_->xy_x = x;
     engine_->xy_y = y;
   }
 
-  bool show_cursor = grids_mode || in.active;
+  bool show_cursor = grids_mode || active;
   if (show_cursor) {
     ImVec2 p(min.x + x * (max.x - min.x), max.y - y * (max.y - min.y));
     ImU32 color = grids_mode && !engine_->grids_enabled ? colors::kLabelDim : colors::kAccent;
@@ -632,7 +790,7 @@ void Faceplate::DrawXySection() {
       break;
     case XY_LOOPER: {
       static const char* const kLoopNames[] = { "1/32", "1/16", "1/8", "1/4", "1/2", "1 bar" };
-      snprintf(text, sizeof(text), "LOOPER  %s", in.active ? kLoopNames[Discrete(y, 6)] : "touch to loop");
+      snprintf(text, sizeof(text), "LOOPER  %s", active ? kLoopNames[Discrete(y, 6)] : "touch to loop");
       break;
     }
     case XY_MACROS:
@@ -1081,7 +1239,17 @@ void Faceplate::DrawSequencer() {
       lit = false;
     }
     Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
-    if (in.pressed && in_range) {
+    // With a finger, the step toggles when it lifts, unless it was held long
+    // enough to select the step instead (the mouse's right click).
+    if (in.pressed) {
+      long_press_fired_ = false;
+    }
+    if (in.long_pressed && in_range) {
+      held_step_ = held_step_ == index ? -1 : index;
+      long_press_fired_ = true;
+    }
+    bool toggle = in.touch ? in.clicked && !long_press_fired_ : in.pressed;
+    if (toggle && in_range) {
       PushUndo();
       Step& s = p.tracks[track].steps[index];
       s.on = !s.on;
@@ -1125,6 +1293,7 @@ void Faceplate::DrawPads() {
     char id[16];
     snprintf(id, sizeof(id), "##pad%d", t);
     Interaction in = HitBox(c, id, min, max);
+    touch_targets_.push_back({ TOUCH_TRACK_PAD, t, 0, min, max });
     if (in.pressed) {
       TrackPadDown(t);
     }
@@ -1142,8 +1311,9 @@ void Faceplate::DrawPads() {
     dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
     // Lower light part, lit by the pad's LED on each hit.
     ImU32 face = muted ? IM_COL32(128, 134, 136, 255) : colors::kPadFace;
-    if (flash > 0.0f || in_chord) {
-      float f = in_chord ? 1.0f : flash;
+    bool pressed = in.active || track_pad_touched_[t];
+    if (flash > 0.0f || in_chord || pressed) {
+      float f = in_chord ? 1.0f : std::max(flash, pressed ? 0.35f : 0.0f);
       face = ImGui::ColorConvertFloat4ToU32(ImLerp(
           ImGui::ColorConvertU32ToFloat4(face),
           ImGui::ColorConvertU32ToFloat4(colors::kAccent), f * 0.8f));
@@ -1180,6 +1350,7 @@ void Faceplate::DrawPads() {
     char id[16];
     snprintf(id, sizeof(id), "##lower%d", i);
     Interaction in = HitBox(c, id, min, max);
+    touch_targets_.push_back({ TOUCH_LOWER_PAD, i, 0, min, max });
     if (in.pressed) {
       LowerPadDown(i);
     }
@@ -1190,7 +1361,7 @@ void Faceplate::DrawPads() {
       chord_edit_ = chord_edit_ == i ? -1 : i;
     }
 
-    bool held = lower_pad_held_[i] || in.active;
+    bool held = lower_pad_held_[i] || in.active || lower_pad_touched_[i];
     ImU32 face = colors::kPadFace;
     if (held || chord_edit_ == i) {
       face = ImGui::ColorConvertFloat4ToU32(ImLerp(

@@ -6,6 +6,9 @@
 #ifndef DRUMFREAKE_UI_WIDGETS_H_
 #define DRUMFREAKE_UI_WIDGETS_H_
 
+#include <unordered_map>
+#include <vector>
+
 #include "imgui.h"
 
 namespace drumfreake {
@@ -39,12 +42,38 @@ const ImU32 kScreenDim = IM_COL32(111, 143, 138, 255);
 const ImU32 kScreenAccent = kAccent;
 }  // namespace colors
 
+// Multitouch: controls that take their own fingers register a target each
+// frame; the faceplate hit-tests new fingers against them.
+enum TouchTargetKind {
+  TOUCH_KNOB,
+  TOUCH_TRACK_PAD,
+  TOUCH_LOWER_PAD,
+  TOUCH_XY,
+};
+
+struct TouchTarget {
+  TouchTargetKind kind;
+  int index;    // Pad number.
+  ImGuiID id;   // Knob.
+  ImVec2 min;   // Panel coordinates.
+  ImVec2 max;
+};
+
+// Finger input pending for a knob.
+struct KnobTouch {
+  float delta = 0.0f;       // Upward drag, in panel units.
+  bool double_tap = false;
+  bool active = false;      // A finger is on the knob.
+};
+
 struct Canvas {
   ImDrawList* draw_list;
   ImVec2 origin;
   float scale;
   ImFont* font;
   ImFont* bold;
+  std::vector<TouchTarget>* touch_targets = nullptr;
+  std::unordered_map<ImGuiID, KnobTouch>* knob_touches = nullptr;
 
   ImVec2 P(float x, float y) const {
     return ImVec2(origin.x + x * scale, origin.y + y * scale);
@@ -65,6 +94,9 @@ struct Interaction {
   bool clicked = false;
   bool right_clicked = false;
   bool double_clicked = false;
+  bool touch = false;          // Driven by a finger rather than a mouse.
+  bool long_pressed = false;   // Finger held still for 0.5 s (this frame).
+  bool touch_active = false;   // Knob turned by a finger.
 };
 
 // Invisible hit area over a panel rectangle.
