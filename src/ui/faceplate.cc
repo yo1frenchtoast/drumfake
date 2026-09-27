@@ -455,33 +455,55 @@ void Faceplate::DrawTopLeft() {
     TogglePlay();
   }
 
-  // Pad modes: a 2x2 block level with the lower row of pads.
+  // Pad modes (top row) and pad behavior (bottom row), 3 columns level with
+  // the lower row of pads.
+  float w3 = (layout::kLeftX1 - layout::kLeftX0 - 2 * layout::kGap) / 3.0f;
+  float row_h = (layout::kPadRow2Y1 - layout::kPadRow2Y0 - layout::kGap) * 0.5f;
+  auto cell = [&](int i, ImVec2* min, ImVec2* max) {
+    float x0 = layout::kLeftX0 + (i % 3) * (w3 + layout::kGap);
+    float y0 = layout::kPadRow2Y0 + (i / 3) * (row_h + layout::kGap);
+    *min = ImVec2(x0, y0);
+    *max = ImVec2(x0 + w3, y0 + row_h);
+  };
   struct ModeButton {
     const char* id;
     const char* label;
-    Icon icon;
     PadMode mode;
   };
-  const ModeButton kPadModes[4] = {
-    { "##chords", "Chords", ICON_NONE, PADS_CHORDS },
-    { "##sounds", "Sounds", ICON_NONE, PADS_SOUNDS },
-    { "##repeats", "Repeats", ICON_NONE, PADS_REPEATS },
-    { "##keys", "Keys", ICON_KEYBOARD, PADS_KEYS },
+  const ModeButton kPadModes[3] = {
+    { "##repeats", "Repeats", PADS_REPEATS },
+    { "##chords", "Chords", PADS_CHORDS },
+    { "##sounds", "Sounds", PADS_SOUNDS },
   };
-  float half = (layout::kLeftX1 - layout::kLeftX0 - layout::kGap) * 0.5f;
-  float row_h = (layout::kPadRow2Y1 - layout::kPadRow2Y0 - layout::kGap) * 0.5f;
-  for (int i = 0; i < 4; ++i) {
+  ImVec2 min;
+  ImVec2 max;
+  for (int i = 0; i < 3; ++i) {
     const ModeButton& m = kPadModes[i];
-    float x0 = layout::kLeftX0 + (i % 2) * (half + layout::kGap);
-    float y0 = layout::kPadRow2Y0 + (i / 2) * (row_h + layout::kGap);
-    if (Button(c, m.id, ImVec2(x0, y0), ImVec2(x0 + half, y0 + row_h), m.label, "", m.icon,
-               pad_mode_ == m.mode, colors::kAccent).pressed) {
+    cell(i, &min, &max);
+    if (Button(c, m.id, min, max, m.label, "", ICON_NONE, pad_mode_ == m.mode,
+               colors::kAccent).pressed) {
       if (m.mode == PADS_SOUNDS && pad_mode_ == PADS_SOUNDS) {
         preset_bank_ = 1 - preset_bank_;
         Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
       }
       pad_mode_ = m.mode;
     }
+  }
+  cell(3, &min, &max);
+  if (Button(c, "##select", min, max, "Select", "", ICON_NONE, select_mode_,
+             colors::kAccent).pressed) {
+    select_mode_ = !select_mode_;
+    mute_mode_ = false;
+  }
+  cell(4, &min, &max);
+  if (Button(c, "##mute", min, max, "", "", ICON_MUTE, mute_mode_, colors::kAccent).pressed) {
+    mute_mode_ = !mute_mode_;
+    select_mode_ = false;
+  }
+  cell(5, &min, &max);
+  if (Button(c, "##keys", min, max, "", "", ICON_KEYBOARD, pad_mode_ == PADS_KEYS,
+             colors::kAccent).pressed) {
+    pad_mode_ = PADS_KEYS;
   }
   UpdateRepeat();
 }
@@ -641,51 +663,63 @@ void Faceplate::DrawScreenSection() {
     song_edit_ = false;
   }
 
+  // Buttons under the screen, with the 2x4 page LEDs between Sample and
+  // Browse, as on the prototype.
+  const float kLedsWidth = 64.0f;
+  float w = (layout::kScreenX1 - layout::kRightX0 - kLedsWidth - 5 * layout::kGap) / 5.0f;
+  auto button_x = [&](int i) {
+    return layout::kRightX0 + i * (w + layout::kGap) + (i >= 2 ? kLedsWidth + layout::kGap : 0.0f);
+  };
+  auto screen_button = [&](int i, const char* id, const char* label, Icon icon, bool lit,
+                           ImU32 color) {
+    return Button(c, id, ImVec2(button_x(i), layout::kButtonRowY0),
+                  ImVec2(button_x(i) + w, layout::kButtonRowY1), label, "", icon, lit, color);
+  };
+
+  // Song: first press edits the chain (pattern buttons append to it), second
+  // press plays it.
+  bool song_lit = song_edit_ ? std::fmod(ImGui::GetTime(), 0.5) < 0.25 : engine_->song_mode();
+  if (screen_button(0, "##song", "Song", ICON_SONG, song_lit,
+                    song_edit_ ? colors::kAmber : colors::kAccent).pressed) {
+    if (!song_edit_) {
+      song_edit_ = true;
+      song_edit_fresh_ = true;
+      patterns_mode_ = false;
+      last_step_mode_ = false;
+      Toast("Song: press patterns in order");
+    } else {
+      song_edit_ = false;
+      engine_->SetSongMode(true);
+      int length = engine_->project().song_length;
+      char message[48];
+      snprintf(message, sizeof(message), length ? "Song: %d patterns" : "Song empty", length);
+      Toast(message);
+    }
+  }
+  if (screen_button(1, "##sample", "Sample", ICON_SAMPLE, false, 0).pressed) {
+    Toast("Sampler not emulated (Plaits only)");
+  }
+
   // 2x4 LEDs: playing page (top) and edited page (bottom).
   int play_page = engine_->pattern_step.load() >= 0 ? engine_->pattern_step.load() / kStepsPerPage : -1;
+  float leds_x = button_x(1) + w + layout::kGap + kLedsWidth * 0.5f - 21.0f;
+  float leds_y = (layout::kButtonRowY0 + layout::kButtonRowY1) * 0.5f;
   for (int i = 0; i < 4; ++i) {
-    float lx = encoder_x - 21 + i * 14.0f;
-    dl->AddCircleFilled(c.P(lx, bezel_y1 - 26), c.S(2.8f),
+    dl->AddCircleFilled(c.P(leds_x + i * 14.0f, leds_y - 7), c.S(2.8f),
                         i == play_page ? colors::kAmber : colors::kLedOff);
-    dl->AddCircleFilled(c.P(lx, bezel_y1 - 14), c.S(2.8f),
+    dl->AddCircleFilled(c.P(leds_x + i * 14.0f, leds_y + 7), c.S(2.8f),
                         i == view_page_ ? colors::kAccent : colors::kLedOff);
   }
 
-  // Buttons under the screen.
-  struct ScreenButton {
-    const char* id;
-    const char* label;
-    Icon icon;
-  };
-  const ScreenButton kButtons[4] = {
-    { "##sample", "Sample", ICON_SAMPLE },
-    { "##browse", "Browse", ICON_BROWSE },
-    { "##edit", "Edit", ICON_EDIT },
-    { "##save", "Save", ICON_SAVE },
-  };
-  float w = (layout::kScreenX1 - layout::kRightX0 - 3 * layout::kGap) / 4.0f;
-  for (int i = 0; i < 4; ++i) {
-    float x0 = layout::kRightX0 + i * (w + layout::kGap);
-    bool lit = (i == 1 && view_ == VIEW_BROWSE) || (i == 2 && view_ == VIEW_EDIT);
-    if (!Button(c, kButtons[i].id, ImVec2(x0, layout::kButtonRowY0),
-                ImVec2(x0 + w, layout::kButtonRowY1), kButtons[i].label, "",
-                kButtons[i].icon, lit, colors::kAccent).pressed) {
-      continue;
-    }
-    switch (i) {
-      case 0:
-        Toast("Sampler not emulated (Plaits only)");
-        break;
-      case 1:
-        view_ = view_ == VIEW_BROWSE ? VIEW_MAIN : VIEW_BROWSE;
-        break;
-      case 2:
-        view_ = view_ == VIEW_EDIT ? VIEW_MAIN : VIEW_EDIT;
-        break;
-      default:
-        Save();
-        break;
-    }
+  if (screen_button(2, "##browse", "Browse", ICON_BROWSE, view_ == VIEW_BROWSE,
+                    colors::kAccent).pressed) {
+    view_ = view_ == VIEW_BROWSE ? VIEW_MAIN : VIEW_BROWSE;
+  }
+  if (screen_button(3, "##edit", "Edit", ICON_EDIT, view_ == VIEW_EDIT, colors::kAccent).pressed) {
+    view_ = view_ == VIEW_EDIT ? VIEW_MAIN : VIEW_EDIT;
+  }
+  if (screen_button(4, "##save", "Save", ICON_SAVE, false, 0).pressed) {
+    Save();
   }
 }
 
@@ -789,7 +823,8 @@ void Faceplate::DrawSequencer() {
                   ICON_NONE, lit, color);
   };
 
-  // Group 1: what the step buttons do.
+  // Original order: Patterns, Steps, pages, Notes, then Poly and Last Step;
+  // the editing buttons sit on the right.
   if (function_button(0, "##patterns", "Patterns", patterns_mode_, colors::kAccent).pressed) {
     patterns_mode_ = !patterns_mode_;
     last_step_mode_ = false;
@@ -801,16 +836,7 @@ void Faceplate::DrawSequencer() {
     last_step_mode_ = false;
     song_edit_ = false;
   }
-  if (function_button(2, "##notes", "Notes", notes_mode_, colors::kAccent).pressed) {
-    notes_mode_ = !notes_mode_;
-  }
-  if (function_button(3, "##last", "Last Step", last_step_mode_, colors::kAccent).pressed) {
-    last_step_mode_ = !last_step_mode_;
-    patterns_mode_ = false;
-    song_edit_ = false;
-  }
 
-  // Group 2: step pages.
   int play_page = engine_->pattern_step.load() >= 0 ? engine_->pattern_step.load() / kStepsPerPage : -1;
   const char* const kPageLabels[kNumPages] = { "A|1", "B|2", "C|3", "D|4" };
   for (int i = 0; i < kNumPages; ++i) {
@@ -820,54 +846,33 @@ void Faceplate::DrawSequencer() {
         last_step_mode_;
     ImU32 color = i == view_page_ ? colors::kAccent
         : (i == play_page ? colors::kAmber : colors::kLabelDim);
-    if (function_button(4 + i, id, kPageLabels[i],
+    if (function_button(2 + i, id, kPageLabels[i],
                         in_pattern && (i == view_page_ || i == play_page),
                         color).pressed) {
       view_page_ = i;
     }
     if (!in_pattern) {
-      float x0 = layout::StepX(4 + i);
+      float x0 = layout::StepX(2 + i);
       dl->AddRectFilled(c.P(x0 + 2, layout::kFunctionRowY0 + 2),
                         c.P(x0 + layout::kStepWidth - 2, layout::kFunctionRowY1 - 3),
                         IM_COL32(0, 0, 0, 90), c.S(4));
     }
   }
 
-  // Group 3: song, polyrhythm and pad behavior.
-  // Song: first press edits the chain (pattern buttons append to it), second
-  // press plays it.
-  bool song_lit = song_edit_ ? blink : engine_->song_mode();
-  if (function_button(8, "##song", "Song", song_lit,
-                      song_edit_ ? colors::kAmber : colors::kAccent).pressed) {
-    if (!song_edit_) {
-      song_edit_ = true;
-      song_edit_fresh_ = true;
-      patterns_mode_ = false;
-      last_step_mode_ = false;
-      Toast("Song: press patterns in order");
-    } else {
-      song_edit_ = false;
-      engine_->SetSongMode(true);
-      int length = engine_->project().song_length;
-      char message[48];
-      snprintf(message, sizeof(message), length ? "Song: %d patterns" : "Song empty", length);
-      Toast(message);
-    }
+  if (function_button(6, "##notes", "Notes", notes_mode_, colors::kAccent).pressed) {
+    notes_mode_ = !notes_mode_;
   }
-  if (function_button(9, "##poly", "Poly", p.poly, colors::kAccent).pressed) {
+  if (function_button(7, "##poly", "Poly", p.poly, colors::kAccent).pressed) {
     p.poly = !p.poly;
     Toast(p.poly ? "Poly: tracks cycle on their own length" : "Poly off: tracks restart with the pattern");
   }
-  if (function_button(10, "##select", "Select", select_mode_, colors::kAccent).pressed) {
-    select_mode_ = !select_mode_;
-    mute_mode_ = false;
-  }
-  if (function_button(11, "##mute", "Mute", mute_mode_, colors::kAccent).pressed) {
-    mute_mode_ = !mute_mode_;
-    select_mode_ = false;
+  if (function_button(8, "##last", "Last Step", last_step_mode_, colors::kAccent).pressed) {
+    last_step_mode_ = !last_step_mode_;
+    patterns_mode_ = false;
+    song_edit_ = false;
   }
 
-  // Group 4: editing.
+  // Editing.
   if (function_button(12, "##copy", "Copy", false, 0).pressed) {
     Copy();
   }
