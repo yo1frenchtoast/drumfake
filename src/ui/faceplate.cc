@@ -119,13 +119,56 @@ void Faceplate::TrackPadDown(int track) {
     engine_->project().chords[chord_edit_] ^= 1 << track;
     return;
   }
-  if (mute_mode_) {
+  // Held buttons turn the pads into targets, as on the DrumBrute.
+  if (erase_held_) {
+    erase_used_ = true;
+    if (!engine_->playing()) {
+      // Stopped: erase the whole track.
+      PushUndo();
+      TrackSequence& sequence = pattern().tracks[track];
+      int length = sequence.length;
+      sequence.Clear();
+      sequence.length = length;
+      Toast(std::string("Track ") + static_cast<char>('A' + track) + " erased");
+    } else {
+      // Playing: erase the steps of this track as the playhead passes, as
+      // long as the pad is held.
+      if (!erase_wiping_) {
+        PushUndo();
+        erase_wiping_ = true;
+      }
+      erase_pad_held_[track] = true;
+    }
+    return;
+  }
+  if (copy_held_) {
+    copy_used_ = true;
+    if (copy_source_track_ < 0) {
+      copy_source_track_ = track;
+      Toast(std::string("Copy track ") + static_cast<char>('A' + track) +
+            ": press the destination pad");
+    } else if (track != copy_source_track_) {
+      PushUndo();
+      pattern().tracks[track] = pattern().tracks[copy_source_track_];
+      Toast(std::string("Track ") + static_cast<char>('A' + copy_source_track_) +
+            " copied to " + static_cast<char>('A' + track));
+      copy_source_track_ = -1;
+    }
+    return;
+  }
+  if (mute_held_ || mute_mode_) {
     engine_->muted[track] = !engine_->muted[track];
+    mute_used_ = mute_used_ || mute_held_;
+    return;
+  }
+  if (solo_held_ || solo_mode_) {
+    engine_->soloed[track] = !engine_->soloed[track];
+    solo_used_ = solo_used_ || solo_held_;
     return;
   }
   engine_->selected_track = track;
-  if (select_mode_ || shift_held_) {
-    return;
+  if (shift_held_) {
+    return;  // Shift + pad: select without playing.
   }
   track_pad_held_[track] = true;
   engine_->LiveTrigger(track, ImGui::GetIO().KeyShift ? 1.0f : 0.8f, 0);
@@ -134,6 +177,7 @@ void Faceplate::TrackPadDown(int track) {
 
 void Faceplate::TrackPadUp(int track) {
   track_pad_held_[track] = false;
+  erase_pad_held_[track] = false;
   UpdateRepeat();
 }
 
@@ -734,17 +778,34 @@ void Faceplate::DrawTopLeft() {
       keys_page_ = false;
     }
   }
+  // Solo and Mute: held + pads toggle tracks; tapped alone, latch the mode;
+  // Shift + button clears all solos or mutes.
   cell(3, &min, &max);
-  if (Button(c, "##select", min, max, "Select", "", ICON_NONE, select_mode_,
-             colors::kAccent).pressed) {
-    select_mode_ = !select_mode_;
-    mute_mode_ = false;
-  }
+  Interaction solo = Button(c, "##solo", min, max, "Solo", "", ICON_NONE,
+                            solo_mode_ || solo_held_, colors::kAmber);
   cell(4, &min, &max);
-  if (Button(c, "##mute", min, max, "", "", ICON_MUTE, mute_mode_, colors::kAccent).pressed) {
-    mute_mode_ = !mute_mode_;
-    select_mode_ = false;
-  }
+  Interaction mute = Button(c, "##mute", min, max, "", "", ICON_MUTE,
+                            mute_mode_ || mute_held_, colors::kAccent);
+  auto hold_button = [&](const Interaction& in, bool* held, bool* used, bool* mode,
+                         bool* other_mode, bool* tracks, const char* cleared) {
+    if (in.pressed) {
+      *used = false;
+      if (shift_held_) {
+        std::fill(tracks, tracks + kNumTracks, false);
+        *used = true;
+        Toast(cleared);
+      }
+    }
+    if (!in.active && *held && !*used) {
+      *mode = !*mode;
+      *other_mode = false;
+    }
+    *held = in.active;
+  };
+  hold_button(solo, &solo_held_, &solo_used_, &solo_mode_, &mute_mode_, engine_->soloed,
+              "Solos cleared");
+  hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
+              "Mutes cleared");
   cell(5, &min, &max);
   if (Button(c, "##keys", min, max, "", "", ICON_KEYBOARD, pad_mode_ == PADS_KEYS,
              colors::kAccent).pressed) {
@@ -1244,10 +1305,6 @@ void Faceplate::DrawSequencer() {
   if (function_button(6, "##notes", "Notes", notes_mode_, colors::kAccent).pressed) {
     notes_mode_ = !notes_mode_;
   }
-  if (function_button(7, "##poly", "Poly", p.poly, colors::kAccent).pressed) {
-    p.poly = !p.poly;
-    Toast(p.poly ? "Poly: tracks cycle on their own length" : "Poly off: tracks restart with the pattern");
-  }
   // Last Step (or L on the keyboard), held: the steps show the length and
   // pressing one sets the last step (of the pattern, or of the selected
   // track in Poly mode); a page button sets it to 16, 32, 48 or 64.
@@ -1265,7 +1322,7 @@ void Faceplate::DrawSequencer() {
 
   // Editing.
   // Panel: keep the sound playing across pattern changes (MatrixBrute).
-  if (function_button(10, "##panel", "Panel", engine_->panel(), colors::kAccent).pressed) {
+  if (function_button(9, "##panel", "Panel", engine_->panel(), colors::kAccent).pressed) {
     engine_->SetPanel(!engine_->panel());
     Toast(engine_->panel() ? "Panel: sound kept across patterns"
                            : "Panel off: pattern kit reloaded");
@@ -1277,6 +1334,7 @@ void Faceplate::DrawSequencer() {
   if (copy.active && !copy_held_) {
     copy_used_ = false;
     copy_source_page_ = -1;
+    copy_source_track_ = -1;
   }
   if (!copy.active && copy_held_ && !copy_used_) {
     Copy();
@@ -1296,6 +1354,19 @@ void Faceplate::DrawSequencer() {
     Erase();
   }
   erase_held_ = held_now;
+  // Erase + pad while playing: wipe the steps the playhead reaches.
+  if (erase_held_ && engine_->playing()) {
+    for (int t = 0; t < kNumTracks; ++t) {
+      int step = engine_->track_step[t].load();
+      if (erase_pad_held_[t] && step >= 0) {
+        pattern().tracks[t].steps[step].Clear();
+      }
+    }
+  }
+  if (!erase_held_) {
+    erase_wiping_ = false;
+    std::fill(erase_pad_held_, erase_pad_held_ + kNumTracks, false);
+  }
   if (function_button(15, "##undo", "Undo", false, 0).pressed) {
     Undo();
   }
@@ -1551,7 +1622,8 @@ void Faceplate::DrawPads() {
     float flash = static_cast<float>(1.0 - (now - flash_time_[t]) / 0.15);
     flash = ImClamp(flash, 0.0f, 1.0f);
     bool selected = t == engine_->selected_track;
-    bool muted = engine_->muted[t];
+    bool muted = !engine_->TrackAudible(t);
+    bool soloed = engine_->soloed[t];
     bool in_chord = chord_edit_ >= 0 && (project.chords[chord_edit_] & (1 << t));
 
     float split = min.y + (max.y - min.y) * 0.5f;
@@ -1581,7 +1653,9 @@ void Faceplate::DrawPads() {
                       colors::kAccent, c.S(2));
     char letter[2] = { static_cast<char>('A' + t), 0 };
     c.Text(min.x + 10, max.y - 26, 15, kPadInk, letter, false, true);
-    if (muted) {
+    if (soloed) {
+      c.Text(max.x - 36, max.y - 22, 9, colors::kAmber, "SOLO", false, true);
+    } else if (engine_->muted[t]) {
       c.Text(max.x - 36, max.y - 22, 9, kPadInk, "MUTE", false, true);
     }
     if (selected) {

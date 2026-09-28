@@ -112,8 +112,8 @@ class Faceplate {
   bool song_edit_fresh_ = false;  // The next pattern pressed starts a new chain.
   bool keys_page_ = false;  // Sound Edit knobs and screen show the Keys settings.
   int keys_field_ = 0;      // Field the encoder changes: root, scale, octave.
-  bool select_mode_ = false;
   bool mute_mode_ = false;
+  bool solo_mode_ = false;
   int held_step_ = -1;
   int preset_bank_ = 0;
   int chord_edit_ = -1;
@@ -153,6 +153,16 @@ class Faceplate {
   bool copy_held_ = false;
   bool copy_used_ = false;
   int copy_source_page_ = -1;
+  int copy_source_track_ = -1;
+  // Erase + pads while playing: the pads held, and whether the gesture's
+  // undo point was taken.
+  bool erase_pad_held_[kNumTracks] = {};
+  bool erase_wiping_ = false;
+  // Mute and Solo held, and whether a pad was used meanwhile.
+  bool mute_held_ = false;
+  bool mute_used_ = false;
+  bool solo_held_ = false;
+  bool solo_used_ = false;
   // The steps follow the page playing (Shift + 15), until a page is chosen
   // by hand.
   bool follow_enabled_ = true;

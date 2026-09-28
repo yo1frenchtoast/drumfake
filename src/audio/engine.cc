@@ -329,8 +329,24 @@ int Engine::TrackStep(const Pattern& pattern, int track, int64_t n) const {
   return static_cast<int>(PositiveModulo(position, pattern.track_length(track)));
 }
 
+bool Engine::TrackAudible(int track) const {
+  if (muted[track]) {
+    return false;
+  }
+  for (int t = 0; t < kNumTracks; ++t) {
+    if (soloed[t]) {
+      return soloed[track];
+    }
+  }
+  return true;
+}
+
 void Engine::LiveTrigger(int track, float velocity, int note_offset) {
   FireTrack(track, velocity, note_offset, nullptr, SamplesPerStep() * 16);
+  RecordHit(track, velocity, note_offset, 1);
+}
+
+void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets) {
   if (!recording || !playing_ || looping_) {
     return;
   }
@@ -340,7 +356,7 @@ void Engine::LiveTrigger(int track, float velocity, int note_offset) {
   step.on = true;
   step.velocity = velocity;
   step.note = note_offset;
-  step.ratchets = 1;
+  step.ratchets = ratchets;
   step.probability = 1.0f;
   if (static_cast<double>(n) > position_) {
     // Rounded to an upcoming step: don't play it twice.
@@ -448,7 +464,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
           track_step[t] = s;
         }
         const Step& step = pattern.tracks[t].steps[s];
-        if (!step.on || muted[t]) {
+        if (!step.on || !TrackAudible(t)) {
           continue;
         }
         if (!RollProbability(n, t, step.probability)) {
@@ -485,7 +501,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
             &accents);
         for (int part = 0; part < kGridsParts; ++part) {
           int s = TrackStep(pattern, part, n);
-          if ((bits & (1 << part)) && !muted[part] &&
+          if ((bits & (1 << part)) && TrackAudible(part) &&
               !pattern.tracks[part].steps[s].on) {
             FireTrack(part, (accents & (1 << part)) ? 1.0f : 0.7f, 0, nullptr,
                       SamplesPerStep() * 16);
@@ -657,9 +673,14 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     if (next < clock + sixteenths) {
       size_t gate = static_cast<size_t>(period * SamplesPerSixteenth());
       gate = gate > kBlockSize * 2 ? gate - kBlockSize : kBlockSize;
+      // When recording, repeats are written like the DrumBrute's Roller: one
+      // hit per step, or ratchets when they are faster than the steps.
+      int ratchets = std::clamp(static_cast<int>(std::lround(step_length / period)), 1,
+                                kMaxRatchets);
       for (int t = 0; t < kNumTracks; ++t) {
         if (repeat_mask_ & (1 << t)) {
           FireTrack(t, 0.8f, 0, nullptr, gate);
+          RecordHit(t, 0.8f, 0, ratchets);
         }
       }
     }

@@ -79,11 +79,17 @@ class Engine {
   // Leaves song mode, like selecting a pattern on the Arturia machines.
   void SelectPattern(int pattern);
 
+  // Mute and solo: when any track is soloed, only soloed tracks play (the
+  // sequence; pads always play).
   bool muted[kNumTracks] = {};
+  bool soloed[kNumTracks] = {};
+  bool TrackAudible(int track) const;
   int selected_track = 0;
 
   // Plays a track now (pads). When recording, also writes the step.
   void LiveTrigger(int track, float velocity, int note_offset);
+  // When recording, writes a hit on the step nearest to the playhead.
+  void RecordHit(int track, float velocity, int note_offset, int ratchets);
 
   // MIDI input: notes play tracks A-H; clock, Start, Stop, Continue and Song
   // Position drive the transport when the project follows the MIDI clock.

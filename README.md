@@ -122,7 +122,14 @@ Rendu hors ligne :
   courant. L'écran affiche « PANEL » quand il est actif.
 - **Edit** : longueur du pattern, swing, longueur par piste (polymétrie), BPM, lecture du Song,
   métronome, « Bake Grids » (écrit le rythme Grids dans A–C).
-- **Mute** / **Select** : les pads A–H coupent les pistes ou les sélectionnent sans les jouer.
+- **Mute** / **Solo** (maintenus + pads, ou tapés pour verrouiller le mode) : coupent ou isolent
+  des pistes ; *Shift* + Mute/Solo efface tous les mutes/solos. Pour sélectionner une piste sans
+  la jouer : *Shift* + pad.
+- **Maintiens avec les pads** (comme sur la DrumBrute) : *Erase* + pad efface la piste à
+  l'arrêt, ou pendant la lecture efface ses coups au passage de la tête tant que le pad est tenu ;
+  *Copy* + pad + pad copie la séquence d'une piste sur une autre.
+- **Repeats en enregistrement** : les répétitions s'écrivent dans le pattern (une par pas, ou en
+  ratchets si elles sont plus rapides que les pas), comme le Roller de la DrumBrute.
 - **MIDI en entrée** (PC : tous les ports ALSA, branchés à chaud, plus un port virtuel
   « Drumf(re)ake » ; Android : périphériques USB et applications MIDI) :
   - un instrument = un canal : la piste A écoute le canal 1, B le canal 2… H le canal 8, et joue

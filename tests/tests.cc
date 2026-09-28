@@ -688,6 +688,36 @@ void TestSwitchAtEnd() {
   }
 }
 
+void TestSoloAndRollerRecording() {
+  auto engine = MakeEngine();
+  Pattern& p = engine->project().patterns[0];
+  for (int t = 0; t < 3; ++t) {
+    p.tracks[t].steps[0].on = true;
+  }
+  engine->soloed[1] = true;
+  engine->muted[2] = true;
+  engine->Play();
+  RenderAndCollect(engine.get(), 0, kSamplesPerStep);
+  CHECK(engine->trigger_count[0].load() == 0);  // Not soloed.
+  CHECK(engine->trigger_count[1].load() == 1);
+  CHECK(engine->trigger_count[2].load() == 0);  // Muted.
+  CHECK(engine->TrackAudible(1) && !engine->TrackAudible(0));
+
+  // Repeats at 1/32 while recording: every 16th step gets two hits.
+  engine = MakeEngine();
+  engine->recording = true;
+  engine->Play();
+  engine->SetRepeat(1 << 3, 3);  // Track D, 1/32.
+  RenderAndCollect(engine.get(), 3, 4 * kSamplesPerStep - 3000);
+  engine->SetRepeat(0, 0);
+  const Pattern& q = engine->project().patterns[0];
+  for (int s = 0; s < 4; ++s) {
+    CHECK(q.tracks[3].steps[s].on);
+    CHECK(q.tracks[3].steps[s].ratchets == 2);
+  }
+  CHECK(!q.tracks[3].steps[5].on);
+}
+
 void TestLiveRecording() {
   auto engine = MakeEngine();
   engine->recording = true;
@@ -852,6 +882,7 @@ int main() {
   TestCopyPages();
   TestDivisionsAndMicroTiming();
   TestSwitchAtEnd();
+  TestSoloAndRollerRecording();
   TestLegacyProjectKits();
   TestLiveRecording();
   TestChoke();
