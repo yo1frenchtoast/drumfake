@@ -35,6 +35,15 @@ int ScaleDegree(int scale_index, int degree) {
   return (degree / s.size) * 12 + s.intervals[degree % s.size];
 }
 
+int MajorScaleDegree(int root_note, int note) {
+  for (int degree = 0; degree < 8; ++degree) {
+    if (root_note + ScaleDegree(0, degree) == note) {
+      return degree;
+    }
+  }
+  return -1;
+}
+
 int KeyOffset(int root, int scale_index, int octave, int pad) {
   return root + ScaleDegree(scale_index, pad) + 12 * octave;
 }

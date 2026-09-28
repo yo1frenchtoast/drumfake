@@ -1,5 +1,7 @@
 #include "core/project.h"
 
+#include <algorithm>
+
 #include "core/presets.h"
 
 namespace drumfreake {
@@ -121,6 +123,7 @@ void Project::Init() {
   }
   for (int i = 0; i < kNumPatterns; ++i) {
     patterns[i].Clear();
+    std::copy(sounds, sounds + kNumTracks, patterns[i].kit);
   }
   MakeDemoPattern(&patterns[0]);
   for (int i = 0; i < M_LAST; ++i) {
@@ -142,6 +145,11 @@ void Project::Init() {
     song[i] = 0;
   }
   song_length = 0;
+  midi_clock_sync = false;
+  for (int i = 0; i < kNumTracks; ++i) {
+    midi_channels[i] = i + 1;
+  }
+  midi_trigger_note = 36;  // C2 (C4 = 60): white keys C2-C3 trigger A-H.
   key_root = 0;
   key_scale = 0;
   key_octave = 0;

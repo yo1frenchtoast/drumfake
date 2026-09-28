@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+
+#include "core/scales.h"
 
 #if defined(__SSE__) || defined(__x86_64__)
 #include <xmmintrin.h>
@@ -76,8 +79,14 @@ void Engine::Init() {
   }
   scope_write = 0;
   cpu_load = 0.0f;
+  midi_activity = 0;
+  midi_input_ports = 0;
+  clock_ticks_ = -1;
+  last_tick_time_ = -1.0;
+  tick_interval_ = 0.0;
 
   playing_ = false;
+  panel_ = false;
   song_mode_ = false;
   song_position_ = 0;
   current_pattern_ = 0;
@@ -103,14 +112,15 @@ void Engine::Play() {
   if (song_mode_ && project_->song_length > 0) {
     // A song always starts from the top of the chain.
     song_position_ = 0;
-    current_pattern_ = project_->song[0];
+    ChangePattern(project_->song[0]);
     queued_pattern_ = -1;
   }
   if (queued_pattern_ >= 0) {
-    current_pattern_ = queued_pattern_;
+    ChangePattern(queued_pattern_);
     queued_pattern_ = -1;
   }
   playing_ = true;
+  clock_ticks_ = -1;  // With an external clock, wait for its first tick.
   position_ = 0.0;
   free_position_ = 0.0;
   pattern_start_ = 0;
@@ -142,17 +152,141 @@ void Engine::SetSongMode(bool enabled) {
     song_position_ = -1;
   } else {
     song_position_ = 0;
-    current_pattern_ = project_->song[0];
+    ChangePattern(project_->song[0]);
+  }
+}
+
+float Engine::tempo() const {
+  if (project_->midi_clock_sync && tick_interval_ > 0.0) {
+    return std::clamp(static_cast<float>(60.0 / (tick_interval_ * 24.0)), 20.0f, 400.0f);
+  }
+  return project_->bpm;
+}
+
+void Engine::HandleMidi(const MidiMessage& message, double time) {
+  midi_activity.fetch_add(1, std::memory_order_relaxed);
+  if (midi_monitor && message.type() != MIDI_CLOCK) {
+    fprintf(stderr, "MIDI in: %02x %02x %02x\n", message.status,
+            message.size > 1 ? message.data[0] : 0, message.size > 2 ? message.data[1] : 0);
+  }
+  const bool sync = project_->midi_clock_sync;
+  switch (message.type()) {
+    case MIDI_NOTE_ON: {
+      if (message.data[1] == 0) {
+        break;  // Note off.
+      }
+      const int channel = message.channel() + 1;
+      const int note = message.data[0];
+      const float velocity = message.data[1] / 127.0f;
+      bool played = false;
+      for (int t = 0; t < kNumTracks; ++t) {
+        if (project_->midi_channels[t] == channel) {
+          // The track's own channel: play the note at its pitch.
+          int track_note = static_cast<int>(
+              std::lround(PitchToNote(project_->sounds[t].params[P_PITCH])));
+          LiveTrigger(t, velocity, note - track_note);
+          played = true;
+        }
+      }
+      if (!played) {
+        // Other channels: the major scale from the trigger note plays A-H.
+        int track = MajorScaleDegree(project_->midi_trigger_note, note);
+        if (track >= 0) {
+          LiveTrigger(track, velocity, 0);
+        }
+      }
+      break;
+    }
+    case MIDI_CLOCK: {
+      double interval = time - last_tick_time_;
+      if (last_tick_time_ >= 0.0 && interval > 0.0 && interval < 0.25) {
+        tick_interval_ = tick_interval_ > 0.0
+            ? tick_interval_ + (interval - tick_interval_) * 0.08
+            : interval;
+      }
+      last_tick_time_ = time;
+      if (sync && playing_) {
+        ++clock_ticks_;
+      }
+      break;
+    }
+    case MIDI_START:
+      if (sync) {
+        Play();
+      }
+      break;
+    case MIDI_CONTINUE:
+      if (sync && !playing_) {
+        playing_ = true;
+        looping_ = false;
+        clock_ticks_ = static_cast<int64_t>(std::llround(position_ * 6.0)) - 1;
+      }
+      break;
+    case MIDI_STOP:
+      if (sync) {
+        Stop();
+      }
+      break;
+    case MIDI_SONG_POSITION:
+      if (sync && !playing_) {
+        // In MIDI beats (16th notes), i.e. steps.
+        int64_t steps = message.data[0] | (message.data[1] << 7);
+        int length = project_->patterns[current_pattern_].length;
+        position_ = static_cast<double>(steps);
+        pattern_start_ = steps - steps % length;
+        poly_origin_ = 0;
+        clock_ticks_ = steps * 6 - 1;
+      }
+      break;
+    default:
+      break;
   }
 }
 
 void Engine::SelectPattern(int pattern) {
   song_mode_ = false;
   if (!playing_) {
-    current_pattern_ = pattern;
+    ChangePattern(pattern);
     queued_pattern_ = -1;
   } else {
     queued_pattern_ = pattern == current_pattern_ ? -1 : pattern;
+  }
+}
+
+void Engine::ChangePattern(int pattern) {
+  if (pattern == current_pattern_) {
+    return;
+  }
+  if (!panel_) {
+    StoreKit();
+    std::copy(project_->patterns[pattern].kit, project_->patterns[pattern].kit + kNumTracks,
+              project_->sounds);
+  }
+  current_pattern_ = pattern;
+}
+
+void Engine::StoreKit() {
+  std::copy(project_->sounds, project_->sounds + kNumTracks,
+            project_->patterns[current_pattern_].kit);
+}
+
+void Engine::ReloadKit() {
+  if (!panel_) {
+    const TrackSound* kit = project_->patterns[current_pattern_].kit;
+    std::copy(kit, kit + kNumTracks, project_->sounds);
+  }
+}
+
+void Engine::SetPanel(bool panel) {
+  if (panel == panel_) {
+    return;
+  }
+  if (panel) {
+    StoreKit();  // Keep the edits made so far in the pattern.
+  }
+  panel_ = panel;
+  if (!panel) {
+    ReloadKit();  // Panel edits that were not stored are dropped.
   }
 }
 
@@ -162,7 +296,7 @@ void Engine::SetRepeat(uint8_t mask, int rate) {
 }
 
 size_t Engine::SamplesPerStep() const {
-  return static_cast<size_t>(kSampleRate * 15.0f / project_->bpm);
+  return static_cast<size_t>(kSampleRate * 15.0f / tempo());
 }
 
 bool Engine::RollProbability(int64_t step, int track, float probability) const {
@@ -356,11 +490,11 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
     pattern_start_ = boundary;
     int previous_pattern = current_pattern_;
     if (queued_pattern_ >= 0) {
-      current_pattern_ = queued_pattern_;
+      ChangePattern(queued_pattern_);
       queued_pattern_ = -1;
     } else if (song_mode_ && project_->song_length > 0) {
       song_position_ = (song_position_ + 1) % project_->song_length;
-      current_pattern_ = project_->song[song_position_];
+      ChangePattern(project_->song[song_position_]);
     }
     if (current_pattern_ != previous_pattern) {
       poly_origin_ = boundary;
@@ -479,10 +613,18 @@ void Engine::RenderClick(float* out_l, float* out_r) {
 }
 
 void Engine::RenderBlock(float* out_l, float* out_r) {
-  const double increment = project_->bpm / 60.0 * 4.0 / kSampleRate * kBlockSize;
+  const double increment = tempo() / 60.0 * 4.0 / kSampleRate * kBlockSize;
   const double start = position_;
+  double end = start + increment;
+  if (playing_ && project_->midi_clock_sync) {
+    // Follow the external clock (24 PPQN, so 6 ticks per step): run at its
+    // tempo but never past the next tick, and catch up when a tick is ahead.
+    double tick_position = clock_ticks_ / 6.0;
+    double next_tick = (clock_ticks_ + 1) / 6.0;
+    end = std::clamp(end, std::max(start, tick_position), std::max(start, next_tick));
+  }
   if (playing_) {
-    RunSequencer(start, start + increment);
+    RunSequencer(start, end);
   }
 
   // Note repeat, on the grid of the running clock.
@@ -501,7 +643,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     }
   }
   if (playing_) {
-    position_ = start + increment;
+    position_ = end;
   }
   free_position_ += increment;
 
@@ -521,7 +663,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     voices_[t].Render(params, extra_delay_send, &buses_);
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);
   }
-  master_fx_->Process(project_->master, project_->bpm, project_->volume,
+  master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);
   RenderClick(out_l, out_r);
 

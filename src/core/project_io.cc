@@ -16,7 +16,7 @@ using nlohmann::json;
 
 namespace {
 
-const int kFormatVersion = 1;
+const int kFormatVersion = 2;  // 2: one kit per pattern.
 
 template<size_t N>
 json FloatArray(const float (&values)[N]) {
@@ -30,6 +30,22 @@ void ReadFloatArray(const json& j, float (&values)[N]) {
   }
   for (size_t i = 0; i < N && i < j.size(); ++i) {
     values[i] = Clamp01(j[i].get<float>());
+  }
+}
+
+json KitToJson(const TrackSound* kit) {
+  json j = json::array();
+  for (int i = 0; i < kNumTracks; ++i) {
+    j.push_back({ { "name", kit[i].name }, { "params", FloatArray(kit[i].params) } });
+  }
+  return j;
+}
+
+void KitFromJson(const json& j, TrackSound* kit) {
+  for (size_t i = 0; i < kNumTracks && i < j.size(); ++i) {
+    kit[i].Reset();
+    kit[i].name = j[i].value("name", "Init");
+    ReadFloatArray(j[i]["params"], kit[i].params);
   }
 }
 
@@ -81,24 +97,25 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
   j["master"] = FloatArray(project.master);
   j["assign"] = FloatArray(project.assign);
   j["chords"] = std::vector<int>(project.chords, project.chords + 8);
+  j["midi"] = {
+    { "clock_sync", project.midi_clock_sync },
+    { "channels", std::vector<int>(project.midi_channels, project.midi_channels + kNumTracks) },
+    { "trigger_note", project.midi_trigger_note },
+  };
   j["keys"] = {
     { "root", project.key_root },
     { "scale", project.key_scale },
     { "octave", project.key_octave },
   };
   j["song"] = std::vector<int>(project.song, project.song + project.song_length);
-  for (const TrackSound& sound : project.sounds) {
-    j["sounds"].push_back({
-      { "name", sound.name },
-      { "params", FloatArray(sound.params) },
-    });
-  }
+  j["sounds"] = KitToJson(project.sounds);
   for (int i = 0; i < kNumPatterns; ++i) {
     const Pattern& pattern = project.patterns[i];
     json jp = {
       { "length", pattern.length },
       { "swing", pattern.swing },
       { "poly", pattern.poly },
+      { "kit", KitToJson(pattern.kit) },
     };
     for (const TrackSequence& track : pattern.tracks) {
       json jt = { { "length", track.length }, { "steps", json::array() } };
@@ -150,6 +167,16 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         loaded.chords[i] = static_cast<uint8_t>(j["chords"][i].get<int>());
       }
     }
+    if (j.contains("midi")) {
+      const json& midi = j["midi"];
+      loaded.midi_clock_sync = midi.value("clock_sync", false);
+      if (midi.contains("channels")) {
+        for (size_t i = 0; i < kNumTracks && i < midi["channels"].size(); ++i) {
+          loaded.midi_channels[i] = std::max(0, std::min(16, midi["channels"][i].get<int>()));
+        }
+      }
+      loaded.midi_trigger_note = std::max(0, std::min(115, midi.value("trigger_note", 36)));
+    }
     if (j.contains("keys")) {
       const json& keys = j["keys"];
       loaded.key_root = std::max(0, std::min(11, keys.value("root", 0)));
@@ -165,11 +192,11 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
       }
     }
     if (j.contains("sounds")) {
-      for (size_t i = 0; i < kNumTracks && i < j["sounds"].size(); ++i) {
-        const json& js = j["sounds"][i];
-        loaded.sounds[i].name = js.value("name", "Init");
-        ReadFloatArray(js["params"], loaded.sounds[i].params);
-      }
+      KitFromJson(j["sounds"], loaded.sounds);
+    }
+    // Projects saved before kits were per pattern share one kit.
+    for (Pattern& pattern : loaded.patterns) {
+      std::copy(loaded.sounds, loaded.sounds + kNumTracks, pattern.kit);
     }
     if (j.contains("patterns")) {
       for (size_t i = 0; i < kNumPatterns && i < j["patterns"].size(); ++i) {
@@ -178,6 +205,9 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         pattern.length = std::max(1, std::min(kMaxSteps, jp.value("length", 16)));
         pattern.swing = std::max(0.5f, std::min(0.75f, jp.value("swing", 0.5f)));
         pattern.poly = jp.value("poly", false);
+        if (jp.contains("kit")) {
+          KitFromJson(jp["kit"], pattern.kit);
+        }
         if (!jp.contains("tracks")) {
           continue;
         }

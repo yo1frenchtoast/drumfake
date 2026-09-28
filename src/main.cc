@@ -25,7 +25,7 @@ using namespace drumfreake;
 namespace {
 
 void PrintUsage() {
-  printf("usage: drumfreake [--project FILE]\n"
+  printf("usage: drumfreake [--project FILE] [--midi-monitor]\n"
          "       drumfreake --render OUT.wav [--bars N] [--project FILE]"
          " [--pattern N] [--grids]\n");
 }
@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
   int bars = 4;
   int pattern = 0;
   bool grids = false;
+  bool midi_monitor = false;
   AppOptions app_options;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -60,6 +61,8 @@ int main(int argc, char** argv) {
       pattern = std::max(1, std::min(kNumPatterns, atoi(argv[++i]))) - 1;
     } else if (arg == "--screenshot" && has_value) {
       app_options.screenshot_path = argv[++i];
+    } else if (arg == "--midi-monitor") {
+      midi_monitor = true;
     } else if (arg == "--grids") {
       grids = true;
     } else {
@@ -70,6 +73,7 @@ int main(int argc, char** argv) {
 
   auto engine = std::make_unique<Engine>();
   engine->Init();
+  engine->midi_monitor = midi_monitor;
 
   if (render_path.empty()) {
 #ifdef DRUMFREAKE_HEADLESS
@@ -87,6 +91,7 @@ int main(int argc, char** argv) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
+    engine->ReloadKit();
   }
   engine->SelectPattern(pattern);
   engine->grids_enabled = grids;

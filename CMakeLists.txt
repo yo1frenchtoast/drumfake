@@ -58,6 +58,7 @@ add_library(drumfreake_core STATIC
   src/core/project.cc
   src/core/project_io.cc
   src/core/grids_gen.cc
+  src/core/midi_parser.cc
   src/audio/track_voice.cc
   src/audio/master_fx.cc
   src/audio/engine.cc
@@ -115,8 +116,23 @@ if(ANDROID OR DRUMFREAKE_GUI)
   set(APP_SOURCES
     src/main.cc
     src/app.cc
+    src/io/midi_common.cc
     src/ui/widgets.cc
     src/ui/faceplate.cc)
+  if(ANDROID)
+    list(APPEND APP_SOURCES src/io/midi_android.cc)
+  else()
+    # RtMidi (ALSA) for the desktop MIDI inputs.
+    set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
+    set(RTMIDI_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(RTMIDI_BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(rtmidi
+      GIT_REPOSITORY https://github.com/thestk/rtmidi.git
+      GIT_TAG 6.0.0
+      GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(rtmidi)
+    list(APPEND APP_SOURCES src/io/midi_rtmidi.cc)
+  endif()
   if(ANDROID)
     add_library(main SHARED ${APP_SOURCES})
     set(APP_TARGET main)
@@ -126,6 +142,9 @@ if(ANDROID OR DRUMFREAKE_GUI)
     set(APP_TARGET drumfreake)
   endif()
   target_link_libraries(${APP_TARGET} PRIVATE drumfreake_core imgui SDL3::SDL3)
+  if(NOT ANDROID)
+    target_link_libraries(${APP_TARGET} PRIVATE rtmidi)
+  endif()
   target_compile_options(${APP_TARGET} PRIVATE -Wall -Wextra)
 else()
   add_executable(drumfreake src/main.cc)

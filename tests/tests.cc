@@ -5,16 +5,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 
 #include "audio/engine.h"
 #include "audio/wav_render.h"
 #include "core/grids_gen.h"
+#include "core/midi_parser.h"
 #include "core/presets.h"
 #include "core/project_io.h"
 #include "core/scales.h"
 #include "grids/resources.h"
+#include <nlohmann/json.hpp>
 
 using namespace drumfreake;
 
@@ -89,6 +92,11 @@ void TestParams() {
 }
 
 void TestScales() {
+  CHECK(MajorScaleDegree(36, 36) == 0);
+  CHECK(MajorScaleDegree(36, 41) == 3);
+  CHECK(MajorScaleDegree(36, 48) == 7);
+  CHECK(MajorScaleDegree(36, 37) == -1);
+  CHECK(MajorScaleDegree(36, 50) == -1);  // Past the eighth note.
   // Pads 1-8 cover the first 8 degrees, continuing into the next octave.
   const int kMajor[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
   const int kPentatonicMinor[8] = { 0, 3, 5, 7, 10, 12, 15, 17 };
@@ -347,6 +355,220 @@ void TestSong() {
   CHECK(!engine->song_mode());
 }
 
+void TestMidiParser() {
+  MidiParser parser;
+  std::vector<MidiMessage> messages;
+  auto collect = [&](const MidiMessage& m) { messages.push_back(m); };
+  // Note on, then running status with a clock byte in the middle of it, a
+  // SysEx to skip, then a Song Position Pointer.
+  const uint8_t bytes[] = {
+    0x99, 36, 100,
+    38, 0xf8, 90,
+    0xf0, 0x7e, 0x01, 0xf7,
+    0xf2, 0x10, 0x01,
+    0xfa,
+  };
+  parser.Parse(bytes, sizeof(bytes), collect);
+  CHECK(messages.size() == 5);
+  if (messages.size() == 5) {
+    CHECK(messages[0].type() == MIDI_NOTE_ON && messages[0].channel() == 9);
+    CHECK(messages[0].data[0] == 36 && messages[0].data[1] == 100);
+    CHECK(messages[1].type() == MIDI_CLOCK);
+    CHECK(messages[2].type() == MIDI_NOTE_ON && messages[2].data[0] == 38 &&
+          messages[2].data[1] == 90);
+    CHECK(messages[3].type() == MIDI_SONG_POSITION);
+    CHECK((messages[3].data[0] | (messages[3].data[1] << 7)) == 144);
+    CHECK(messages[4].type() == MIDI_START);
+  }
+}
+
+MidiMessage Midi(uint8_t status, uint8_t data0 = 0, uint8_t data1 = 0) {
+  MidiMessage m;
+  m.status = status;
+  m.data[0] = data0;
+  m.data[1] = data1;
+  m.size = status >= 0xf8 ? 1 : 3;
+  return m;
+}
+
+void TestMidiNotes() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  // Track A (channel 1) plays the note received: C4 on a C2 track is +24.
+  project.sounds[0].params[P_PITCH] = NoteToNormalizedPitch(36.0f);
+  engine->recording = true;
+  engine->Play();
+  engine->HandleMidi(Midi(0x90, 60, 127), 0.0);
+  CHECK(engine->trigger_count[0].load() == 1);
+  CHECK(project.patterns[0].tracks[0].steps[0].on);
+  CHECK(project.patterns[0].tracks[0].steps[0].note == 24);
+  engine->Stop();
+  engine->recording = false;
+
+  // Channel 8 is track H; velocity 0 is a note off.
+  engine->HandleMidi(Midi(0x97, 50, 64), 0.0);
+  engine->HandleMidi(Midi(0x97, 51, 0), 0.0);
+  CHECK(engine->trigger_count[7].load() == 1);
+
+  // Channel 10 belongs to no track: the white keys from C2 trigger A-H.
+  const int kWhiteKeys[kNumTracks] = { 36, 38, 40, 41, 43, 45, 47, 48 };
+  for (int t = 0; t < kNumTracks; ++t) {
+    engine->HandleMidi(Midi(0x99, kWhiteKeys[t], 100), 0.0);
+  }
+  engine->HandleMidi(Midi(0x99, 37, 100), 0.0);  // C#2: not in the scale.
+  CHECK(engine->trigger_count[0].load() == 2);
+  CHECK(engine->trigger_count[1].load() == 1);
+  CHECK(engine->trigger_count[7].load() == 2);
+
+  // Two tracks on the same channel play together; channel 0 turns one off.
+  project.midi_channels[1] = 1;
+  project.midi_channels[7] = 0;
+  engine->HandleMidi(Midi(0x90, 60, 100), 0.0);
+  engine->HandleMidi(Midi(0x97, 60, 100), 0.0);  // Channel 8: now unassigned.
+  CHECK(engine->trigger_count[0].load() == 3);
+  CHECK(engine->trigger_count[1].load() == 2);
+  CHECK(engine->trigger_count[7].load() == 2);  // 60 is not a trigger note.
+  CHECK(engine->midi_activity.load() == 14);
+}
+
+void TestMidiClock() {
+  // A 100 BPM clock: 24 ticks per quarter note, 7200 samples per step.
+  auto engine = MakeEngine();
+  engine->project().midi_clock_sync = true;
+  Pattern& p = engine->project().patterns[0];
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[4].on = true;
+  const double kTick = 60.0 / 100.0 / 24.0;
+  const size_t kSamplesPerTick = 1200;  // At 48 kHz.
+  std::vector<float> buffer(2 * kSamplesPerTick);
+
+  double time = 0.0;
+  for (int i = 0; i < 24; ++i) {  // Clock running before Start.
+    engine->HandleMidi(Midi(MIDI_CLOCK), time);
+    time += kTick;
+  }
+  CHECK_NEAR(engine->tempo(), 100.0, 0.5);
+  CHECK_NEAR(engine->project().bpm, 120.0, 1e-6);  // The saved tempo is kept.
+
+  engine->HandleMidi(Midi(MIDI_START), time);
+  CHECK(engine->playing());
+  // Nothing moves before the first tick.
+  engine->Render(buffer.data(), kSamplesPerTick);
+  CHECK(engine->trigger_count[0].load() == 0);
+
+  std::vector<int64_t> ticks_at_trigger;
+  uint32_t seen = 0;
+  for (int tick = 0; tick < 6 * 8; ++tick) {  // Two beats.
+    engine->HandleMidi(Midi(MIDI_CLOCK), time);
+    time += kTick;
+    engine->Render(buffer.data(), kSamplesPerTick);
+    uint32_t count = engine->trigger_count[0].load();
+    if (count != seen) {
+      seen = count;
+      ticks_at_trigger.push_back(tick);
+    }
+  }
+  // Steps 1 and 5 play on ticks 0 and 24.
+  CHECK((ticks_at_trigger == std::vector<int64_t>{ 0, 24 }));
+
+  // Without ticks, playback waits instead of running ahead.
+  int step_before = engine->pattern_step.load();
+  std::vector<float> long_buffer(2 * 20 * kSamplesPerTick);
+  engine->Render(long_buffer.data(), 20 * kSamplesPerTick);
+  CHECK(engine->pattern_step.load() == step_before);
+
+  engine->HandleMidi(Midi(MIDI_STOP), time);
+  CHECK(!engine->playing());
+  // Song Position: step 4 (MIDI beat 4), then Continue plays it on the
+  // next tick.
+  engine->HandleMidi(Midi(MIDI_SONG_POSITION, 4, 0), time);
+  engine->HandleMidi(Midi(MIDI_CONTINUE), time);
+  CHECK(engine->playing());
+  uint32_t before = engine->trigger_count[0].load();
+  engine->HandleMidi(Midi(MIDI_CLOCK), time);
+  engine->Render(buffer.data(), kSamplesPerTick);
+  CHECK(engine->trigger_count[0].load() == before + 1);
+
+  // Transport messages are ignored when not following the clock.
+  engine->project().midi_clock_sync = false;
+  engine->HandleMidi(Midi(MIDI_STOP), time);
+  CHECK(engine->playing());
+  CHECK_NEAR(engine->tempo(), 120.0, 1e-6);
+}
+
+void TestKits() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.patterns[1] = project.patterns[0];
+  // Pattern 2 gets its own kick.
+  ApplyPreset(PRESET_KICK_909, &project.patterns[1].kit[0]);
+
+  engine->SelectPattern(1);
+  CHECK(project.sounds[0].name == "Kick 909");
+  // An edit belongs to the current pattern and comes back with it.
+  project.sounds[0].params[P_DECAY] = 0.9f;
+  engine->SelectPattern(0);
+  CHECK(project.sounds[0].name == "Kick 808");
+  engine->SelectPattern(1);
+  CHECK_NEAR(project.sounds[0].params[P_DECAY], 0.9, 1e-6);
+
+  // The kit also changes at the end of a pattern when switching while playing.
+  engine->Play();
+  engine->SelectPattern(0);
+  RenderAndCollect(engine.get(), 0, 16 * kSamplesPerStep + 100);
+  CHECK(engine->current_pattern() == 0);
+  CHECK(project.sounds[0].name == "Kick 808");
+  engine->Stop();
+
+  // Panel: the sound playing stays across pattern changes, and its edits
+  // are stored nowhere until StoreKit().
+  engine->SetPanel(true);
+  project.sounds[0].params[P_TIMBRE] = 0.123f;
+  engine->SelectPattern(1);
+  CHECK(project.sounds[0].name == "Kick 808");
+  CHECK_NEAR(project.sounds[0].params[P_TIMBRE], 0.123, 1e-6);
+  CHECK(project.patterns[1].kit[0].name == "Kick 909");
+  // Leaving Panel mode reloads the current pattern's kit.
+  engine->SetPanel(false);
+  CHECK(project.sounds[0].name == "Kick 909");
+  // Storing writes the panel kit into the current pattern.
+  engine->SetPanel(true);
+  engine->SelectPattern(0);
+  ApplyPreset(PRESET_RIM, &project.sounds[0]);
+  engine->StoreKit();
+  engine->SetPanel(false);
+  CHECK(project.sounds[0].name == "Rim");
+  CHECK(project.patterns[0].kit[0].name == "Rim");
+}
+
+void TestLegacyProjectKits() {
+  // A version 1 project: one kit for the project, none in the patterns.
+  auto project = std::make_unique<Project>();
+  project->Init();
+  ApplyPreset(PRESET_CLAP, &project->sounds[3]);
+  std::string path = (std::filesystem::temp_directory_path() / "drumfreake_v1.json").string();
+  std::string error;
+  CHECK(SaveProject(*project, path, &error));
+  nlohmann::json j;
+  {
+    std::ifstream in(path);
+    in >> j;
+  }
+  for (auto& pattern : j["patterns"]) {
+    pattern.erase("kit");
+  }
+  {
+    std::ofstream out(path);
+    out << j.dump();
+  }
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject(path, loaded.get(), &error));
+  std::filesystem::remove(path);
+  for (const Pattern& pattern : loaded->patterns) {
+    CHECK(pattern.kit[3].name == "Clap");
+  }
+}
+
 void TestLiveRecording() {
   auto engine = MakeEngine();
   engine->recording = true;
@@ -387,8 +609,12 @@ void TestProjectRoundTrip() {
   project.patterns[3].tracks[4].steps[17].ratchets = 3;
   project.patterns[3].tracks[4].steps[17].locks[P_CUTOFF] = 0.25f;
   project.sounds[6].params[P_MORPH] = 0.125f;
+  ApplyPreset(PRESET_SPEECH, &project.patterns[5].kit[2]);
   project.chords[2] = 0x42;
   project.patterns[3].poly = true;
+  project.midi_clock_sync = true;
+  project.midi_channels[2] = 10;
+  project.midi_trigger_note = 48;
   project.key_root = 9;
   project.key_scale = 8;
   project.key_octave = -2;
@@ -412,9 +638,15 @@ void TestProjectRoundTrip() {
   CHECK_NEAR(step.locks[P_CUTOFF], 0.25, 1e-6);
   CHECK(!step.has_lock(P_TIMBRE));
   CHECK_NEAR(loaded->sounds[6].params[P_MORPH], 0.125, 1e-6);
+  CHECK(loaded->patterns[5].kit[2].name == "Speech");
+  CHECK(loaded->patterns[4].kit[2].name == project.patterns[4].kit[2].name);
   CHECK(loaded->sounds[0].name == project.sounds[0].name);
   CHECK(loaded->chords[2] == 0x42);
   CHECK(loaded->patterns[3].poly);
+  CHECK(loaded->midi_clock_sync);
+  CHECK(loaded->midi_channels[2] == 10);
+  CHECK(loaded->midi_channels[3] == 4);
+  CHECK(loaded->midi_trigger_note == 48);
   CHECK(loaded->key_root == 9);
   CHECK(loaded->key_scale == 8);
   CHECK(loaded->key_octave == -2);
@@ -486,6 +718,11 @@ int main() {
   TestPolyrhythm();
   TestLockFeedback();
   TestSong();
+  TestMidiParser();
+  TestMidiNotes();
+  TestMidiClock();
+  TestKits();
+  TestLegacyProjectKits();
   TestLiveRecording();
   TestChoke();
   TestGridsPlayback();

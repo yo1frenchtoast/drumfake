@@ -16,6 +16,7 @@
 #include "audio/master_fx.h"
 #include "audio/track_voice.h"
 #include "core/grids_gen.h"
+#include "core/midi_parser.h"
 #include "core/project.h"
 
 namespace drumfreake {
@@ -62,6 +63,18 @@ class Engine {
 
   int current_pattern() const { return current_pattern_; }
   int queued_pattern() const { return queued_pattern_; }
+  // Kits: each pattern has its own, loaded with it. In Panel mode (like the
+  // MatrixBrute's Panel button) the kit playing stays across pattern changes
+  // and edits are stored nowhere until StoreKit(); leaving Panel mode reloads
+  // the current pattern's kit.
+  void SetPanel(bool panel);
+  bool panel() const { return panel_; }
+  // Writes the kit playing into the current pattern.
+  void StoreKit();
+  // Replaces the kit playing with the current pattern's (after the pattern
+  // was loaded, pasted or restored). No effect in Panel mode.
+  void ReloadKit();
+
   // Switches now when stopped, at the end of the pattern when playing.
   // Leaves song mode, like selecting a pattern on the Arturia machines.
   void SelectPattern(int pattern);
@@ -71,6 +84,15 @@ class Engine {
 
   // Plays a track now (pads). When recording, also writes the step.
   void LiveTrigger(int track, float velocity, int note_offset);
+
+  // MIDI input: notes play tracks A-H; clock, Start, Stop, Continue and Song
+  // Position drive the transport when the project follows the MIDI clock.
+  // `time` (seconds, any monotonic clock) measures the external tempo.
+  void HandleMidi(const MidiMessage& message, double time);
+  // Tempo in use: the external clock's when following it.
+  float tempo() const;
+  // Prints every MIDI message received (--midi-monitor), except clock ticks.
+  bool midi_monitor = false;
 
   // Note repeat: tracks in `mask` retrigger at `rate` (0 to 7) while held.
   void SetRepeat(uint8_t mask, int rate);
@@ -99,6 +121,10 @@ class Engine {
   // Master output, for the screen oscilloscope.
   std::atomic<float> scope[kScopeSize];
   std::atomic<int> scope_write;
+  // Incremented by every MIDI message (activity LED), and the number of MIDI
+  // inputs open (set by io/midi_input).
+  std::atomic<uint32_t> midi_activity;
+  std::atomic<int> midi_input_ports;
   // Seconds of audio rendered per second of wall time, for the CPU meter.
   std::atomic<float> cpu_load;
 
@@ -123,6 +149,8 @@ class Engine {
   int TrackStep(const Pattern& pattern, int track, int64_t n) const;
   bool RollProbability(int64_t step, int track, float probability) const;
   size_t SamplesPerStep() const;
+  // Makes `pattern` current, swapping kits unless in Panel mode.
+  void ChangePattern(int pattern);
 
   std::mutex mutex_;
   std::unique_ptr<Project> project_;
@@ -132,6 +160,7 @@ class Engine {
 
   bool playing_;
   bool song_mode_;
+  bool panel_;
   int song_position_;
   int current_pattern_;
   int queued_pattern_;
@@ -154,6 +183,12 @@ class Engine {
   bool looping_;
   double loop_start_;
   double loop_length_;
+
+  // External clock: ticks received since Start (-1 until the first one), and
+  // the smoothed interval between ticks.
+  int64_t clock_ticks_;
+  double last_tick_time_;
+  double tick_interval_;
 
   float click_phase_;
   float click_envelope_;

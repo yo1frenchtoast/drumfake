@@ -215,6 +215,9 @@ void Faceplate::Tap() {
 }
 
 void Faceplate::PushUndo() {
+  if (!engine_->panel()) {
+    engine_->StoreKit();  // The snapshot carries the kit as it is now.
+  }
   undo_.push_back({ engine_->current_pattern(), std::make_unique<Pattern>(pattern()) });
   if (undo_.size() > 32) {
     undo_.pop_front();
@@ -237,6 +240,9 @@ void Faceplate::Undo() {
   }
   UndoEntry& entry = undo_.back();
   engine_->project().patterns[entry.pattern] = *entry.data;
+  if (entry.pattern == engine_->current_pattern()) {
+    engine_->ReloadKit();
+  }
   undo_.pop_back();
   Toast("Undo");
 }
@@ -248,6 +254,9 @@ void Faceplate::Copy() {
     clipboard_kind_ = CLIP_STEP;
     Toast("Step copied");
   } else if (patterns_mode_) {
+    if (!engine_->panel()) {
+      engine_->StoreKit();
+    }
     clip_pattern_ = std::make_unique<Pattern>(pattern());
     clipboard_kind_ = CLIP_PATTERN;
     Toast("Pattern copied");
@@ -267,6 +276,7 @@ void Faceplate::Paste() {
   } else if (clipboard_kind_ == CLIP_PATTERN && clip_pattern_) {
     PushUndo();
     pattern() = *clip_pattern_;
+    engine_->ReloadKit();
     Toast("Pattern pasted");
   } else if (clipboard_kind_ == CLIP_TRACK) {
     PushUndo();
@@ -303,6 +313,11 @@ void Faceplate::Erase() {
 
 void Faceplate::Save() {
   std::string error;
+  // Outside Panel mode the kit playing belongs to the current pattern; in
+  // Panel mode it is only stored with Store kit, as on the MatrixBrute.
+  if (!engine_->panel()) {
+    engine_->StoreKit();
+  }
   if (SaveProject(engine_->project(), project_path_, &error)) {
     Toast("Saved");
   } else {
@@ -1117,6 +1132,13 @@ void Faceplate::DrawSequencer() {
   }
 
   // Editing.
+  // Panel: keep the sound playing across pattern changes (MatrixBrute).
+  if (function_button(10, "##panel", "Panel", engine_->panel(), colors::kAccent).pressed) {
+    engine_->SetPanel(!engine_->panel());
+    Toast(engine_->panel() ? "Panel: sound kept across patterns"
+                           : "Panel off: pattern kit reloaded");
+  }
+
   if (function_button(12, "##copy", "Copy", false, 0).pressed) {
     Copy();
   }
@@ -1409,6 +1431,8 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawStepView(min, max);
   } else if (view_ == VIEW_EDIT) {
     DrawEditView(min, max);
+  } else if (view_ == VIEW_MIDI) {
+    DrawMidiView(min, max);
   } else if (keys_page_ && view_ == VIEW_MAIN) {
     DrawKeysView(min, max);
   } else if (view_ == VIEW_BROWSE) {
@@ -1441,9 +1465,23 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
     snprintf(text, sizeof(text), "> P%02d", engine_->queued_pattern() + 1);
     c.Text(min.x + 42, min.y + 3, 13, colors::kScreenDim, text, false, true);
   }
-  snprintf(text, sizeof(text), "%s%s  %.1f BPM",
+  // "EXT": the tempo comes from the MIDI clock.
+  snprintf(text, sizeof(text), "%s%s  %.1f %s",
            engine_->recording ? "REC " : "",
-           engine_->playing() ? ">" : "#", project.bpm);
+           engine_->playing() ? ">" : "#", engine_->tempo(),
+           project.midi_clock_sync ? "EXT" : "BPM");
+  // MIDI activity LED.
+  uint32_t activity = engine_->midi_activity.load(std::memory_order_relaxed);
+  if (activity != seen_midi_activity_) {
+    seen_midi_activity_ = activity;
+    midi_flash_time_ = ImGui::GetTime();
+  }
+  if (engine_->panel()) {
+    c.Text(max.x - 190, min.y + 5, 8, colors::kAmber, "PANEL", false, true);
+  }
+  bool midi_lit = ImGui::GetTime() - midi_flash_time_ < 0.08;
+  c.Text(max.x - 150, min.y + 5, 8, midi_lit ? colors::kScreenAccent : colors::kScreenDim,
+         "MIDI", false, true);
   c.Text(max.x - 112, min.y + 4, 11.5f, engine_->recording ? colors::kRed : colors::kScreenText,
          text, false, true);
 
@@ -1679,11 +1717,65 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
   if (ImGui::Button("Reload saved")) {
     std::string error;
     if (LoadProject(project_path_, &project, &error)) {
+      engine_->ReloadKit();
       Toast("Project reloaded");
     } else {
       Toast(error);
     }
   }
+
+  ImGui::SetCursorScreenPos(c.P(x0, min.y + 130));
+  char midi_label[32];
+  snprintf(midi_label, sizeof(midi_label), "MIDI settings (%d in)",
+           engine_->midi_input_ports.load());
+  if (ImGui::Button(midi_label)) {
+    view_ = VIEW_MIDI;
+  }
+  ImGui::SetCursorScreenPos(c.P(x1, min.y + 130));
+  char store_label[32];
+  snprintf(store_label, sizeof(store_label), "Store kit > P%02d", engine_->current_pattern() + 1);
+  if (ImGui::Button(store_label)) {
+    engine_->StoreKit();
+    Toast(std::string("Kit stored in pattern ") + std::to_string(engine_->current_pattern() + 1));
+  }
+}
+
+void Faceplate::DrawMidiView(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  Project& project = engine_->project();
+  char text[64];
+  snprintf(text, sizeof(text), "MIDI  |  %d input%s", engine_->midi_input_ports.load(),
+           engine_->midi_input_ports.load() == 1 ? "" : "s");
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+
+  float column = c.S((max.x - min.x - 20) * 0.5f);
+  float x0 = min.x + 8;
+  float x1 = min.x + 12 + (max.x - min.x - 20) * 0.5f;
+  ImGui::PushItemWidth(column);
+  ImGui::SetCursorScreenPos(c.P(x0, min.y + 22));
+  ImGui::Checkbox("Follow MIDI clock", &project.midi_clock_sync);
+  ImGui::SetCursorScreenPos(c.P(x1, min.y + 22));
+  std::string trigger = "Trig " + NoteName(project.midi_trigger_note) + " major";
+  ImGui::SliderInt("##trig", &project.midi_trigger_note, 0, 115, trigger.c_str());
+
+  // Channel of each track (0 = none).
+  for (int t = 0; t < kNumTracks; ++t) {
+    ImGui::SetCursorScreenPos(c.P(t < 4 ? x0 : x1, min.y + 46 + (t % 4) * 20.0f));
+    char id[16];
+    snprintf(id, sizeof(id), "##ch%d", t);
+    char format[32];
+    if (project.midi_channels[t] == 0) {
+      snprintf(format, sizeof(format), "%c  %s: off", 'A' + t, project.sounds[t].name.c_str());
+    } else {
+      snprintf(format, sizeof(format), "%c  %s: ch %%d", 'A' + t, project.sounds[t].name.c_str());
+    }
+    ImGui::SliderInt(id, &project.midi_channels[t], 0, 16, format);
+  }
+  ImGui::PopItemWidth();
+  c.Text(min.x + 8, min.y + 131, 7.5f, colors::kScreenDim,
+         "Tracks play the notes of their channel. Other channels:", false);
+  c.Text(min.x + 8, min.y + 141, 7.5f, colors::kScreenDim,
+         "the 8 notes of the major scale from Trig play A-H.", false);
 }
 
 void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {

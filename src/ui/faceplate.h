@@ -33,7 +33,7 @@ class Faceplate {
 
  private:
   enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
-  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE };
+  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
   void DrawChrome();
@@ -54,6 +54,7 @@ class Faceplate {
   void DrawStepView(ImVec2 min, ImVec2 max);
   void DrawEditView(ImVec2 min, ImVec2 max);
   void DrawBrowseView(ImVec2 min, ImVec2 max);
+  void DrawMidiView(ImVec2 min, ImVec2 max);
   void DrawScope(ImVec2 min, ImVec2 max);
   void HandleKeyboard();
 
@@ -136,6 +137,8 @@ class Faceplate {
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
   bool long_press_fired_ = false;  // The held step already got its long press.
+  uint32_t seen_midi_activity_ = 0;
+  double midi_flash_time_ = -10.0;
 
   std::vector<double> taps_;
   std::string toast_;

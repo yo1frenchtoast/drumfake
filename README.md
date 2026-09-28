@@ -92,9 +92,28 @@ Rendu hors ligne :
   la dernière entrée, *Erase* vide la chaîne. Ré-appuyer sur *Song* lance la chaîne en boucle
   (depuis le début au Play ; en cours de lecture, après le pattern en cours). Choisir un pattern
   en mode *Patterns* quitte le mode Song. La chaîne est sauvegardée avec le projet.
+- **Kits** : chaque pattern a ses propres sons, chargés avec lui (y compris en mode Song) ; les
+  réglages faits sur les potards restent dans le pattern courant. *Copy*/*Paste* d'un pattern
+  copie aussi son kit.
+- **Panel** (comme sur la MatrixBrute) : le son en cours reste en place quand on change de
+  pattern, et ses réglages ne sont enregistrés nulle part tant qu'on ne fait pas *Edit* →
+  *Store kit* (qui l'écrit dans le pattern courant). Éteindre Panel recharge le kit du pattern
+  courant. L'écran affiche « PANEL » quand il est actif.
 - **Edit** : longueur du pattern, swing, longueur par piste (polymétrie), BPM, lecture du Song,
   métronome, « Bake Grids » (écrit le rythme Grids dans A–C).
 - **Mute** / **Select** : les pads A–H coupent les pistes ou les sélectionnent sans les jouer.
+- **MIDI en entrée** (PC : tous les ports ALSA, branchés à chaud, plus un port virtuel
+  « Drumf(re)ake » ; Android : périphériques USB et applications MIDI) :
+  - un instrument = un canal : la piste A écoute le canal 1, B le canal 2… H le canal 8, et joue
+    les notes reçues à leur hauteur, avec la vélocité (elles s'enregistrent en Rec) ;
+  - à défaut (canaux affectés à aucune piste, ex. canal 10), les 8 notes de la gamme majeure à
+    partir de la note *Trig* (C2 par défaut : touches blanches C2 à C3) déclenchent A–H à leur
+    propre hauteur ;
+  - réglages dans *Edit* → *MIDI settings* : canal de chaque piste (off possible), note *Trig*,
+    *Follow MIDI clock* (tempo, Start/Stop/Continue et Song Position de l'horloge MIDI, 24 PPQN ;
+    l'écran affiche alors « EXT » avec le tempo mesuré) ;
+  - le témoin « MIDI » de l'écran clignote à chaque message ; `--midi-monitor` affiche les
+    messages reçus dans le terminal.
 - La sauvegarde est dans `~/.local/share/drumfreake/project.json`, rechargée au démarrage.
 
 ## Architecture

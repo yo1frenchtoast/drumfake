@@ -23,6 +23,10 @@ const Scale& scale(int index);
 // root; degrees past the octave continue in the next octaves).
 int ScaleDegree(int scale_index, int degree);
 
+// Degree (0-7) of `note` in the major scale starting at `root_note`, or -1
+// when the note is not one of its first eight notes.
+int MajorScaleDegree(int root_note, int note);
+
 // Offset of pad `pad` (0-7) in Keys mode, relative to the track pitch.
 int KeyOffset(int root, int scale_index, int octave, int pad);
 

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/project_io.h"
+#include "io/midi_input.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
@@ -161,6 +162,7 @@ int RunApp(Engine* engine, const AppOptions& options) {
     if (!LoadProject(project_path, &engine->project(), &error)) {
       fprintf(stderr, "%s (starting with the default project)\n", error.c_str());
     }
+    engine->ReloadKit();
   }
 
   PreferSystemGlLibraries();
@@ -260,6 +262,12 @@ int RunApp(Engine* engine, const AppOptions& options) {
   Faceplate faceplate;
   faceplate.Init(engine, project_path, font, bold);
 
+  MidiInput midi(engine);
+  if (!screenshot) {
+    midi.Start();
+  }
+  uint64_t last_midi_poll = SDL_GetTicks();
+
   bool done = false;
   int frame = 0;
   while (!done) {
@@ -288,6 +296,11 @@ int RunApp(Engine* engine, const AppOptions& options) {
            event.window.windowID == SDL_GetWindowID(window))) {
         done = true;
       }
+    }
+    // Pick up MIDI devices plugged in while running.
+    if (!screenshot && SDL_GetTicks() - last_midi_poll > 2000) {
+      last_midi_poll = SDL_GetTicks();
+      midi.Poll();
     }
     if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) {
       SDL_Delay(10);

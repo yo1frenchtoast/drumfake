@@ -43,8 +43,17 @@ struct TrackSequence {
   bool IsEmpty() const;
 };
 
+struct TrackSound {
+  std::string name;
+  float params[kNumTrackParams];
+
+  void Reset();  // All parameters to their defaults.
+};
+
 struct Pattern {
   TrackSequence tracks[kNumTracks];
+  // The pattern's sounds, loaded with it (unless the engine is in Panel mode).
+  TrackSound kit[kNumTracks];
   int length;   // In steps, 1 to kMaxSteps.
   float swing;  // 0.5 (straight) to 0.75.
   // Polyrhythm: tracks with their own length keep cycling across pattern
@@ -59,14 +68,9 @@ struct Pattern {
   }
 };
 
-struct TrackSound {
-  std::string name;
-  float params[kNumTrackParams];
-
-  void Reset();  // All parameters to their defaults.
-};
-
 struct Project {
+  // The kit playing and being edited: a live copy of the current pattern's
+  // kit, or a free-standing "panel" kit in Panel mode (see Engine::SetPanel).
   TrackSound sounds[kNumTracks];
   Pattern patterns[kNumPatterns];
   float master[M_LAST];
@@ -79,6 +83,13 @@ struct Project {
   int key_root;
   int key_scale;
   int key_octave;
+  // MIDI input. Each track listens on its own channel (1-16, 0 = none) and
+  // plays the notes it receives at their pitch. On the other channels, the
+  // eight notes of a major scale from `midi_trigger_note` trigger tracks A-H
+  // at their own pitch. `midi_clock_sync` follows an external clock.
+  bool midi_clock_sync;
+  int midi_channels[kNumTracks];
+  int midi_trigger_note;
   // Song: chain of pattern indices, played in order (a pattern may repeat).
   int song[kMaxSongLength];
   int song_length;
