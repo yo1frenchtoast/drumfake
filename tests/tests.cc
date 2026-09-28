@@ -610,6 +610,84 @@ void TestCopyPages() {
   CHECK(p.length == 64);
 }
 
+void TestDivisionsAndMicroTiming() {
+  // 1/8: steps are two 16ths long (12000 samples at 120 BPM).
+  auto engine = MakeEngine();
+  Pattern& p = engine->project().patterns[0];
+  p.division = 0;
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[3].on = true;
+  engine->Play();
+  std::vector<int64_t> triggers = RenderAndCollect(engine.get(), 0, 16 * 12000 - 100);
+  CHECK(triggers.size() == 2);
+  if (triggers.size() == 2) {
+    CHECK_NEAR(triggers[1], 3 * 12000, kBlockSize);
+  }
+
+  // 1/16T: 4000 samples per step.
+  engine = MakeEngine();
+  engine->project().patterns[0].division = 3;
+  engine->project().patterns[0].tracks[0].steps[3].on = true;
+  engine->Play();
+  triggers = RenderAndCollect(engine.get(), 0, 16 * 4000 - 100);
+  CHECK(triggers.size() == 1);
+  if (!triggers.empty()) {
+    CHECK_NEAR(triggers[0], 3 * 4000, kBlockSize);
+  }
+
+  // Micro timing: a quarter step late, half a step early.
+  engine = MakeEngine();
+  Pattern& q = engine->project().patterns[0];
+  q.tracks[0].steps[4].on = true;
+  q.tracks[0].steps[4].micro = 0.25f;
+  q.tracks[1].steps[2].on = true;
+  q.tracks[1].steps[2].micro = -0.5f;
+  engine->Play();
+  triggers = RenderAndCollect(engine.get(), 0, 8 * kSamplesPerStep);
+  CHECK(triggers.size() == 1);
+  if (!triggers.empty()) {
+    CHECK_NEAR(triggers[0], 4.25 * kSamplesPerStep, kBlockSize);
+  }
+  CHECK_NEAR(engine->last_trigger_sample[1].load(), 1.5 * kSamplesPerStep, kBlockSize);
+
+  // The metronome ticks on quarter notes whatever the division.
+  engine = MakeEngine();
+  engine->project().patterns[0].division = 4;  // 1/32.
+  engine->metronome = true;
+  engine->Play();
+  std::vector<float> buffer(2 * 4 * kSamplesPerStep);
+  engine->Render(buffer.data(), 4 * kSamplesPerStep);  // One quarter note.
+  int clicks = 0;
+  bool loud = false;
+  for (size_t i = 0; i < buffer.size(); i += 2) {
+    bool now = std::fabs(buffer[i]) > 0.05f;
+    clicks += now && !loud;
+    loud = now;
+  }
+  CHECK(clicks >= 1);
+}
+
+void TestSwitchAtEnd() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.patterns[1].Clear();
+  project.patterns[1].tracks[1].steps[5].on = true;
+  engine->Play();
+  RenderAndCollect(engine.get(), 0, 3 * kSamplesPerStep);
+  // At End (default): the switch waits for the end of the pattern.
+  engine->SelectPattern(1);
+  CHECK(engine->current_pattern() == 0);
+  // At End off: immediate, and the step count goes on (step 5 plays next).
+  project.switch_at_end = false;
+  engine->SelectPattern(1);
+  CHECK(engine->current_pattern() == 1);
+  std::vector<int64_t> t = RenderAndCollect(engine.get(), 1, 3 * kSamplesPerStep);
+  CHECK(t.size() == 1);
+  if (!t.empty()) {
+    CHECK_NEAR(t[0], 5 * kSamplesPerStep, kBlockSize);
+  }
+}
+
 void TestLiveRecording() {
   auto engine = MakeEngine();
   engine->recording = true;
@@ -653,6 +731,9 @@ void TestProjectRoundTrip() {
   ApplyPreset(PRESET_SPEECH, &project.patterns[5].kit[2]);
   project.chords[2] = 0x42;
   project.patterns[3].poly = true;
+  project.patterns[3].division = 1;
+  project.patterns[3].tracks[4].steps[17].micro = -0.2f;
+  project.switch_at_end = false;
   project.midi_clock_sync = true;
   project.midi_channels[2] = 10;
   project.midi_trigger_note = 48;
@@ -684,6 +765,10 @@ void TestProjectRoundTrip() {
   CHECK(loaded->sounds[0].name == project.sounds[0].name);
   CHECK(loaded->chords[2] == 0x42);
   CHECK(loaded->patterns[3].poly);
+  CHECK(loaded->patterns[3].division == 1);
+  CHECK(loaded->patterns[0].division == kDefaultDivision);
+  CHECK_NEAR(loaded->patterns[3].tracks[4].steps[17].micro, -0.2, 1e-6);
+  CHECK(!loaded->switch_at_end);
   CHECK(loaded->midi_clock_sync);
   CHECK(loaded->midi_channels[2] == 10);
   CHECK(loaded->midi_channels[3] == 4);
@@ -765,6 +850,8 @@ int main() {
   TestKits();
   TestClearParamLocks();
   TestCopyPages();
+  TestDivisionsAndMicroTiming();
+  TestSwitchAtEnd();
   TestLegacyProjectKits();
   TestLiveRecording();
   TestChoke();

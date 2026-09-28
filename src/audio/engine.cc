@@ -92,6 +92,7 @@ void Engine::Init() {
   current_pattern_ = 0;
   queued_pattern_ = -1;
   position_ = 0.0;
+  beat_position_ = 0.0;
   free_position_ = 0.0;
   pattern_start_ = 0;
   poly_origin_ = 0;
@@ -122,6 +123,7 @@ void Engine::Play() {
   playing_ = true;
   clock_ticks_ = -1;  // With an external clock, wait for its first tick.
   position_ = 0.0;
+  beat_position_ = 0.0;
   free_position_ = 0.0;
   pattern_start_ = 0;
   poly_origin_ = 0;
@@ -219,7 +221,7 @@ void Engine::HandleMidi(const MidiMessage& message, double time) {
       if (sync && !playing_) {
         playing_ = true;
         looping_ = false;
-        clock_ticks_ = static_cast<int64_t>(std::llround(position_ * 6.0)) - 1;
+        clock_ticks_ = static_cast<int64_t>(std::llround(beat_position_ * 6.0)) - 1;
       }
       break;
     case MIDI_STOP:
@@ -229,13 +231,15 @@ void Engine::HandleMidi(const MidiMessage& message, double time) {
       break;
     case MIDI_SONG_POSITION:
       if (sync && !playing_) {
-        // In MIDI beats (16th notes), i.e. steps.
-        int64_t steps = message.data[0] | (message.data[1] << 7);
+        // In MIDI beats (16th notes).
+        int64_t sixteenths = message.data[0] | (message.data[1] << 7);
         int length = project_->patterns[current_pattern_].length;
-        position_ = static_cast<double>(steps);
+        position_ = sixteenths / StepLength();
+        int64_t steps = static_cast<int64_t>(std::floor(position_));
         pattern_start_ = steps - steps % length;
         poly_origin_ = 0;
-        clock_ticks_ = steps * 6 - 1;
+        beat_position_ = static_cast<double>(sixteenths);
+        clock_ticks_ = sixteenths * 6 - 1;
       }
       break;
     default:
@@ -245,7 +249,8 @@ void Engine::HandleMidi(const MidiMessage& message, double time) {
 
 void Engine::SelectPattern(int pattern) {
   song_mode_ = false;
-  if (!playing_) {
+  if (!playing_ || !project_->switch_at_end) {
+    // Stopped, or At End off: switch now (playing, the step count goes on).
     ChangePattern(pattern);
     queued_pattern_ = -1;
   } else {
@@ -295,8 +300,16 @@ void Engine::SetRepeat(uint8_t mask, int rate) {
   repeat_rate_ = std::max(0, std::min(kNumRepeatRates - 1, rate));
 }
 
-size_t Engine::SamplesPerStep() const {
+double Engine::StepLength() const {
+  return kDivisionSteps[project_->patterns[current_pattern_].division];
+}
+
+size_t Engine::SamplesPerSixteenth() const {
   return static_cast<size_t>(kSampleRate * 15.0f / tempo());
+}
+
+size_t Engine::SamplesPerStep() const {
+  return static_cast<size_t>(SamplesPerSixteenth() * StepLength());
 }
 
 bool Engine::RollProbability(int64_t step, int track, float probability) const {
@@ -414,8 +427,10 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
     // Events of the current pattern in [a, b).
     const double swing_offset = 2.0 * pattern.swing - 1.0;
     const double step_samples = static_cast<double>(SamplesPerStep());
+    // Steps can be late (swing, micro timing, ratchets) or early (micro
+    // timing), hence the margins.
     for (int64_t n = static_cast<int64_t>(std::floor(a)) - 2;
-         n <= static_cast<int64_t>(std::floor(b)); ++n) {
+         n <= static_cast<int64_t>(std::floor(b)) + 1; ++n) {
       if (n < pattern_start_ || a >= b) {
         continue;
       }
@@ -425,10 +440,6 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
 
       if (base_in_window) {
         pattern_step = static_cast<int>(k % pattern.length);
-        if (metronome && k % 4 == 0) {
-          click_envelope_ = 1.0f;
-          click_frequency_ = (k % pattern.length) == 0 ? 1600.0f : 1000.0f;
-        }
       }
 
       for (int t = 0; t < kNumTracks; ++t) {
@@ -444,7 +455,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
           continue;
         }
         for (int r = 0; r < step.ratchets; ++r) {
-          double time = t0 + static_cast<double>(r) / step.ratchets;
+          double time = t0 + step.micro + static_cast<double>(r) / step.ratchets;
           if (time < a || time >= b) {
             continue;
           }
@@ -506,7 +517,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
 void Engine::RunSequencer(double start, double end) {
   bool loop_requested = xy_mode == XY_LOOPER && xy_touched;
   if (loop_requested) {
-    double length = kLoopLengths[Discrete(xy_y, kNumLoopLengths)];
+    double length = kLoopLengths[Discrete(xy_y, kNumLoopLengths)] / StepLength();
     if (!looping_) {
       double relative = start - static_cast<double>(pattern_start_);
       loop_start_ = static_cast<double>(pattern_start_) +
@@ -541,7 +552,7 @@ float Engine::LfoValue(int track, int lfo) const {
   const float* params = project_->sounds[track].params;
   int base = lfo == 0 ? P_LFO1_RATE : P_LFO2_RATE;
   double period = kLfoPeriods[Discrete(params[base], kNumLfoRates)] * 4.0;
-  double position = (playing_ ? position_ : free_position_) / period;
+  double position = (playing_ ? beat_position_ : free_position_) / period;
   double cycle = std::floor(position);
   float phase = static_cast<float>(position - cycle);
   switch (Discrete(params[base + 1], LFO_SHAPE_LAST)) {
@@ -613,27 +624,38 @@ void Engine::RenderClick(float* out_l, float* out_r) {
 }
 
 void Engine::RenderBlock(float* out_l, float* out_r) {
-  const double increment = tempo() / 60.0 * 4.0 / kSampleRate * kBlockSize;
+  // Positions: steps for the sequencer, 16th notes for everything musical.
+  const double sixteenths = tempo() / 60.0 * 4.0 / kSampleRate * kBlockSize;
+  const double step_length = StepLength();
   const double start = position_;
-  double end = start + increment;
+  double end = start + sixteenths / step_length;
   if (playing_ && project_->midi_clock_sync) {
-    // Follow the external clock (24 PPQN, so 6 ticks per step): run at its
+    // Follow the external clock (24 PPQN, 6 ticks per 16th): run at its
     // tempo but never past the next tick, and catch up when a tick is ahead.
-    double tick_position = clock_ticks_ / 6.0;
-    double next_tick = (clock_ticks_ + 1) / 6.0;
+    double ticks_per_step = 6.0 * step_length;
+    double tick_position = clock_ticks_ / ticks_per_step;
+    double next_tick = (clock_ticks_ + 1) / ticks_per_step;
     end = std::clamp(end, std::max(start, tick_position), std::max(start, next_tick));
   }
+  const double beat_start = beat_position_;
+  const double beat_end = beat_start + (end - start) * step_length;
   if (playing_) {
     RunSequencer(start, end);
+    // Metronome on quarter notes, higher on the first beat of each bar.
+    double next_beat = std::ceil(beat_start / 4.0) * 4.0;
+    if (metronome && next_beat < beat_end) {
+      click_envelope_ = 1.0f;
+      click_frequency_ = std::fmod(next_beat, 16.0) == 0.0 ? 1600.0f : 1000.0f;
+    }
   }
 
   // Note repeat, on the grid of the running clock.
   if (repeat_mask_) {
-    double clock = playing_ ? start : free_position_;
+    double clock = playing_ ? beat_start : free_position_;
     double period = kRepeatPeriods[repeat_rate_];
     double next = std::ceil(clock / period) * period;
-    if (next < clock + increment) {
-      size_t gate = static_cast<size_t>(period * SamplesPerStep());
+    if (next < clock + sixteenths) {
+      size_t gate = static_cast<size_t>(period * SamplesPerSixteenth());
       gate = gate > kBlockSize * 2 ? gate - kBlockSize : kBlockSize;
       for (int t = 0; t < kNumTracks; ++t) {
         if (repeat_mask_ & (1 << t)) {
@@ -644,8 +666,9 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
   }
   if (playing_) {
     position_ = end;
+    beat_position_ = beat_end;
   }
-  free_position_ += increment;
+  free_position_ += sixteenths;
 
   buses_.Clear();
   float extra_delay_send = 0.0f;

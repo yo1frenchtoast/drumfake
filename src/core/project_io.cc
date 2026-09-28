@@ -58,6 +58,9 @@ json StepToJson(int index, const Step& s) {
     { "rat", s.ratchets },
     { "note", s.note },
   };
+  if (s.micro != 0.0f) {
+    j["micro"] = s.micro;
+  }
   json locks = json::object();
   for (int p = 0; p < kNumLockable; ++p) {
     if (s.has_lock(p)) {
@@ -77,6 +80,7 @@ void StepFromJson(const json& j, Step* s) {
   s->probability = Clamp01(j.value("prob", 1.0f));
   s->ratchets = std::max(1, std::min(kMaxRatchets, j.value("rat", 1)));
   s->note = std::max(-48, std::min(48, j.value("note", 0)));
+  s->micro = std::max(-kMaxMicroTiming, std::min(kMaxMicroTiming, j.value("micro", 0.0f)));
   if (j.contains("locks")) {
     for (auto& [key, value] : j["locks"].items()) {
       int p = std::atoi(key.c_str());
@@ -97,6 +101,7 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
   j["master"] = FloatArray(project.master);
   j["assign"] = FloatArray(project.assign);
   j["chords"] = std::vector<int>(project.chords, project.chords + 8);
+  j["switch_at_end"] = project.switch_at_end;
   j["midi"] = {
     { "clock_sync", project.midi_clock_sync },
     { "channels", std::vector<int>(project.midi_channels, project.midi_channels + kNumTracks) },
@@ -115,6 +120,7 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
       { "length", pattern.length },
       { "swing", pattern.swing },
       { "poly", pattern.poly },
+      { "division", pattern.division },
       { "kit", KitToJson(pattern.kit) },
     };
     for (const TrackSequence& track : pattern.tracks) {
@@ -167,6 +173,7 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         loaded.chords[i] = static_cast<uint8_t>(j["chords"][i].get<int>());
       }
     }
+    loaded.switch_at_end = j.value("switch_at_end", true);
     if (j.contains("midi")) {
       const json& midi = j["midi"];
       loaded.midi_clock_sync = midi.value("clock_sync", false);
@@ -205,6 +212,8 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         pattern.length = std::max(1, std::min(kMaxSteps, jp.value("length", 16)));
         pattern.swing = std::max(0.5f, std::min(0.75f, jp.value("swing", 0.5f)));
         pattern.poly = jp.value("poly", false);
+        pattern.division = std::max(0, std::min(kNumDivisions - 1,
+                                                jp.value("division", kDefaultDivision)));
         if (jp.contains("kit")) {
           KitFromJson(jp["kit"], pattern.kit);
         }

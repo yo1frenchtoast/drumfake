@@ -43,6 +43,7 @@ class Faceplate {
   void DrawSoundEdit();
   void DrawSequencer();
   void DrawPads();
+  void DrawShiftStep(int step, ImVec2 min, ImVec2 max);
   void DrawScreen(ImVec2 min, ImVec2 max);
   void DrawMainView(ImVec2 min, ImVec2 max);
   void DrawSongView(ImVec2 min, ImVec2 max);
@@ -107,7 +108,6 @@ class Faceplate {
   int view_page_ = 0;
   bool patterns_mode_ = false;
   bool notes_mode_ = false;
-  bool last_step_mode_ = false;
   bool song_edit_ = false;
   bool song_edit_fresh_ = false;  // The next pattern pressed starts a new chain.
   bool keys_page_ = false;  // Sound Edit knobs and screen show the Keys settings.
@@ -143,6 +143,8 @@ class Faceplate {
   bool long_press_fired_ = false;  // The held step already got its long press.
   // Erase held (button or Delete key): touching a knob then clears that
   // parameter's locks on the track, instead of the usual Erase on release.
+  bool shift_held_ = false;
+  bool step_held_by_finger_ = false;  // held_step_ lasts while the finger does.
   bool erase_held_ = false;
   bool erase_used_ = false;
   // Last Step and Copy held, and whether a page button was used meanwhile.
@@ -151,7 +153,9 @@ class Faceplate {
   bool copy_held_ = false;
   bool copy_used_ = false;
   int copy_source_page_ = -1;
-  // The steps follow the page playing, until a page is chosen by hand.
+  // The steps follow the page playing (Shift + 15), until a page is chosen
+  // by hand.
+  bool follow_enabled_ = true;
   bool follow_playhead_ = true;
   bool was_playing_ = false;
   uint32_t seen_midi_activity_ = 0;

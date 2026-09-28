@@ -21,12 +21,20 @@ const int kNumPatterns = 16;
 const int kMaxRatchets = 4;
 const int kMaxSongLength = 64;
 
+// Time division of a pattern: the length of one step, in 16th notes.
+const int kNumDivisions = 5;
+const int kDefaultDivision = 2;  // 1/16.
+extern const float kDivisionSteps[kNumDivisions];
+extern const char* const kDivisionNames[kNumDivisions];
+const float kMaxMicroTiming = 0.5f;  // Of a step, either way.
+
 struct Step {
   bool on;
   float velocity;     // 0 to 1.
   float probability;  // 0 to 1.
   int ratchets;       // 1 to kMaxRatchets.
   int note;           // Semitones relative to the track pitch.
+  float micro;        // Timing offset, in steps (-0.5 to 0.5).
   float locks[kNumLockable];  // NAN when the parameter is not locked.
 
   void Clear();
@@ -58,6 +66,7 @@ struct Pattern {
   TrackSound kit[kNumTracks];
   int length;   // In steps, 1 to kMaxSteps.
   float swing;  // 0.5 (straight) to 0.75.
+  int division; // Index in kDivisionSteps.
   // Polyrhythm: tracks with their own length keep cycling across pattern
   // loops instead of restarting with the pattern.
   bool poly;
@@ -94,6 +103,9 @@ struct Project {
   // eight notes of a major scale from `midi_trigger_note` trigger tracks A-H
   // at their own pitch. `midi_clock_sync` follows an external clock.
   bool midi_clock_sync;
+  // Pattern changes wait for the end of the playing pattern ("At End"), or
+  // happen at once.
+  bool switch_at_end;
   int midi_channels[kNumTracks];
   int midi_trigger_note;
   // Song: chain of pattern indices, played in order (a pattern may repeat).

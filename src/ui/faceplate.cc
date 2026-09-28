@@ -124,7 +124,7 @@ void Faceplate::TrackPadDown(int track) {
     return;
   }
   engine_->selected_track = track;
-  if (select_mode_) {
+  if (select_mode_ || shift_held_) {
     return;
   }
   track_pad_held_[track] = true;
@@ -140,6 +140,17 @@ void Faceplate::TrackPadUp(int track) {
 void Faceplate::LowerPadDown(int pad) {
   Project& project = engine_->project();
   int track = engine_->selected_track;
+  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS) {
+    // Held step: pads 1-4 set its repeats (the DrumBrute's Step Repeat).
+    if (pad < kMaxRatchets) {
+      PushUndo();
+      Step& step = pattern().tracks[track].steps[held_step_];
+      step.ratchets = pad + 1;
+      Toast("Step " + std::to_string(held_step_ + 1) + ": " + std::to_string(pad + 1) +
+            (pad ? " hits" : " hit"));
+    }
+    return;
+  }
   switch (pad_mode_) {
     case PADS_SOUNDS: {
       int preset = preset_bank_ * 8 + pad;
@@ -687,15 +698,16 @@ void Faceplate::DrawTopLeft() {
     TogglePlay();
   }
 
-  // Pad modes (top row) and pad behavior (bottom row), 3 columns level with
-  // the lower row of pads.
+  // Pad modes (top row) and pad behavior (middle row), 3 columns level with
+  // the lower row of pads, and Shift on its own at the bottom.
   float w3 = (layout::kLeftX1 - layout::kLeftX0 - 2 * layout::kGap) / 3.0f;
-  float row_h = (layout::kPadRow2Y1 - layout::kPadRow2Y0 - layout::kGap) * 0.5f;
+  const float kRowHeight = 38.0f;
+  const float kShiftY0 = layout::kPadRow2Y1 - 46.0f;
   auto cell = [&](int i, ImVec2* min, ImVec2* max) {
     float x0 = layout::kLeftX0 + (i % 3) * (w3 + layout::kGap);
-    float y0 = layout::kPadRow2Y0 + (i / 3) * (row_h + layout::kGap);
+    float y0 = layout::kPadRow2Y0 + (i / 3) * (kRowHeight + 8.0f);
     *min = ImVec2(x0, y0);
-    *max = ImVec2(x0 + w3, y0 + row_h);
+    *max = ImVec2(x0 + w3, y0 + kRowHeight);
   };
   struct ModeButton {
     const char* id;
@@ -739,6 +751,21 @@ void Faceplate::DrawTopLeft() {
     // First press: Keys mode and its page; next presses show or hide the page.
     keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
     pad_mode_ = PADS_KEYS;
+  }
+
+  // Shift (or Alt on the keyboard): held, the steps become options and the
+  // pads select tracks without playing them.
+  Interaction shift = Button(c, "##shift", ImVec2(layout::kLeftX0, kShiftY0),
+                             ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
+                             ICON_NONE, shift_held_, colors::kAmber);
+  ImGuiIO& io = ImGui::GetIO();
+  shift_held_ = shift.active ||
+      (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
+  if (shift_held_) {
+    c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
+           colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End", false);
+    c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
+           colors::kLabelDim, "15: follow   16: poly   pad: select", false);
   }
   UpdateRepeat();
 }
@@ -883,7 +910,12 @@ void Faceplate::DrawScreenSection() {
     encoder_accumulator_ -= steps * 0.04f;
     int track = engine_->selected_track;
     TrackSound& sound = engine_->project().sounds[track];
-    if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
+    if (held_step_ >= 0) {
+      // Held step: nudge it early or late, by 5% of a step.
+      Step& step = pattern().tracks[track].steps[held_step_];
+      step.micro = std::clamp(std::round((step.micro + steps * 0.05f) * 20.0f) / 20.0f,
+                              -kMaxMicroTiming, kMaxMicroTiming);
+    } else if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
       ChangeKey(keys_field_, steps);
     } else if (view_ == VIEW_BROWSE) {
       browse_index_ = (browse_index_ + steps + kNumPresets * 4) % kNumPresets;
@@ -927,7 +959,6 @@ void Faceplate::DrawScreenSection() {
       song_edit_ = true;
       song_edit_fresh_ = true;
       patterns_mode_ = false;
-      last_step_mode_ = false;
       Toast("Song: press patterns in order");
     } else {
       song_edit_ = false;
@@ -1145,13 +1176,11 @@ void Faceplate::DrawSequencer() {
   // the editing buttons sit on the right.
   if (function_button(0, "##patterns", "Patterns", patterns_mode_, colors::kAccent).pressed) {
     patterns_mode_ = !patterns_mode_;
-    last_step_mode_ = false;
     song_edit_ = false;
   }
-  if (function_button(1, "##steps", "Steps", !patterns_mode_ && !last_step_mode_ && !song_edit_,
+  if (function_button(1, "##steps", "Steps", !patterns_mode_ && !song_edit_,
                       colors::kAccent).pressed) {
     patterns_mode_ = false;
-    last_step_mode_ = false;
     song_edit_ = false;
   }
 
@@ -1162,8 +1191,8 @@ void Faceplate::DrawSequencer() {
   }
   was_playing_ = engine_->playing();
   int track_step = engine_->track_step[track].load();
-  if (engine_->playing() && follow_playhead_ && track_step >= 0 && held_step_ < 0 &&
-      !last_step_mode_ && !patterns_mode_ && !song_edit_) {
+  if (engine_->playing() && follow_enabled_ && follow_playhead_ && track_step >= 0 &&
+      held_step_ < 0 && !last_step_held_ && !shift_held_ && !patterns_mode_ && !song_edit_) {
     view_page_ = track_step / kStepsPerPage;
   }
 
@@ -1176,7 +1205,7 @@ void Faceplate::DrawSequencer() {
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
-        last_step_mode_ || last_step_held_ || copy_held_;
+        last_step_held_ || copy_held_;
     ImU32 color = i == view_page_ ? colors::kAccent
         : (i == play_page ? colors::kAmber : colors::kLabelDim);
     bool lit = in_pattern && (i == view_page_ || i == play_page);
@@ -1219,19 +1248,20 @@ void Faceplate::DrawSequencer() {
     p.poly = !p.poly;
     Toast(p.poly ? "Poly: tracks cycle on their own length" : "Poly off: tracks restart with the pattern");
   }
-  // Last Step: held with a page button, sets the pattern length; pressed
-  // alone, toggles the per-track last step mode (on release).
-  Interaction last = function_button(8, "##last", "Last Step", last_step_mode_ || last_step_held_,
+  // Last Step (or L on the keyboard), held: the steps show the length and
+  // pressing one sets the last step (of the pattern, or of the selected
+  // track in Poly mode); a page button sets it to 16, 32, 48 or 64.
+  Interaction last = function_button(8, "##last", "Last Step", last_step_held_,
                                      colors::kAccent);
-  if (last.active && !last_step_held_) {
+  bool last_now = last.active ||
+      (!ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_L));
+  if (last_now && !last_step_held_) {
     last_step_used_ = false;
   }
-  if (!last.active && last_step_held_ && !last_step_used_) {
-    last_step_mode_ = !last_step_mode_;
-    patterns_mode_ = false;
-    song_edit_ = false;
+  if (!last_now && last_step_held_ && !last_step_used_) {
+    Toast("Hold Last Step and press a step or a page");
   }
-  last_step_held_ = last.active;
+  last_step_held_ = last_now;
 
   // Editing.
   // Panel: keep the sound playing across pattern changes (MatrixBrute).
@@ -1282,6 +1312,11 @@ void Faceplate::DrawSequencer() {
     char face[16];
     bool lit = false;
     ImU32 color = colors::kLedWhite;
+
+    if (shift_held_) {
+      DrawShiftStep(i, min, max);
+      continue;
+    }
 
     if (song_edit_) {
       Project& project = engine_->project();
@@ -1345,20 +1380,27 @@ void Faceplate::DrawSequencer() {
     const Step& step = p.tracks[track].steps[index];
     bool in_range = index < track_length;
 
-    if (last_step_mode_) {
-      // DrumBrute-style: press the step that ends the track.
+    if (last_step_held_) {
+      // DrumBrute-style: press the last step. In Poly mode it is the selected
+      // track's (pressing its current last step again follows the pattern).
+      int length = p.poly ? track_length : p.length;
       snprintf(face, sizeof(face), "%d", index + 1);
-      lit = in_range;
-      color = index == track_length - 1 ? colors::kAccent : IM_COL32(150, 158, 165, 255);
+      lit = index < length;
+      color = index == length - 1 ? colors::kAccent : IM_COL32(150, 158, 165, 255);
       Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
       if (in.pressed) {
         PushUndo();
-        TrackSequence& sequence = p.tracks[track];
-        // Pressing the current last step again follows the pattern length.
-        sequence.length = sequence.length == index + 1 ? 0 : index + 1;
+        last_step_used_ = true;
         char message[64];
-        snprintf(message, sizeof(message), "Track %c: %d steps%s", 'A' + track,
-                 p.track_length(track), sequence.length == 0 ? " (pattern)" : "");
+        if (p.poly) {
+          TrackSequence& sequence = p.tracks[track];
+          sequence.length = sequence.length == index + 1 ? 0 : index + 1;
+          snprintf(message, sizeof(message), "Track %c: %d steps%s", 'A' + track,
+                   p.track_length(track), sequence.length == 0 ? " (pattern)" : "");
+        } else {
+          p.length = index + 1;
+          snprintf(message, sizeof(message), "Pattern: %d steps", p.length);
+        }
         Toast(message);
       }
       continue;
@@ -1385,8 +1427,15 @@ void Faceplate::DrawSequencer() {
       long_press_fired_ = false;
     }
     if (in.long_pressed && in_range) {
-      held_step_ = held_step_ == index ? -1 : index;
+      // Finger held: edit the step while it is held (the mouse's right click
+      // selects it until clicked again).
+      held_step_ = index;
+      step_held_by_finger_ = true;
       long_press_fired_ = true;
+    }
+    if (step_held_by_finger_ && held_step_ == index && !in.active) {
+      held_step_ = -1;
+      step_held_by_finger_ = false;
     }
     bool toggle = in.touch ? in.clicked && !long_press_fired_ : in.pressed;
     if (toggle && in_range) {
@@ -1399,6 +1448,7 @@ void Faceplate::DrawSequencer() {
     }
     if (in.right_clicked && in_range) {
       held_step_ = held_step_ == index ? -1 : index;
+      step_held_by_finger_ = false;
     }
     if (!in_range) {
       dl->AddRectFilled(c.P(min.x + 2, min.y + 2), c.P(max.x - 2, max.y - 3),
@@ -1416,6 +1466,63 @@ void Faceplate::DrawSequencer() {
         dl->AddCircleFilled(c.P(min.x + 7 + r * 5.0f, max.y - 8), c.S(1.5f), colors::kLabel);
       }
     }
+    if (step.micro != 0.0f && step.on) {
+      // Early or late: a tick left or right of the center.
+      float mid = (min.x + max.x) * 0.5f;
+      float x = mid + step.micro * (max.x - min.x - 12);
+      dl->AddLine(c.P(mid, max.y - 5), c.P(x, max.y - 5), colors::kAmber, c.S(2));
+    }
+  }
+}
+
+void Faceplate::DrawShiftStep(int i, ImVec2 min, ImVec2 max) {
+  // Shift + steps, as on the DrumBrute: 1-5 time division, 13 metronome,
+  // 14 At End, 15 follow, 16 Poly.
+  const Canvas& c = canvas_;
+  Pattern& p = pattern();
+  Project& project = engine_->project();
+  char id[16];
+  snprintf(id, sizeof(id), "##shift%d", i);
+  const char* label = "";
+  bool lit = false;
+  if (i < kNumDivisions) {
+    label = kDivisionNames[i];
+    lit = p.division == i;
+  } else if (i == 12) {
+    label = "Metro";
+    lit = engine_->metronome;
+  } else if (i == 13) {
+    label = "At End";
+    lit = project.switch_at_end;
+  } else if (i == 14) {
+    label = "Follow";
+    lit = follow_enabled_;
+  } else if (i == 15) {
+    label = "Poly";
+    lit = p.poly;
+  }
+  Interaction in = Button(c, id, min, max, label, "", ICON_NONE, lit, colors::kAmber);
+  if (!in.pressed || !*label) {
+    return;
+  }
+  if (i < kNumDivisions) {
+    p.division = i;
+    Toast(std::string("Time division: ") + kDivisionNames[i]);
+  } else if (i == 12) {
+    engine_->metronome = !engine_->metronome;
+    Toast(engine_->metronome ? "Metronome on" : "Metronome off");
+  } else if (i == 13) {
+    project.switch_at_end = !project.switch_at_end;
+    Toast(project.switch_at_end ? "At End: patterns change at their end"
+                                : "At End off: patterns change at once");
+  } else if (i == 14) {
+    follow_enabled_ = !follow_enabled_;
+    follow_playhead_ = true;
+    Toast(follow_enabled_ ? "Follow: steps follow the playing page" : "Follow off");
+  } else {
+    p.poly = !p.poly;
+    Toast(p.poly ? "Poly: tracks cycle on their own length"
+                 : "Poly off: tracks restart with the pattern");
   }
 }
 
@@ -1759,8 +1866,17 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   }
   ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 78));
   ImGui::SliderInt("##rat", &step.ratchets, 1, kMaxRatchets, "Ratchets %d");
+  float half = (width - c.S(4)) * 0.5f;
   ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 96));
+  ImGui::SetNextItemWidth(half);
   ImGui::SliderInt("##note", &step.note, -48, 48, "Note %+d");
+  ImGui::SetCursorScreenPos(ImVec2(c.P(min.x + 8, min.y + 96).x + half + c.S(4),
+                                   c.P(min.x + 8, min.y + 96).y));
+  ImGui::SetNextItemWidth(half);
+  float nudge = step.micro * 100.0f;
+  if (ImGui::SliderFloat("##micro", &nudge, -50.0f, 50.0f, "Nudge %+.0f%%")) {
+    step.micro = nudge / 100.0f;
+  }
   ImGui::PopItemWidth();
 
   std::string locks;
@@ -1949,7 +2065,6 @@ void Faceplate::HandleKeyboard() {
   if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) TogglePlay();
   if (ImGui::IsKeyPressed(ImGuiKey_Enter, false)) engine_->recording = !engine_->recording;
   if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-    last_step_mode_ = false;
     song_edit_ = false;
     view_ = VIEW_MAIN;
     held_step_ = -1;
@@ -1964,7 +2079,6 @@ void Faceplate::HandleKeyboard() {
     if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) ChangeKey(0, -1);
     if (ImGui::IsKeyPressed(ImGuiKey_Tab)) ChangeKey(1, io.KeyShift ? -1 : 1);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_L, false)) last_step_mode_ = !last_step_mode_;
   if (ImGui::IsKeyPressed(ImGuiKey_P, false)) pattern().poly = !pattern().poly;
   const ImGuiKey kPageKeys[PAGE_LAST] = {
     ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6

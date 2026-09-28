@@ -6,12 +6,20 @@
 
 namespace drumfreake {
 
+const float kDivisionSteps[kNumDivisions] = {
+  2.0f, 4.0f / 3.0f, 1.0f, 2.0f / 3.0f, 0.5f
+};
+const char* const kDivisionNames[kNumDivisions] = {
+  "1/8", "1/8T", "1/16", "1/16T", "1/32"
+};
+
 void Step::Clear() {
   on = false;
   velocity = 0.8f;
   probability = 1.0f;
   ratchets = 1;
   note = 0;
+  micro = 0.0f;
   ClearLocks();
 }
 
@@ -63,6 +71,7 @@ void Pattern::Clear() {
   }
   length = kStepsPerPage;
   swing = 0.5f;
+  division = kDefaultDivision;
   poly = false;
 }
 
@@ -176,6 +185,7 @@ void Project::Init() {
   }
   song_length = 0;
   midi_clock_sync = false;
+  switch_at_end = true;
   for (int i = 0; i < kNumTracks; ++i) {
     midi_channels[i] = i + 1;
   }

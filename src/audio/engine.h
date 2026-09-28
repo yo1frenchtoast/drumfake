@@ -148,6 +148,10 @@ class Engine {
   void RenderClick(float* out_l, float* out_r);
   int TrackStep(const Pattern& pattern, int track, int64_t n) const;
   bool RollProbability(int64_t step, int track, float probability) const;
+  // Length of a step of the current pattern, in 16th notes (its division),
+  // and durations in samples.
+  double StepLength() const;
+  size_t SamplesPerSixteenth() const;
   size_t SamplesPerStep() const;
   // Makes `pattern` current, swapping kits unless in Panel mode.
   void ChangePattern(int pattern);
@@ -164,7 +168,8 @@ class Engine {
   int song_position_;
   int current_pattern_;
   int queued_pattern_;
-  double position_;       // In 16th notes since Play().
+  double position_;       // In steps since Play().
+  double beat_position_;  // In 16th notes since Play() (metronome, LFOs...).
   double free_position_;  // Always running (LFOs and repeats when stopped).
   int64_t pattern_start_; // Step at which the current pattern started.
   int64_t poly_origin_;   // Step at which poly tracks last realigned.

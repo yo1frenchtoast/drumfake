@@ -58,10 +58,20 @@ Rendu hors ligne :
 | Play / Rec | | `Espace` / `Entrée` |
 | Pages Sound…Assign | | `1`–`6` |
 | Pages de pas A–D | | `Z` / `X` |
-| Last Step / Poly | | `L` / `P` |
+| Last Step (maintenu) / Poly / Shift (maintenu) | | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Suppr` (au relâchement) |
 | Retour (↺) | ferme Edit/Browse, relâche le pas sélectionné | `Échap` |
 
+- **Shift** (en bas à gauche, ou `Alt`) maintenu, comme sur la DrumBrute : les pas deviennent
+  des options — 1 à 5 : division temporelle du pattern (1/8, 1/8T, 1/16, 1/16T, 1/32) ; 13 :
+  métronome ; 14 : *At End* (changer de pattern à la fin ou tout de suite) ; 15 : les pas suivent
+  la page jouée ; 16 : Poly. Shift + pad : sélectionner une piste sans la jouer.
+- **Pas maintenu** (au doigt, 0,5 s ; clic droit à la souris pour le garder sélectionné) :
+  tant qu'il est tenu, les potards posent des parameter locks, les pads 1–4 règlent ses
+  répétitions (1 à 4 coups) et l'encodeur le décale en avance ou en retard (±50 % d'un pas, par
+  pas de 5 %, trait ambré sous le pas). Relâché, on revient à l'édition normale.
+- **Last Step** maintenu (ou `L`) : les pas montrent la longueur ; appuyer sur un pas fixe le
+  dernier pas du pattern (de la piste sélectionnée en Poly), une page le fixe à 16/32/48/64.
 - **Parameter locks** : clic droit sur un pas, puis tourner un potard (anneau orange = verrouillé ;
   double-clic pour retirer le lock). L'écran permet d'éditer vélocité, probabilité, ratchets et note.
 - **Pages A|16 à D|64** : pendant la lecture, les pas suivent la page jouée par la piste
@@ -71,8 +81,8 @@ Rendu hors ligne :
   16 premiers pas (avec leurs locks, sur toutes les pistes) jusqu'au pas 64 et allonge le pattern ;
   une destination avant la source copie simplement la page. *Last Step* et *Copy* relâchés seuls
   gardent leur action habituelle.
-- **Polyrythme** : *Last Step* puis un pas = dernier pas de la piste sélectionnée (re-cliquer
-  le même pas = longueur du pattern). *Poly* (par pattern) : chaque piste boucle sur sa propre
+- **Polyrythme** : en Poly, *Last Step* + un pas = dernier pas de la piste sélectionnée
+  (re-appuyer sur le même pas = longueur du pattern). *Poly* (par pattern) : chaque piste boucle sur sa propre
   longueur sans se recaler à la fin du pattern ; tout se réaligne au Play et au changement de
   pattern. Sans Poly, les pistes courtes repartent avec le pattern.
 - **Retour visuel sur les potards** : halo orange = la note en cours joue un lock sur ce paramètre ;
