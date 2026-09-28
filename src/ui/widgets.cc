@@ -36,7 +36,8 @@ void Canvas::Text(float x, float y, float size, ImU32 color, const char* text,
   draw_list->AddText(f, px, p, color, text);
 }
 
-Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max) {
+Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
+                   bool touch_button) {
   Interaction result;
   ImVec2 a = c.P(min);
   ImVec2 b = c.P(max);
@@ -63,6 +64,37 @@ Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max) {
   result.long_pressed = result.active && result.touch &&
       io.MouseDownDuration[0] >= kLongPress && io.MouseDownDurationPrev[0] < kLongPress &&
       drag.x * drag.x + drag.y * drag.y < 15.0f * 15.0f;
+
+  if (touch_button) {
+    const ImGuiID item = ImGui::GetItemID();
+    if (c.touch_targets) {
+      c.touch_targets->push_back({ TOUCH_BUTTON, -1, item, min, max });
+    }
+    if (c.button_touches) {
+      auto it = c.button_touches->find(item);
+      if (it != c.button_touches->end()) {
+        ButtonTouch& t = it->second;
+        result.touch = true;
+        result.active = result.active || t.fingers > 0;
+        if (t.pressed) {
+          result.pressed = true;
+          t.pressed = false;
+          // A tap shorter than a frame: held for this frame, released on the
+          // next one, so that press/release logic sees both.
+          result.active = true;
+        } else if (t.released) {
+          result.released = true;
+          result.clicked = true;
+          t.released = false;
+        }
+        if (t.fingers > 0 && !t.long_press_done &&
+            ImGui::GetTime() - t.down_time >= kLongPress) {
+          result.long_pressed = true;
+          t.long_press_done = true;
+        }
+      }
+    }
+  }
   return result;
 }
 
@@ -74,7 +106,7 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
   const float hit = radius * (ring ? 1.45f : 1.15f);
   ImVec2 hit_min(center.x - hit, center.y - hit);
   ImVec2 hit_max(center.x + hit, center.y + hit);
-  Interaction in = HitBox(c, id, hit_min, hit_max);
+  Interaction in = HitBox(c, id, hit_min, hit_max, false);
   const ImGuiID item = ImGui::GetItemID();
   if (c.touch_targets) {
     c.touch_targets->push_back({ TOUCH_KNOB, -1, item, hit_min, hit_max });
@@ -154,7 +186,8 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
     }
     if (decor && decor->automated) {
       ImVec2 badge(p.x + ring_radius * 0.95f, p.y - ring_radius * 0.95f);
-      dl->AddCircleFilled(badge, c.S(3.4f), colors::kAccent);
+      dl->AddCircleFilled(badge, c.S(3.4f),
+                          decor->badge_color ? decor->badge_color : colors::kAccent);
       dl->AddCircle(badge, c.S(3.4f), IM_COL32(0, 0, 0, 160), 12, c.S(1.0f));
     }
   }

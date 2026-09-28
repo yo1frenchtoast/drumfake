@@ -37,6 +37,17 @@ void TrackSequence::Clear() {
   length = 0;
 }
 
+int TrackSequence::ClearLocks(int param) {
+  int cleared = 0;
+  for (int i = 0; i < kMaxSteps; ++i) {
+    if (steps[i].has_lock(param)) {
+      steps[i].locks[param] = NAN;
+      ++cleared;
+    }
+  }
+  return cleared;
+}
+
 bool TrackSequence::IsEmpty() const {
   for (int i = 0; i < kMaxSteps; ++i) {
     if (steps[i].on) {
@@ -53,6 +64,25 @@ void Pattern::Clear() {
   length = kStepsPerPage;
   swing = 0.5f;
   poly = false;
+}
+
+void Pattern::CopyPages(int source, int destination) {
+  if (destination > source) {
+    int period = (source + 1) * kStepsPerPage;
+    int end = (destination + 1) * kStepsPerPage;
+    for (TrackSequence& track : tracks) {
+      for (int s = period; s < end; ++s) {
+        track.steps[s] = track.steps[s % period];
+      }
+    }
+    length = std::max(length, end);
+  } else if (destination < source) {
+    for (TrackSequence& track : tracks) {
+      for (int s = 0; s < kStepsPerPage; ++s) {
+        track.steps[destination * kStepsPerPage + s] = track.steps[source * kStepsPerPage + s];
+      }
+    }
+  }
 }
 
 bool Pattern::IsEmpty() const {

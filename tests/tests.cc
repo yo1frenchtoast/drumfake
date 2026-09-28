@@ -569,6 +569,47 @@ void TestLegacyProjectKits() {
   }
 }
 
+void TestClearParamLocks() {
+  TrackSequence track;
+  track.Clear();
+  track.steps[1].locks[P_CUTOFF] = 0.2f;
+  track.steps[5].locks[P_CUTOFF] = 0.4f;
+  track.steps[5].locks[P_DECAY] = 0.6f;
+  track.steps[5].on = true;
+  CHECK(track.ClearLocks(P_CUTOFF) == 2);
+  CHECK(!track.steps[1].has_lock(P_CUTOFF));
+  CHECK(!track.steps[5].has_lock(P_CUTOFF));
+  CHECK(track.steps[5].has_lock(P_DECAY));  // Other parameters stay.
+  CHECK(track.steps[5].on);                 // And so do the steps.
+  CHECK(track.ClearLocks(P_CUTOFF) == 0);
+}
+
+void TestCopyPages() {
+  auto project = std::make_unique<Project>();
+  project->Init();
+  Pattern& p = project->patterns[0];  // The 16-step demo.
+  // A then D: the 16 steps repeat up to step 64, locks included.
+  p.CopyPages(0, 3);
+  CHECK(p.length == 64);
+  for (int t = 0; t < kNumTracks; ++t) {
+    for (int s = 16; s < 64; ++s) {
+      CHECK(p.tracks[t].steps[s].on == p.tracks[t].steps[s % 16].on);
+    }
+  }
+  CHECK(p.tracks[7].steps[8 + 48].has_lock(P_TIMBRE));
+  // B then D: steps 1-32 repeat once.
+  p.tracks[0].steps[20].on = !p.tracks[0].steps[20].on;
+  p.CopyPages(1, 3);
+  CHECK(p.tracks[0].steps[52].on == p.tracks[0].steps[20].on);
+  CHECK(p.tracks[0].steps[36].on == p.tracks[0].steps[4].on);
+  // D then A: one page onto an earlier one; the length does not change.
+  p.tracks[1].steps[48].on = true;
+  p.tracks[1].steps[0].on = false;
+  p.CopyPages(3, 0);
+  CHECK(p.tracks[1].steps[0].on);
+  CHECK(p.length == 64);
+}
+
 void TestLiveRecording() {
   auto engine = MakeEngine();
   engine->recording = true;
@@ -722,6 +763,8 @@ int main() {
   TestMidiNotes();
   TestMidiClock();
   TestKits();
+  TestClearParamLocks();
+  TestCopyPages();
   TestLegacyProjectKits();
   TestLiveRecording();
   TestChoke();

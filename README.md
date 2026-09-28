@@ -33,7 +33,8 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Au doigt, l'écran est multitouch : plusieurs pads à la fois, un pad et un potard, le pad X/Y…
+Au doigt, tout est multitouch : plusieurs pads à la fois, un pad et un potard, le pad X/Y, et
+les combinaisons de boutons (*Last Step* ou *Copy* + pages, *Erase* + potard…).
 Un appui long (0,5 s) remplace le clic droit (sélection d'un pas, édition d'un Chord sur les
 pads 1–8) et un double tap sur un potard le remet à sa valeur par défaut.
 
@@ -58,11 +59,18 @@ Rendu hors ligne :
 | Pages Sound…Assign | | `1`–`6` |
 | Pages de pas A–D | | `Z` / `X` |
 | Last Step / Poly | | `L` / `P` |
-| Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Suppr` |
+| Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Suppr` (au relâchement) |
 | Retour (↺) | ferme Edit/Browse, relâche le pas sélectionné | `Échap` |
 
 - **Parameter locks** : clic droit sur un pas, puis tourner un potard (anneau orange = verrouillé ;
   double-clic pour retirer le lock). L'écran permet d'éditer vélocité, probabilité, ratchets et note.
+- **Pages A|16 à D|64** : pendant la lecture, les pas suivent la page jouée par la piste
+  sélectionnée ; choisir une page à la main fige l'affichage jusqu'au prochain Play.
+  *Last Step* maintenu + une page = longueur du pattern (16, 32, 48 ou 64 pas).
+  *Copy* maintenu + une page source + une page destination : par ex. A|16 puis D|64 répète les
+  16 premiers pas (avec leurs locks, sur toutes les pistes) jusqu'au pas 64 et allonge le pattern ;
+  une destination avant la source copie simplement la page. *Last Step* et *Copy* relâchés seuls
+  gardent leur action habituelle.
 - **Polyrythme** : *Last Step* puis un pas = dernier pas de la piste sélectionnée (re-cliquer
   le même pas = longueur du pattern). *Poly* (par pattern) : chaque piste boucle sur sa propre
   longueur sans se recaler à la fin du pattern ; tout se réaligne au Play et au changement de
@@ -70,6 +78,9 @@ Rendu hors ligne :
 - **Retour visuel sur les potards** : halo orange = la note en cours joue un lock sur ce paramètre ;
   arc + point = écart entre le potard et la valeur réellement jouée (orange pour un lock, bleu pour
   un LFO ou une macro) ; pastille orange = au moins un pas de la piste verrouille ce paramètre.
+- **Effacer une automation** : maintenir *Erase* (ou `Suppr`) et toucher un potard efface les
+  locks de ce paramètre sur tous les pas de la piste sélectionnée (pastilles rouges pendant le
+  maintien ; *Undo* pour revenir). Relâché seul, *Erase* garde son action habituelle.
 - **Motion recording** : Rec + Play, puis tourner un potard : le lock s'écrit sur le pas en cours.
 - **Pad X/Y** : *Spice* = position dans la carte Grids (recliquer sur Spice pour activer/désactiver ;
   pistes A–C, densités et chaos sur la page Assign) ; *FX* = filtre DJ (X) et envoi delay (Y) ;

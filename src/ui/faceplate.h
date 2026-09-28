@@ -68,6 +68,9 @@ class Faceplate {
   void Tap();
   void Copy();
   void Paste();
+  // Copy held + two page buttons: repeats pages 1 to `source` up to
+  // `destination` (or copies one page onto an earlier one).
+  void CopyPages(int source, int destination);
   void Erase();
   void Undo();
   void PushUndo();
@@ -129,6 +132,7 @@ class Faceplate {
   uint64_t mouse_finger_ = 0;
   std::vector<TouchTarget> touch_targets_;
   std::unordered_map<ImGuiID, KnobTouch> knob_touches_;
+  std::unordered_map<ImGuiID, ButtonTouch> button_touches_;
   ImGuiID last_knob_tap_ = 0;
   double last_knob_tap_time_ = -10.0;
   bool track_pad_touched_[kNumTracks] = {};
@@ -137,6 +141,19 @@ class Faceplate {
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
   bool long_press_fired_ = false;  // The held step already got its long press.
+  // Erase held (button or Delete key): touching a knob then clears that
+  // parameter's locks on the track, instead of the usual Erase on release.
+  bool erase_held_ = false;
+  bool erase_used_ = false;
+  // Last Step and Copy held, and whether a page button was used meanwhile.
+  bool last_step_held_ = false;
+  bool last_step_used_ = false;
+  bool copy_held_ = false;
+  bool copy_used_ = false;
+  int copy_source_page_ = -1;
+  // The steps follow the page playing, until a page is chosen by hand.
+  bool follow_playhead_ = true;
+  bool was_playing_ = false;
   uint32_t seen_midi_activity_ = 0;
   double midi_flash_time_ = -10.0;
 

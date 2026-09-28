@@ -267,6 +267,20 @@ void Faceplate::Copy() {
   }
 }
 
+void Faceplate::CopyPages(int source, int destination) {
+  PushUndo();
+  pattern().CopyPages(source, destination);
+  char message[64];
+  if (destination > source) {
+    snprintf(message, sizeof(message), "Steps 1-%d repeated up to %d",
+             (source + 1) * kStepsPerPage, (destination + 1) * kStepsPerPage);
+  } else {
+    snprintf(message, sizeof(message), "Page %c copied to page %c", 'A' + source,
+             'A' + destination);
+  }
+  Toast(message);
+}
+
 void Faceplate::Paste() {
   int track = engine_->selected_track;
   if (clipboard_kind_ == CLIP_STEP && held_step_ >= 0) {
@@ -377,6 +391,7 @@ void Faceplate::Draw() {
   canvas_.draw_list = ImGui::GetWindowDrawList();
   canvas_.touch_targets = &touch_targets_;
   canvas_.knob_touches = &knob_touches_;
+  canvas_.button_touches = &button_touches_;
   touch_targets_.clear();
   // Fonts are rasterized at 28 px; ImGui widgets on the screen use ~11 px.
   ImGui::SetWindowFontScale(11.0f * scale / 28.0f);
@@ -402,10 +417,19 @@ void Faceplate::Draw() {
   DrawPads();
   HandleKeyboard();
 
-  // Forget knobs whose finger lifted once their last input was applied.
+  // Forget knobs whose finger lifted once their last input was applied, and
+  // buttons no finger holds (their edges were seen, or the button is gone).
   for (auto it = knob_touches_.begin(); it != knob_touches_.end();) {
     const KnobTouch& t = it->second;
     it = !t.active && t.delta == 0.0f && !t.double_tap ? knob_touches_.erase(it) : ++it;
+  }
+  for (auto it = button_touches_.begin(); it != button_touches_.end();) {
+    ButtonTouch& t = it->second;
+    bool pending = t.pressed || t.released;
+    t.idle_frames = t.fingers > 0 ? 0 : t.idle_frames + 1;
+    // Keep pending edges for a couple of frames (a tap's release is seen the
+    // frame after its press); drop them if the button is no longer drawn.
+    it = t.fingers <= 0 && (!pending || t.idle_frames > 3) ? button_touches_.erase(it) : ++it;
   }
 }
 
@@ -452,6 +476,14 @@ void Faceplate::FingerDown(uint64_t finger, ImVec2 position) {
   double now = ImGui::GetTime();
   fingers_[finger] = { *target, panel, now, false };
   switch (target->kind) {
+    case TOUCH_BUTTON: {
+      ButtonTouch& button = button_touches_[target->id];
+      ++button.fingers;
+      button.pressed = true;
+      button.down_time = now;
+      button.long_press_done = false;
+      break;
+    }
     case TOUCH_TRACK_PAD:
       track_pad_touched_[target->index] = true;
       TrackPadDown(target->index);
@@ -520,6 +552,14 @@ void Faceplate::FingerUp(uint64_t finger) {
   }
   const TouchTarget& target = it->second.target;
   switch (target.kind) {
+    case TOUCH_BUTTON: {
+      auto button = button_touches_.find(target.id);
+      if (button != button_touches_.end()) {
+        --button->second.fingers;
+        button->second.released = true;
+      }
+      break;
+    }
     case TOUCH_TRACK_PAD:
       track_pad_touched_[target.index] = false;
       TrackPadUp(target.index);
@@ -754,7 +794,7 @@ void Faceplate::DrawXySection() {
     }
   }
 
-  Interaction in = HitBox(c, "##xy", min, max);
+  Interaction in = HitBox(c, "##xy", min, max, false);
   touch_targets_.push_back({ TOUCH_XY, 0, 0, min, max });
   ImGuiIO& io = ImGui::GetIO();
   float x = 0.5f;
@@ -973,6 +1013,9 @@ void Faceplate::DrawSoundKnobs() {
       for (int s = 0; s < length && !decor.automated; ++s) {
         decor.automated = pattern().tracks[track].steps[s].has_lock(param);
       }
+      if (erase_held_) {
+        decor.badge_color = colors::kRed;  // What Erase + this knob would clear.
+      }
     }
 
     char id[16];
@@ -981,7 +1024,23 @@ void Faceplate::DrawSoundKnobs() {
     bool changed = Knob(c, id, center, 22, &value, default_value, KNOB_SILVER, true,
                         locked ? colors::kAccent : colors::kLedWhite, &in,
                         held ? nullptr : &decor);
-    if (held && in.double_clicked) {
+    changed = changed && !erase_held_;
+    bool grabbed = in.pressed || in.touch_active;
+    if (erase_held_) {
+      // Erase + knob: clear this parameter's locks on the whole track. The
+      // knob itself does not move.
+      if (grabbed && param >= 0 && param < kNumLockable) {
+        erase_used_ = true;
+        if (decor.automated) {
+          PushUndo();
+          int cleared = pattern().tracks[track].ClearLocks(param);
+          char message[64];
+          snprintf(message, sizeof(message), "%s locks cleared on %c (%d steps)",
+                   track_param_info(param).name, 'A' + track, cleared);
+          Toast(message);
+        }
+      }
+    } else if (held && in.double_clicked) {
       held->locks[param] = NAN;
     } else if (changed) {
       if (held) {
@@ -1096,19 +1155,54 @@ void Faceplate::DrawSequencer() {
     song_edit_ = false;
   }
 
-  int play_page = engine_->pattern_step.load() >= 0 ? engine_->pattern_step.load() / kStepsPerPage : -1;
-  const char* const kPageLabels[kNumPages] = { "A|1", "B|2", "C|3", "D|4" };
+  // During playback the steps follow the page playing on the selected track,
+  // until a page is chosen by hand; Play turns following back on.
+  if (engine_->playing() && !was_playing_) {
+    follow_playhead_ = true;
+  }
+  was_playing_ = engine_->playing();
+  int track_step = engine_->track_step[track].load();
+  if (engine_->playing() && follow_playhead_ && track_step >= 0 && held_step_ < 0 &&
+      !last_step_mode_ && !patterns_mode_ && !song_edit_) {
+    view_page_ = track_step / kStepsPerPage;
+  }
+
+  // The page buttons also name lengths: with Last Step held they set the
+  // pattern length; with Copy held, the first one pressed is the source and
+  // the second the destination.
+  int play_page = track_step >= 0 ? track_step / kStepsPerPage : -1;
+  const char* const kPageLabels[kNumPages] = { "A|16", "B|32", "C|48", "D|64" };
   for (int i = 0; i < kNumPages; ++i) {
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
-        last_step_mode_;
+        last_step_mode_ || last_step_held_ || copy_held_;
     ImU32 color = i == view_page_ ? colors::kAccent
         : (i == play_page ? colors::kAmber : colors::kLabelDim);
-    if (function_button(2 + i, id, kPageLabels[i],
-                        in_pattern && (i == view_page_ || i == play_page),
-                        color).pressed) {
-      view_page_ = i;
+    bool lit = in_pattern && (i == view_page_ || i == play_page);
+    if (copy_held_ && i == copy_source_page_) {
+      lit = true;
+      color = colors::kAmber;
+    }
+    if (function_button(2 + i, id, kPageLabels[i], lit, color).pressed) {
+      if (last_step_held_) {
+        PushUndo();
+        p.length = (i + 1) * kStepsPerPage;
+        last_step_used_ = true;
+        Toast("Pattern length: " + std::to_string(p.length) + " steps");
+      } else if (copy_held_) {
+        copy_used_ = true;
+        if (copy_source_page_ < 0) {
+          copy_source_page_ = i;
+          Toast(std::string("Copy from ") + kPageLabels[i] + ": press the destination");
+        } else {
+          CopyPages(copy_source_page_, i);
+          copy_source_page_ = -1;
+        }
+      } else {
+        view_page_ = i;
+        follow_playhead_ = false;
+      }
     }
     if (!in_pattern) {
       float x0 = layout::StepX(2 + i);
@@ -1125,11 +1219,19 @@ void Faceplate::DrawSequencer() {
     p.poly = !p.poly;
     Toast(p.poly ? "Poly: tracks cycle on their own length" : "Poly off: tracks restart with the pattern");
   }
-  if (function_button(8, "##last", "Last Step", last_step_mode_, colors::kAccent).pressed) {
+  // Last Step: held with a page button, sets the pattern length; pressed
+  // alone, toggles the per-track last step mode (on release).
+  Interaction last = function_button(8, "##last", "Last Step", last_step_mode_ || last_step_held_,
+                                     colors::kAccent);
+  if (last.active && !last_step_held_) {
+    last_step_used_ = false;
+  }
+  if (!last.active && last_step_held_ && !last_step_used_) {
     last_step_mode_ = !last_step_mode_;
     patterns_mode_ = false;
     song_edit_ = false;
   }
+  last_step_held_ = last.active;
 
   // Editing.
   // Panel: keep the sound playing across pattern changes (MatrixBrute).
@@ -1139,15 +1241,31 @@ void Faceplate::DrawSequencer() {
                            : "Panel off: pattern kit reloaded");
   }
 
-  if (function_button(12, "##copy", "Copy", false, 0).pressed) {
+  // Copy: held with two page buttons, repeats pages; pressed alone, copies to
+  // the clipboard (on release).
+  Interaction copy = function_button(12, "##copy", "Copy", copy_held_, colors::kAmber);
+  if (copy.active && !copy_held_) {
+    copy_used_ = false;
+    copy_source_page_ = -1;
+  }
+  if (!copy.active && copy_held_ && !copy_used_) {
     Copy();
   }
+  copy_held_ = copy.active;
   if (function_button(13, "##paste", "Paste", false, 0).pressed) {
     Paste();
   }
-  if (function_button(14, "##erase", "Erase", false, 0).pressed) {
+  // Erase acts on release, so that holding it can combine with a knob.
+  Interaction erase = function_button(14, "##erase", "Erase", erase_held_, colors::kRed);
+  bool key = !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_Delete);
+  bool held_now = erase.active || key;
+  if (held_now && !erase_held_) {
+    erase_used_ = false;
+  }
+  if (!held_now && erase_held_ && !erase_used_) {
     Erase();
   }
+  erase_held_ = held_now;
   if (function_button(15, "##undo", "Undo", false, 0).pressed) {
     Undo();
   }
@@ -1314,7 +1432,7 @@ void Faceplate::DrawPads() {
     ImVec2 max(x0 + layout::kPadWidth, layout::kPadRow1Y1);
     char id[16];
     snprintf(id, sizeof(id), "##pad%d", t);
-    Interaction in = HitBox(c, id, min, max);
+    Interaction in = HitBox(c, id, min, max, false);
     touch_targets_.push_back({ TOUCH_TRACK_PAD, t, 0, min, max });
     if (in.pressed) {
       TrackPadDown(t);
@@ -1371,7 +1489,7 @@ void Faceplate::DrawPads() {
     ImVec2 max(x0 + layout::kPadWidth, layout::kPadRow2Y1);
     char id[16];
     snprintf(id, sizeof(id), "##lower%d", i);
-    Interaction in = HitBox(c, id, min, max);
+    Interaction in = HitBox(c, id, min, max, false);
     touch_targets_.push_back({ TOUCH_LOWER_PAD, i, 0, min, max });
     if (in.pressed) {
       LowerPadDown(i);
@@ -1839,7 +1957,6 @@ void Faceplate::HandleKeyboard() {
   }
   if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) view_page_ = std::max(0, view_page_ - 1);
   if (ImGui::IsKeyPressed(ImGuiKey_X, false)) view_page_ = std::min(kNumPages - 1, view_page_ + 1);
-  if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) Erase();
   if (pad_mode_ == PADS_KEYS) {
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) ChangeKey(2, 1);
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) ChangeKey(2, -1);

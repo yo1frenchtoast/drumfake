@@ -41,6 +41,8 @@ struct TrackSequence {
 
   void Clear();
   bool IsEmpty() const;
+  // Removes the locks of `param` from every step. Returns how many steps had one.
+  int ClearLocks(int param);
 };
 
 struct TrackSound {
@@ -62,6 +64,10 @@ struct Pattern {
 
   void Clear();
   bool IsEmpty() const;
+  // With destination > source: repeats the steps of pages 0 to `source` (all
+  // tracks, locks included) up to the end of page `destination`, and extends
+  // the pattern to it. Otherwise copies page `source` onto page `destination`.
+  void CopyPages(int source, int destination);
   int track_length(int track) const {
     int l = tracks[track].length;
     return l > 0 ? l : length;

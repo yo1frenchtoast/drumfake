@@ -45,6 +45,7 @@ const ImU32 kScreenAccent = kAccent;
 // Multitouch: controls that take their own fingers register a target each
 // frame; the faceplate hit-tests new fingers against them.
 enum TouchTargetKind {
+  TOUCH_BUTTON,  // Any HitBox (buttons, steps).
   TOUCH_KNOB,
   TOUCH_TRACK_PAD,
   TOUCH_LOWER_PAD,
@@ -66,6 +67,16 @@ struct KnobTouch {
   bool active = false;      // A finger is on the knob.
 };
 
+// Finger input pending for a button.
+struct ButtonTouch {
+  int fingers = 0;          // Fingers holding it.
+  bool pressed = false;     // A finger landed since the last frame.
+  bool released = false;    // A finger lifted since the last frame.
+  double down_time = 0.0;
+  bool long_press_done = false;
+  int idle_frames = 0;      // Frames with no finger, before it is forgotten.
+};
+
 struct Canvas {
   ImDrawList* draw_list;
   ImVec2 origin;
@@ -74,6 +85,7 @@ struct Canvas {
   ImFont* bold;
   std::vector<TouchTarget>* touch_targets = nullptr;
   std::unordered_map<ImGuiID, KnobTouch>* knob_touches = nullptr;
+  std::unordered_map<ImGuiID, ButtonTouch>* button_touches = nullptr;
 
   ImVec2 P(float x, float y) const {
     return ImVec2(origin.x + x * scale, origin.y + y * scale);
@@ -99,8 +111,11 @@ struct Interaction {
   bool touch_active = false;   // Knob turned by a finger.
 };
 
-// Invisible hit area over a panel rectangle.
-Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max);
+// Invisible hit area over a panel rectangle. With `touch_button`, fingers can
+// hold it too (each finger independently); controls that handle their own
+// fingers (pads, knobs, XY pad) pass false.
+Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
+                   bool touch_button = true);
 
 enum KnobStyle {
   KNOB_SILVER,
@@ -115,6 +130,7 @@ struct KnobDecor {
   float marker = -1.0f;    // Effective value, drawn on the ring when >= 0.
   ImU32 marker_color = 0;
   bool automated = false;  // Some step of the track locks this parameter.
+  ImU32 badge_color = 0;   // Color of that badge (default: accent).
 };
 
 // Returns true when the value changed. `ring` draws the value arc around the
