@@ -427,6 +427,8 @@ float* Faceplate::KnobTarget(int knob, bool* is_lock) {
       return &project.master[knob];
     case PAGE_ASSIGN:
       return &project.assign[knob];
+    case PAGE_CLOUDS:
+      return &project.clouds[knob];
     default:
       break;
   }
@@ -1035,8 +1037,11 @@ void Faceplate::DrawScreenSection() {
       Toast(message);
     }
   }
-  if (screen_button(1, "##sample", "Sample", ICON_SAMPLE, false, 0).pressed) {
-    Toast("Sampler not emulated (Plaits only)");
+  // Sample freezes Clouds' recording buffer (effective when Clouds is wet).
+  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze,
+                    colors::kAccent).pressed) {
+    engine_->clouds_freeze = !engine_->clouds_freeze;
+    Toast(engine_->clouds_freeze ? "Clouds frozen" : "Clouds live");
   }
 
   // 2x4 LEDs: playing page (top) and edited page (bottom).
@@ -1204,7 +1209,7 @@ void Faceplate::DrawKeyKnobs() {
 void Faceplate::DrawPageButtons() {
   const Canvas& c = canvas_;
   const Icon kPageIcons[PAGE_LAST] = {
-    ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ENVS, ICON_ASSIGN
+    ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ENVS, ICON_CLOUDS, ICON_ASSIGN
   };
   float w = (layout::kRightX1 - layout::kSoundX0 - (PAGE_LAST - 1) * layout::kGap) / PAGE_LAST;
   for (int i = 0; i < PAGE_LAST; ++i) {
@@ -1737,6 +1742,10 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawEditView(min, max);
   } else if (view_ == VIEW_MIDI) {
     DrawMidiView(min, max);
+  } else if (view_ == VIEW_MARBLES) {
+    DrawMarblesView(min, max);
+  } else if (view_ == VIEW_KITS) {
+    DrawKitsView(min, max);
   } else if (keys_page_ && view_ == VIEW_MAIN) {
     DrawKeysView(min, max);
   } else if (view_ == VIEW_BROWSE) {
@@ -2016,7 +2025,11 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
     Toast("Grids pattern written to A-C");
   }
   ImGui::SetCursorScreenPos(c.P(x1, min.y + 86));
-  if (ImGui::Button("Init sound")) {
+  if (ImGui::Button("Random rhythm...")) {
+    view_ = VIEW_MARBLES;
+  }
+  ImGui::SetCursorScreenPos(c.P(x0 + 82, min.y + 108));
+  if (ImGui::SmallButton("Init sound")) {
     project.sounds[track].Reset();
     Toast("Sound initialized");
   }
@@ -2051,6 +2064,176 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
     engine_->StoreKit();
     Toast(std::string("Kit stored in pattern ") + std::to_string(engine_->current_pattern() + 1));
   }
+  ImGui::SetCursorScreenPos(c.P(x1 + 84, min.y + 130));
+  if (ImGui::Button("Kit library...")) {
+    RefreshKits();
+    view_ = VIEW_KITS;
+  }
+}
+
+void Faceplate::RefreshKits() {
+  kit_files_ = ListKits(KitDirectory(project_path_));
+  int pages = std::max(1, (static_cast<int>(kit_files_.size()) + 11) / 12);
+  kit_page_ = std::min(kit_page_, pages - 1);
+  if (kit_selected_ >= static_cast<int>(kit_files_.size())) {
+    kit_selected_ = -1;
+  }
+}
+
+void Faceplate::DrawKitsView(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  char text[96];
+  int count = static_cast<int>(kit_files_.size());
+  int pages = std::max(1, (count + 11) / 12);
+  snprintf(text, sizeof(text), "KIT LIBRARY  |  %d kit%s  |  page %d/%d", count,
+           count == 1 ? "" : "s", kit_page_ + 1, pages);
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+
+  // 2 columns x 6 rows per page. Tap a kit to load it.
+  const float row = 14.0f;
+  const float column = (max.x - min.x - 12) * 0.5f;
+  for (int i = 0; i < 12; ++i) {
+    int index = kit_page_ * 12 + i;
+    if (index >= count) {
+      break;
+    }
+    ImVec2 a(min.x + 6 + (i / 6) * column, min.y + 20 + (i % 6) * row);
+    ImVec2 b(a.x + column - 4, a.y + row - 1);
+    char id[16];
+    snprintf(id, sizeof(id), "##kit%d", i);
+    Interaction in = HitBox(c, id, a, b);
+    bool selected = index == kit_selected_;
+    if (selected || in.hovered) {
+      c.draw_list->AddRectFilled(c.P(a), c.P(b),
+                                 selected ? WithAlpha(colors::kAccent, 90) : IM_COL32(60, 80, 90, 120));
+    }
+    c.Text(a.x + 4, a.y + 1, 8.5f, colors::kScreenText, kit_files_[index].name.c_str(), false, true);
+    c.Text(a.x + 38, a.y + 2, 7, colors::kScreenDim, kit_files_[index].summary.c_str(), false);
+    if (in.pressed) {
+      TrackSound kit[kNumTracks];
+      std::string error;
+      if (LoadKitFile(kit_files_[index].path, kit, &error)) {
+        if (!engine_->panel()) {
+          PushUndo();
+        }
+        engine_->ApplyKit(kit, kit_all_patterns_);
+        kit_selected_ = index;
+        engine_->LiveTrigger(engine_->selected_track, 0.8f, 0);
+        Toast(kit_all_patterns_ ? kit_files_[index].name + " loaded in all patterns"
+                                : kit_files_[index].name + " loaded");
+      } else {
+        Toast("Load failed: " + error);
+      }
+    }
+  }
+  if (count == 0) {
+    c.Text(min.x + 8, min.y + 40, 9, colors::kScreenDim, "No kit yet: Save new stores the current kit.", false);
+  }
+
+  float y = min.y + 108;
+  ImGui::SetCursorScreenPos(c.P(min.x + 6, y));
+  if (ImGui::Button("Save new")) {
+    std::string error;
+    if (SaveKitFile(KitDirectory(project_path_), engine_->project().sounds, "", &error)) {
+      RefreshKits();
+      kit_selected_ = static_cast<int>(kit_files_.size()) - 1;
+      kit_page_ = kit_selected_ / 12;
+      Toast(kit_files_[kit_selected_].name + " saved");
+    } else {
+      Toast("Save failed: " + error);
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Replace") && kit_selected_ >= 0) {
+    std::string error;
+    if (SaveKitFile(KitDirectory(project_path_), engine_->project().sounds,
+                    kit_files_[kit_selected_].path, &error)) {
+      RefreshKits();
+      Toast("Kit replaced by the current sounds");
+    } else {
+      Toast("Save failed: " + error);
+    }
+  }
+  ImGui::SameLine();
+  bool armed = ImGui::GetTime() - kit_delete_armed_ < 3.0;
+  if (ImGui::Button(armed ? "Sure?" : "Delete") && kit_selected_ >= 0) {
+    if (armed) {
+      std::string error;
+      if (DeleteKitFile(kit_files_[kit_selected_].path, &error)) {
+        Toast(kit_files_[kit_selected_].name + " deleted");
+        kit_selected_ = -1;
+        RefreshKits();
+      } else {
+        Toast(error);
+      }
+      kit_delete_armed_ = -10.0;
+    } else {
+      kit_delete_armed_ = ImGui::GetTime();
+    }
+  }
+  ImGui::SameLine();
+  ImGui::Checkbox("All patterns", &kit_all_patterns_);
+  if (pages > 1) {
+    ImGui::SetCursorScreenPos(c.P(max.x - 70, y));
+    if (ImGui::Button("<") && kit_page_ > 0) --kit_page_;
+    ImGui::SameLine();
+    if (ImGui::Button(">") && kit_page_ < pages - 1) ++kit_page_;
+  }
+  c.Text(min.x + 8, min.y + 132, 7.5f, colors::kScreenDim,
+         "Kits are shared by all projects. Tap a kit to load it on this pattern.", false);
+}
+
+void Faceplate::DrawMarblesView(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  Project& project = engine_->project();
+  MarblesSettings& m = project.marbles;
+  char text[64];
+  snprintf(text, sizeof(text), "RANDOM RHYTHM  |  PATTERN %02d", engine_->current_pattern() + 1);
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+
+  float column = c.S((max.x - min.x - 20) * 0.5f);
+  float x0 = min.x + 8;
+  float x1 = min.x + 12 + (max.x - min.x - 20) * 0.5f;
+  ImGui::PushItemWidth(column);
+  ImGui::SetCursorScreenPos(c.P(x0, min.y + 22));
+  ImGui::SliderInt("##model", &m.model, 0, kNumMarblesModels - 1, kMarblesModelNames[m.model]);
+  ImGui::SetCursorScreenPos(c.P(x1, min.y + 22));
+  float bias = m.bias * 100.0f;
+  if (ImGui::SliderFloat("##bias", &bias, 0.0f, 100.0f, "Bias %.0f%%")) {
+    m.bias = bias / 100.0f;
+  }
+  ImGui::SetCursorScreenPos(c.P(x0, min.y + 42));
+  float deja_vu = m.deja_vu * 100.0f;
+  if (ImGui::SliderFloat("##dejavu", &deja_vu, 0.0f, 100.0f, "Deja vu %.0f%%")) {
+    m.deja_vu = deja_vu / 100.0f;
+  }
+  ImGui::SetCursorScreenPos(c.P(x1, min.y + 42));
+  ImGui::SliderInt("##loop", &m.length, 1, kMaxDejaVuLength, "Loop %d steps");
+  for (int output = 0; output < 2; ++output) {
+    ImGui::SetCursorScreenPos(c.P(output == 0 ? x0 : x1, min.y + 62));
+    int track = project.marbles_tracks[output];
+    snprintf(text, sizeof(text), "%s > %c %s", output == 0 ? "t1" : "t3", 'A' + track,
+             project.sounds[track].name.c_str());
+    char id[16];
+    snprintf(id, sizeof(id), "##mtrack%d", output);
+    ImGui::SliderInt(id, &project.marbles_tracks[output], 0, kNumTracks - 1, text);
+  }
+  ImGui::PopItemWidth();
+
+  ImGui::SetCursorScreenPos(c.P(x0, min.y + 88));
+  snprintf(text, sizeof(text), "Generate > P%02d", engine_->current_pattern() + 1);
+  if (ImGui::Button(text)) {
+    PushUndo();
+    uint32_t seed = static_cast<uint32_t>(ImGui::GetTime() * 1000.0) * 2654435761u + 12345u;
+    engine_->BakeMarbles(seed);
+    Toast("Random rhythm written (Undo to revert)");
+  }
+  c.Text(min.x + 8, min.y + 113, 7.5f, colors::kScreenDim,
+         "Deja vu 0%: always new. 100%: a loop of N steps.", false);
+  c.Text(min.x + 8, min.y + 123, 7.5f, colors::kScreenDim,
+         "Bias: density or pattern choice, depending on the model.", false);
+  c.Text(min.x + 8, min.y + 133, 7.5f, colors::kScreenDim,
+         "Press Generate again for a new draw. Steps of both tracks are replaced.", false);
 }
 
 void Faceplate::DrawMidiView(ImVec2 min, ImVec2 max) {
@@ -2160,7 +2343,7 @@ void Faceplate::HandleKeyboard() {
   }
   if (ImGui::IsKeyPressed(ImGuiKey_P, false)) pattern().poly = !pattern().poly;
   const ImGuiKey kPageKeys[PAGE_LAST] = {
-    ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6, ImGuiKey_7
+    ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6, ImGuiKey_7, ImGuiKey_8
   };
   for (int i = 0; i < PAGE_LAST; ++i) {
     if (ImGui::IsKeyPressed(kPageKeys[i], false)) page_ = static_cast<Page>(i);

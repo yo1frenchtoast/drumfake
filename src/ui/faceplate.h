@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "audio/engine.h"
+#include "core/project_io.h"
 #include "ui/widgets.h"
 
 namespace drumfreake {
@@ -33,7 +34,7 @@ class Faceplate {
 
  private:
   enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
-  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI };
+  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
   void DrawChrome();
@@ -56,6 +57,9 @@ class Faceplate {
   void DrawEditView(ImVec2 min, ImVec2 max);
   void DrawBrowseView(ImVec2 min, ImVec2 max);
   void DrawMidiView(ImVec2 min, ImVec2 max);
+  void DrawMarblesView(ImVec2 min, ImVec2 max);
+  void DrawKitsView(ImVec2 min, ImVec2 max);
+  void RefreshKits();
   void DrawScope(ImVec2 min, ImVec2 max);
   void HandleKeyboard();
 
@@ -105,6 +109,12 @@ class Faceplate {
   Page page_ = PAGE_SOUND;
   PadMode pad_mode_ = PADS_CHORDS;
   ScreenView view_ = VIEW_MAIN;
+  // Kit library view.
+  std::vector<KitFile> kit_files_;
+  int kit_selected_ = -1;
+  int kit_page_ = 0;
+  bool kit_all_patterns_ = false;
+  double kit_delete_armed_ = -10.0;
   int view_page_ = 0;
   bool patterns_mode_ = false;
   bool notes_mode_ = false;

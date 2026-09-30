@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 
+#include "audio/clouds_fx.h"
 #include "audio/master_fx.h"
 #include "audio/mod_sources.h"
 #include "audio/track_voice.h"
@@ -55,6 +56,8 @@ class Engine {
   bool playing() const { return playing_; }
   bool recording = false;
   bool metronome = false;
+  // Clouds freezes its recording buffer and loops it.
+  bool clouds_freeze = false;
 
   // Song mode plays the project's chain of patterns in a loop.
   void SetSongMode(bool enabled);
@@ -114,7 +117,12 @@ class Engine {
   float xy_y = 0.5f;
 
   // Writes one bar of the current Grids output into tracks A-C.
+  // Loads `kit` (the 8 sounds) as the sounds playing; with `all_patterns`,
+  // also as the kit of every pattern.
+  void ApplyKit(const TrackSound* kit, bool all_patterns);
   void BakeGrids();
+  // Writes a Marbles rhythm into the two tracks of project.marbles_tracks.
+  void BakeMarbles(uint32_t seed);
 
   // --- Lock-free state for the UI. ------------------------------------------
 
@@ -168,6 +176,7 @@ class Engine {
   TrackVoice voices_[kNumTracks];
   ModSources mods_[kNumTracks];
   std::unique_ptr<MasterFx> master_fx_;
+  std::unique_ptr<CloudsFx> clouds_fx_;
   GridsGenerator grids_;
 
   bool playing_;

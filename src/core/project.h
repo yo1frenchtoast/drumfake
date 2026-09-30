@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 
+#include "core/marbles_gen.h"
 #include "core/params.h"
 
 namespace drumfreake {
@@ -90,6 +91,7 @@ struct Project {
   Pattern patterns[kNumPatterns];
   float master[M_LAST];
   float assign[A_LAST];
+  float clouds[C_LAST];
   float bpm;
   float volume;
   // "Chords" mode: each of pads 1-8 plays a set of tracks (bit mask).
@@ -108,6 +110,9 @@ struct Project {
   bool switch_at_end;
   int midi_channels[kNumTracks];
   int midi_trigger_note;
+  // Marbles random rhythm: settings, and the tracks receiving the two outputs.
+  MarblesSettings marbles;
+  int marbles_tracks[2];
   // Song: chain of pattern indices, played in order (a pattern may repeat).
   int song[kMaxSongLength];
   int song_length;

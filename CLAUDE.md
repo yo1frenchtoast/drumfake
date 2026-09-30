@@ -11,9 +11,12 @@ and chorus. Independent project: no Arturia branding in the UI (factual comments
 - `src/core/`: model (params, steps, patterns, per-pattern kits, song, scales), JSON I/O,
   Grids port, MIDI parser. No UI or audio device code.
 - `src/audio/`: `TrackVoice` (Plaits + filter/drive/crush/choke), `MasterFx`, `Engine`
-  (sequencer, clock, MIDI handling), `ModSources` (Peaks envelope + bouncing ball per track).
-  `plaits/resources.h`, `rings/resources.h` and `peaks/resources.h` define the same macros: never
-  include two of them in one translation unit (see `audio/buses.h`; Peaks lives in `mod_sources.cc`).
+  (sequencer, clock, MIDI handling), `ModSources` (Peaks envelope + bouncing ball per track),
+  `CloudsFx` (Clouds on the master mix).
+  The `resources.h` of plaits, rings, peaks, marbles and clouds define the same macros: never
+  include two of them in one translation unit (see `audio/buses.h`). Each of Peaks, Marbles and
+  Clouds lives in its own `.cc` (`mod_sources`, `core/marbles_gen`, `clouds_fx`) behind a pimpl.
+- `patches/`: header overrides that shadow the submodule (it is never edited), see its README.
 - `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, and the
   multitouch layer (fingers captured by pads/knobs/buttons, one free finger drives ImGui).
 - `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android).

@@ -46,7 +46,8 @@ inline int64_t PositiveModulo(int64_t a, int64_t b) {
 
 Engine::Engine()
     : project_(new Project()),
-      master_fx_(new MasterFx()) {
+      master_fx_(new MasterFx()),
+      clouds_fx_(new CloudsFx()) {
 }
 
 Engine::~Engine() { }
@@ -71,6 +72,7 @@ void Engine::Init() {
     }
   }
   master_fx_->Init();
+  clouds_fx_->Init();
   grids_.Init(0x5eed);
   master_peak = 0.0f;
   pattern_step = -1;
@@ -364,6 +366,17 @@ void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets)
   }
 }
 
+void Engine::ApplyKit(const TrackSound* kit, bool all_patterns) {
+  std::copy(kit, kit + kNumTracks, project_->sounds);
+  if (all_patterns) {
+    for (Pattern& pattern : project_->patterns) {
+      std::copy(kit, kit + kNumTracks, pattern.kit);
+    }
+  } else if (!panel_) {
+    StoreKit();
+  }
+}
+
 void Engine::BakeGrids() {
   GridsGenerator generator;
   generator.Init(0x5eed);
@@ -386,6 +399,23 @@ void Engine::BakeGrids() {
       Step& step = pattern.tracks[part].steps[s];
       step.on = bits[s % 16] & (1 << part);
       step.velocity = (accents[s % 16] & (1 << part)) ? 1.0f : 0.7f;
+      step.ratchets = 1;
+      step.probability = 1.0f;
+    }
+  }
+}
+
+void Engine::BakeMarbles(uint32_t seed) {
+  Pattern& pattern = project_->patterns[current_pattern_];
+  bool t1[kMaxSteps], t3[kMaxSteps];
+  MarblesGenerate(project_->marbles, seed, pattern.length, t1, t3);
+  const bool* hits[2] = { t1, t3 };
+  for (int output = 0; output < 2; ++output) {
+    TrackSequence& track = pattern.tracks[project_->marbles_tracks[output]];
+    for (int s = 0; s < pattern.length; ++s) {
+      Step& step = track.steps[s];
+      step.on = hits[output][s];
+      step.velocity = 0.8f;
       step.ratchets = 1;
       step.probability = 1.0f;
     }
@@ -725,6 +755,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
   }
   master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);
+  clouds_fx_->Process(out_l, out_r, kBlockSize, project_->clouds, clouds_freeze);
   RenderClick(out_l, out_r);
 
   float peak = master_peak.load(std::memory_order_relaxed) * 0.98f;

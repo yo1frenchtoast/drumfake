@@ -56,6 +56,10 @@ static const char* const kLfoShapeNames[LFO_SHAPE_LAST] = {
   "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H"
 };
 
+static const char* const kCloudsModeNames[kNumCloudsModes] = {
+  "Granular", "Stretch", "Looping", "Spectral"
+};
+
 static const char* const kFilterModeNames[kNumFilterModes] = {
   "Low Pass", "Band Pass", "High Pass"
 };
@@ -129,8 +133,19 @@ static const ParamInfo kAssignParams[A_LAST] = {
   { "Grids Chaos", "Chao", FORMAT_PERCENT, 0.0f },
 };
 
+static const ParamInfo kCloudsParams[C_LAST] = {
+  { "Clouds Mode", "Mode", FORMAT_CLOUDS_MODE, 0.0f },
+  { "Position", "Pos", FORMAT_PERCENT, 0.5f },
+  { "Size", "Size", FORMAT_PERCENT, 0.5f },
+  { "Pitch", "Ptch", FORMAT_SEMITONES, 0.5f },
+  { "Density", "Dens", FORMAT_PERCENT, 0.75f },
+  { "Texture", "Text", FORMAT_PERCENT, 0.5f },
+  { "Feedback", "Fdbk", FORMAT_PERCENT, 0.0f },
+  { "Dry/Wet", "D/W", FORMAT_PERCENT, 0.0f },
+};
+
 static const char* const kPageNames[PAGE_LAST] = {
-  "Sound", "Filter", "Track", "Master", "Mods", "Envs", "Assign"
+  "Sound", "Filter", "Track", "Master", "Mods", "Envs", "Clouds", "Assign"
 };
 
 const ParamInfo& track_param_info(int param) {
@@ -139,6 +154,10 @@ const ParamInfo& track_param_info(int param) {
 
 const ParamInfo& master_param_info(int param) {
   return kMasterParams[param];
+}
+
+const ParamInfo& clouds_param_info(int param) {
+  return kCloudsParams[param];
 }
 
 const ParamInfo& assign_param_info(int param) {
@@ -152,6 +171,7 @@ const ParamInfo& page_param_info(Page page, int knob) {
     case PAGE_TRACK: return kTrackParams[P_VOLUME + knob];
     case PAGE_MODS: return kTrackParams[P_LFO1_RATE + knob];
     case PAGE_ENVS: return kTrackParams[P_ENV_ATTACK + knob];
+    case PAGE_CLOUDS: return kCloudsParams[knob];
     case PAGE_MASTER: return kMasterParams[knob];
     case PAGE_ASSIGN:
     default: return kAssignParams[knob];
@@ -180,6 +200,10 @@ float FilterDecayToSeconds(float value) {
 
 float GateToSeconds(float value) {
   return 0.001f * powf(2.0f, 9.0f * value);
+}
+
+float CloudsPitchToSemitones(float value) {
+  return (Clamp01(value) - 0.5f) * 48.0f;
 }
 
 float EnvTimeToSeconds(float value) {
@@ -238,6 +262,11 @@ std::string FormatValue(ParamFormat format, float value) {
       }
       break;
     }
+    case FORMAT_CLOUDS_MODE:
+      return kCloudsModeNames[Discrete(value, kNumCloudsModes)];
+    case FORMAT_SEMITONES:
+      snprintf(buffer, sizeof(buffer), "%+.1f st", CloudsPitchToSemitones(value));
+      break;
     case FORMAT_FILTER_MODE:
       return kFilterModeNames[Discrete(value, kNumFilterModes)];
     case FORMAT_CRUSH: {

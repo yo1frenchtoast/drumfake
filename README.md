@@ -8,7 +8,9 @@ Instruments DSP (unmodified `third_party/eurorack` submodule):
   snare and hi-hat, modal, FM…);
 - **Grids**: algorithmic rhythm generation on the X/Y pad ("Spice" mode);
 - **Rings**: reverb and chorus on the master bus;
-- **Peaks**: envelope and bouncing ball modulation sources.
+- **Peaks**: envelope and bouncing ball modulation sources;
+- **Marbles**: random rhythm generator ("t" section) written into the steps;
+- **Clouds**: granular, time-stretch, looping delay and spectral effect on the master mix.
 
 ## Building
 
@@ -57,7 +59,7 @@ Offline rendering:
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
-| Pages Sound…Assign | | `1`–`7` |
+| Pages Sound…Assign | | `1`–`8` |
 | Step pages A–D | | `Z` / `X` |
 | Last Step (held) / Poly / Shift (held) | | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (on release) |
@@ -112,6 +114,19 @@ Offline rendering:
   to rest). Each one can drive any lockable parameter, like the LFOs of the Mods page: a full
   amount sweeps the whole range of the destination. The ball gives accelerating or decelerating
   rolls on a filter cutoff or a pitch.
+- **Clouds page** (master mix, project-wide): *Mode* (Granular, Stretch, Looping delay,
+  Spectral), *Pos*, *Size*, *Pitch* (±24 semitones), *Dens*, *Text*, *Fdbk* and *D/W*. It is off
+  until *D/W* is raised. The meaning of Pos/Size/Dens/Text depends on the mode, as on the
+  module (in Granular, Dens at 50% plays no grain: turn it either way). The **Freeze** button
+  (top row, where the unemulated Sample button was) stops recording and loops the last
+  ~2 seconds. Clouds runs at 48 kHz instead of its native 32 kHz: its times are 2/3 of the
+  module's. Its own reverb is off, the master reverb does the job.
+- **Random rhythm** (Marbles): *Edit* → *Random rhythm...*. Pick a *model* (Complementary,
+  Clusters, Drums, Independent, Divider, Three states, Markov), a *Bias* (density or pattern
+  choice, depending on the model), a *Deja vu* amount (0%: always new; 100%: a loop of *Loop*
+  steps that repeats) and the two tracks that receive the outputs t1 and t3, then press
+  *Generate*: the steps of both tracks are replaced over the pattern length (*Undo* reverts).
+  Press it again for a new draw, then edit the steps as usual.
 - **Encoder**: changes the track's Plaits engine (or the sound in Browse).
 - **Song** (pattern chain, as on the Arturia units): press *Song* (it blinks), then the step
   buttons 1–16 in the desired order; a pattern can appear several times (e.g. 1-1-2-3), up to 64
@@ -121,6 +136,11 @@ Offline rendering:
   saved with the project.
 - **Kits**: each pattern has its own sounds, loaded with it (including in Song mode); knob
   settings stay in the current pattern. *Copy*/*Paste* of a pattern also copies its kit.
+  **Kit library** (*Edit* → *Kit library...*): kits saved as files, shared by all projects
+  (`kits/` beside `project.json`). *Save new* stores the current 8 sounds as the next "Kit N",
+  *Replace* overwrites the selected kit with the current sounds, *Delete* (press twice) removes
+  it. Tap a kit to load it on the current pattern (*Undo* reverts), or on every pattern with
+  *All patterns* ticked. Kits are listed by number with their first sounds.
 - **Panel** (as on the MatrixBrute): the current sound stays in place when you change pattern,
   and its settings are stored nowhere until you use *Edit* → *Store kit* (which writes it to the
   current pattern). Turning Panel off reloads the kit of the current pattern. The screen shows
@@ -156,6 +176,7 @@ src/core/    model (parameters, steps, patterns, factory sounds), JSON, Grids po
 src/audio/   TrackVoice (Plaits + filter + drive + crush + choke), MasterFx, Engine (sequencer)
 src/ui/      ImGui widgets and faceplate
 shims/       minimal AVR headers to compile the grids/resources.cc tables
+patches/     header overrides for the submodule (see patches/README.md)
 ```
 
 Audio is rendered in blocks of 12 samples at 48 kHz; the sequencer is accurate to the block
@@ -164,7 +185,7 @@ oscilloscope go through atomics.
 
 ## Limitations
 
-- The sampler (Sample button) is not emulated.
+- The sampler is not emulated: the Sample button position is used as the Clouds Freeze button.
 - The exact functions of the DrumFreak are not public: the faceplate follows the layout of the
   prototype photo, and the behavior of each button is an interpretation.
 

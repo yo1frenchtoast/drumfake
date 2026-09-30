@@ -350,6 +350,179 @@ void TestPeaksMods() {
   CHECK(engine->effective_param[0][P_MORPH].load() > 0.5f);
 }
 
+// Marbles rhythm generator: determinism, deja vu loops, Drums pattern tables.
+void TestMarbles() {
+  MarblesSettings settings;
+  bool a[32], b[32], c[32], d[32];
+  settings.model = 0;
+  settings.deja_vu = 0.0f;
+  MarblesGenerate(settings, 7, 32, a, b);
+  MarblesGenerate(settings, 7, 32, c, d);
+  CHECK(std::equal(a, a + 32, c) && std::equal(b, b + 32, d));  // Same seed.
+  MarblesGenerate(settings, 8, 32, c, d);
+  CHECK(!std::equal(a, a + 32, c));                              // New seed.
+  // Complementary Bernoulli: each step goes to one output or the other.
+  for (int i = 0; i < 32; ++i) CHECK(a[i] != b[i]);
+
+  // Deja vu at 100%: the loop of 4 steps repeats.
+  settings.deja_vu = 1.0f;
+  settings.length = 4;
+  MarblesGenerate(settings, 7, 32, a, b);
+  for (int i = 4; i < 32; ++i) CHECK(a[i] == a[i - 4] && b[i] == b[i - 4]);
+
+  // Drums, bias 0.5: the first table, kick on 0, snare on 4, from step 0.
+  settings.model = 2;
+  settings.bias = 0.5f;
+  settings.deja_vu = 0.0f;
+  MarblesGenerate(settings, 7, 16, a, b);
+  CHECK(a[0] && !b[0] && b[4] && !a[4]);
+
+  // Baking writes both tracks of the current pattern and nothing else.
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.marbles.model = 0;
+  project.marbles.deja_vu = 0.0f;
+  project.marbles_tracks[0] = 2;
+  project.marbles_tracks[1] = 5;
+  project.patterns[0].length = 16;
+  engine->BakeMarbles(3);
+  int hits2 = 0, hits5 = 0, other = 0;
+  for (int s = 0; s < 16; ++s) {
+    hits2 += project.patterns[0].tracks[2].steps[s].on;
+    hits5 += project.patterns[0].tracks[5].steps[s].on;
+    other += project.patterns[0].tracks[0].steps[s].on;
+  }
+  CHECK(hits2 + hits5 == 16 && other == 0);  // Complementary: 16 steps split.
+}
+
+// Clouds on the master: silent when dry, sane in every mode, Freeze keeps
+// looping the buffer once the input has stopped.
+float RenderRms(Engine* engine, size_t frames, bool* finite) {
+  std::vector<float> buffer(2 * kBlockSize);
+  double sum = 0.0;
+  size_t count = 0;
+  for (size_t done = 0; done < frames; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    for (float x : buffer) {
+      if (!std::isfinite(x)) *finite = false;
+      sum += x * x;
+      ++count;
+    }
+  }
+  return static_cast<float>(std::sqrt(sum / count));
+}
+
+void TestClouds() {
+  // Dry/wet at zero: the effect is skipped, the mix is the plain engine's.
+  {
+    auto a = MakeEngine();
+    auto b = MakeEngine();
+    a->project().patterns[0].tracks[0].steps[0].on = true;
+    b->project().patterns[0].tracks[0].steps[0].on = true;
+    b->project().clouds[C_MODE] = 0.9f;  // Spectral, but dry/wet is 0.
+    a->Play();
+    b->Play();
+    std::vector<float> x(2 * kBlockSize), y(2 * kBlockSize);
+    bool same = true;
+    for (int i = 0; i < 500; ++i) {
+      a->Render(x.data(), kBlockSize);
+      b->Render(y.data(), kBlockSize);
+      same = same && x == y;
+    }
+    CHECK(same);
+  }
+
+  // Each mode produces finite sound on a drum loop.
+  for (int mode = 0; mode < kNumCloudsModes; ++mode) {
+    auto engine = MakeEngine();
+    Project& project = engine->project();
+    for (int s = 0; s < 16; s += 4) project.patterns[0].tracks[0].steps[s].on = true;
+    project.clouds[C_MODE] = DiscreteToNormalized(mode, kNumCloudsModes);
+    project.clouds[C_DRY_WET] = 1.0f;
+    engine->Play();
+    bool finite = true;
+    RenderRms(engine.get(), 48000, &finite);
+    float rms = RenderRms(engine.get(), 48000, &finite);
+    CHECK(finite);
+    CHECK(rms > 0.001f && rms < 1.5f);
+  }
+
+  // Freeze: after the drums stop, the frozen buffer keeps playing.
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.master[M_REVERB_LEVEL] = 0.0f;
+  project.master[M_DELAY_LEVEL] = 0.0f;
+  for (int s = 0; s < 16; s += 2) project.patterns[0].tracks[0].steps[s].on = true;
+  project.clouds[C_MODE] = DiscreteToNormalized(2, kNumCloudsModes);  // Looping delay.
+  project.clouds[C_DRY_WET] = 1.0f;
+  engine->Play();
+  bool finite = true;
+  RenderRms(engine.get(), 48000, &finite);
+  engine->clouds_freeze = true;
+  engine->Stop();
+  RenderRms(engine.get(), 24000, &finite);  // Let the voices die out.
+  float frozen = RenderRms(engine.get(), 48000, &finite);
+  CHECK(finite);
+  CHECK(frozen > 0.005f);
+}
+
+// Kit library: files, listing order, apply to the pattern or to all patterns.
+void TestKitLibrary() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfreake_kit_test";
+  fs::remove_all(dir);
+  CHECK(ListKits(dir.string()).empty());  // No directory yet.
+
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  std::string error;
+  project.sounds[0].name = "First";
+  project.sounds[0].params[P_CUTOFF] = 0.25f;
+  CHECK(SaveKitFile(dir.string(), project.sounds, "", &error));
+  project.sounds[0].name = "Second";
+  project.sounds[0].params[P_CUTOFF] = 0.75f;
+  CHECK(SaveKitFile(dir.string(), project.sounds, "", &error));
+  std::vector<KitFile> kits = ListKits(dir.string());
+  CHECK(kits.size() == 2);
+  CHECK(kits[0].name == "Kit 1" && kits[1].name == "Kit 2");
+  CHECK(kits[0].summary.rfind("First", 0) == 0);
+
+  // Replace keeps the file and the number.
+  project.sounds[0].name = "Third";
+  CHECK(SaveKitFile(dir.string(), project.sounds, kits[0].path, &error));
+  kits = ListKits(dir.string());
+  CHECK(kits.size() == 2 && kits[0].summary.rfind("Third", 0) == 0);
+
+  // Deleting number 1 does not renumber: the next kit is number 3.
+  CHECK(DeleteKitFile(kits[0].path, &error));
+  CHECK(SaveKitFile(dir.string(), project.sounds, "", &error));
+  kits = ListKits(dir.string());
+  CHECK(kits.size() == 2 && kits[0].name == "Kit 2" && kits[1].name == "Kit 3");
+
+  // Loading restores names and parameters.
+  TrackSound loaded[kNumTracks];
+  CHECK(LoadKitFile(kits[0].path, loaded, &error));
+  CHECK(loaded[0].name == "Second");
+  CHECK_NEAR(loaded[0].params[P_CUTOFF], 0.75, 1e-6);
+  CHECK(!LoadKitFile((dir / "missing.json").string(), loaded, &error));
+
+  // A stray file is ignored.
+  std::ofstream(dir / "notes.json") << "{}";
+  std::ofstream(dir / "kit_009.json") << "not json";
+  CHECK(ListKits(dir.string()).size() == 2);
+
+  // Applying to the current pattern, then to all patterns.
+  engine->ApplyKit(loaded, false);
+  CHECK(project.sounds[0].name == "Second");
+  CHECK(project.patterns[0].kit[0].name == "Second");
+  CHECK(project.patterns[5].kit[0].name != "Second");
+  engine->ApplyKit(loaded, true);
+  CHECK(project.patterns[5].kit[0].name == "Second");
+  engine->SelectPattern(5);  // Its kit follows.
+  CHECK(project.sounds[0].name == "Second");
+  fs::remove_all(dir);
+}
+
 // Patterns 1-3 are 4 steps long; pattern N plays track N on its first step.
 std::unique_ptr<Engine> MakeSongEngine() {
   auto engine = MakeEngine();
@@ -823,6 +996,12 @@ void TestProjectRoundTrip() {
   project.midi_trigger_note = 48;
   project.key_root = 9;
   project.key_scale = 8;
+  project.marbles.model = 6;
+  project.marbles.bias = 0.25f;
+  project.marbles.deja_vu = 0.75f;
+  project.marbles.length = 5;
+  project.marbles_tracks[0] = 4;
+  project.marbles_tracks[1] = 7;
   project.key_octave = -2;
   project.song_length = 3;
   project.song[0] = 2;
@@ -859,6 +1038,10 @@ void TestProjectRoundTrip() {
   CHECK(loaded->midi_trigger_note == 48);
   CHECK(loaded->key_root == 9);
   CHECK(loaded->key_scale == 8);
+  CHECK(loaded->marbles.model == 6 && loaded->marbles.length == 5);
+  CHECK_NEAR(loaded->marbles.bias, 0.25, 1e-6);
+  CHECK_NEAR(loaded->marbles.deja_vu, 0.75, 1e-6);
+  CHECK(loaded->marbles_tracks[0] == 4 && loaded->marbles_tracks[1] == 7);
   CHECK(loaded->key_octave == -2);
   CHECK(loaded->song_length == 3);
   CHECK(loaded->song[0] == 2 && loaded->song[1] == 2 && loaded->song[2] == 5);
@@ -928,6 +1111,9 @@ int main() {
   TestPolyrhythm();
   TestLockFeedback();
   TestPeaksMods();
+  TestMarbles();
+  TestClouds();
+  TestKitLibrary();
   TestSong();
   TestMidiParser();
   TestMidiNotes();

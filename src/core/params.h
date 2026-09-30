@@ -21,6 +21,7 @@ enum Page {
   PAGE_MASTER,
   PAGE_MODS,
   PAGE_ENVS,
+  PAGE_CLOUDS,
   PAGE_ASSIGN,
   PAGE_LAST
 };
@@ -103,6 +104,19 @@ enum AssignParam {
   A_LAST
 };
 
+// Clouds, on the master mix (project-wide).
+enum CloudsParam {
+  C_MODE,
+  C_POSITION,
+  C_SIZE,
+  C_PITCH,
+  C_DENSITY,
+  C_TEXTURE,
+  C_FEEDBACK,
+  C_DRY_WET,
+  C_LAST
+};
+
 enum ParamFormat {
   FORMAT_PERCENT,
   FORMAT_BIPOLAR,
@@ -119,6 +133,8 @@ enum ParamFormat {
   FORMAT_DESTINATION,
   FORMAT_DELAY_TIME,
   FORMAT_ENV_TIME,
+  FORMAT_CLOUDS_MODE,
+  FORMAT_SEMITONES,
 };
 
 struct ParamInfo {
@@ -150,6 +166,7 @@ const int kNumDelayTimes = 10;
 // Delay time, in quarter notes.
 extern const float kDelayTimes[kNumDelayTimes];
 
+const int kNumCloudsModes = 4;
 const int kNumFilterModes = 3;
 const int kNumChokeGroups = 4;
 // "Off" followed by every lockable parameter.
@@ -158,6 +175,7 @@ const int kNumDestinations = kNumLockable + 1;
 const ParamInfo& track_param_info(int param);
 const ParamInfo& master_param_info(int param);
 const ParamInfo& assign_param_info(int param);
+const ParamInfo& clouds_param_info(int param);
 
 // Info for knob `knob` of `page`.
 const ParamInfo& page_param_info(Page page, int knob);
@@ -191,6 +209,7 @@ float FilterDecayToSeconds(float value); // 5 ms to 2 s.
 float GateToSeconds(float value);        // 1 ms to 512 ms.
 float CrushToRatio(float value);         // 1 (off) down to 1/64.
 float NoteToNormalizedPitch(float note);
+float CloudsPitchToSemitones(float value);  // -24 to +24, 0 at the centre.
 float EnvTimeToSeconds(float value);     // 0.5 ms to 8 s (Peaks envelope times).
 
 }  // namespace drumfreake

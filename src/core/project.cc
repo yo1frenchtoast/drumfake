@@ -193,6 +193,12 @@ void Project::Init() {
   key_root = 0;
   key_scale = 0;
   key_octave = 0;
+  for (int i = 0; i < C_LAST; ++i) {
+    clouds[i] = clouds_param_info(i).default_value;
+  }
+  marbles = MarblesSettings();
+  marbles_tracks[0] = 0;  // t1 plays the kick...
+  marbles_tracks[1] = 1;  // ...and t3 the snare.
 }
 
 }  // namespace drumfreake

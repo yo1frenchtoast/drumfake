@@ -335,6 +335,11 @@ void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color
       dl->AddLine(ImVec2(p.x + s * 0.1f, p.y + s * 0.6f), ImVec2(p.x + s * 0.35f, p.y + s * 0.05f), color, t);
       dl->AddLine(ImVec2(p.x + s * 0.35f, p.y + s * 0.05f), ImVec2(p.x + s * 0.6f, p.y + s * 0.6f), color, t);
       break;
+    case ICON_CLOUDS:
+      dl->AddCircle(ImVec2(p.x - s * 0.35f, p.y + s * 0.1f), s * 0.4f, color, 16, t);
+      dl->AddCircle(ImVec2(p.x + s * 0.25f, p.y - s * 0.15f), s * 0.5f, color, 16, t);
+      dl->AddCircle(ImVec2(p.x + s * 0.4f, p.y + s * 0.3f), s * 0.3f, color, 16, t);
+      break;
     case ICON_ASSIGN:
       dl->AddCircle(p, s * 0.6f, color, 20, t);
       dl->AddLine(ImVec2(p.x, p.y), ImVec2(p.x + s * 0.4f, p.y - s * 0.4f), color, t);

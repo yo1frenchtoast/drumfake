@@ -33,12 +33,25 @@ add_library(mutable_dsp STATIC
   ${EURORACK_DIR}/rings/resources.cc
   ${EURORACK_DIR}/grids/resources.cc
   ${EURORACK_DIR}/peaks/resources.cc
+  ${EURORACK_DIR}/marbles/resources.cc
+  ${EURORACK_DIR}/clouds/resources.cc
+  ${EURORACK_DIR}/clouds/dsp/correlator.cc
+  ${EURORACK_DIR}/clouds/dsp/granular_processor.cc
+  ${EURORACK_DIR}/clouds/dsp/mu_law.cc
+  ${EURORACK_DIR}/clouds/dsp/pvoc/frame_transformation.cc
+  ${EURORACK_DIR}/clouds/dsp/pvoc/phase_vocoder.cc
+  ${EURORACK_DIR}/clouds/dsp/pvoc/stft.cc
+  ${EURORACK_DIR}/marbles/ramp/ramp_extractor.cc
+  ${EURORACK_DIR}/marbles/random/t_generator.cc
   ${EURORACK_DIR}/peaks/modulations/multistage_envelope.cc
+  ${EURORACK_DIR}/stmlib/dsp/atan.cc
   ${EURORACK_DIR}/stmlib/dsp/units.cc
   ${EURORACK_DIR}/stmlib/utils/random.cc)
-# The shims directory comes first so that Grids' AVR headers resolve to it.
+# The shims directory comes first so that Grids' AVR headers resolve to it, then
+# the header overrides (see patches/README.md), then the submodule.
 target_include_directories(mutable_dsp SYSTEM PUBLIC
   ${CMAKE_SOURCE_DIR}/shims
+  ${CMAKE_SOURCE_DIR}/patches
   ${EURORACK_DIR})
 target_compile_definitions(mutable_dsp PUBLIC TEST)
 # plaits/user_data.h calls printf in TEST mode without including stdio.
@@ -60,7 +73,9 @@ add_library(drumfreake_core STATIC
   src/core/project.cc
   src/core/project_io.cc
   src/core/grids_gen.cc
+  src/core/marbles_gen.cc
   src/core/midi_parser.cc
+  src/audio/clouds_fx.cc
   src/audio/mod_sources.cc
   src/audio/track_voice.cc
   src/audio/master_fx.cc
