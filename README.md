@@ -1,31 +1,31 @@
 # Drumf(re)ake
 
-Groovebox open source, inspirée du prototype de la DrumFreak d'Arturia (produit non commercialisé
-à ce jour). Projet indépendant, sans lien avec Arturia. Elle est construite sur les DSP open source
-de Mutable Instruments (sous-module `third_party/eurorack`, non modifié) :
+Open-source groovebox inspired by the Arturia DrumFreak prototype (not commercially released to
+date). Independent project, not affiliated with Arturia. It is built on the open-source Mutable
+Instruments DSP (unmodified `third_party/eurorack` submodule):
 
-- **Plaits** : une voix par piste (8 pistes, 24 moteurs, dont grosse caisse, caisse claire et hi-hat
-  analogiques ou synthétiques, modal, FM…) ;
-- **Grids** : génération algorithmique de rythmes sur le pad X/Y (mode « Spice ») ;
-- **Rings** : reverb et chorus du bus master.
+- **Plaits**: one voice per track (8 tracks, 24 engines, including analog or synthetic kick,
+  snare and hi-hat, modal, FM…);
+- **Grids**: algorithmic rhythm generation on the X/Y pad ("Spice" mode);
+- **Rings**: reverb and chorus on the master bus.
 
-## Construction
+## Building
 
 ```sh
 git submodule update --init --recursive
 cmake -B build
 cmake --build build -j
-./build/drumfreake_tests   # tests du séquenceur, de Grids, de la sauvegarde et du rendu
+./build/drumfreake_tests   # tests for the sequencer, Grids, saving and rendering
 ./build/drumfreake         # application
 ```
 
-Dépendances : SDL3 et nlohmann-json (Homebrew sur ce système). Dear ImGui est téléchargé par CMake.
-`-DDRUMFREAKE_GUI=OFF` compile une version sans interface.
+Dependencies: SDL3 and nlohmann-json (Homebrew on this system). Dear ImGui is downloaded by CMake.
+`-DDRUMFREAKE_GUI=OFF` builds a version without a user interface.
 
 ### Android
 
-Prérequis : SDK Android avec le NDK 30.0.16248370 et CMake 4.1.2 (`sdkmanager`), Java récent.
-SDL3 est compilé depuis le sous-module `third_party/SDL`.
+Requirements: Android SDK with NDK 30.0.16248370 and CMake 4.1.2 (`sdkmanager`), a recent Java.
+SDL3 is built from the `third_party/SDL` submodule.
 
 ```sh
 cd android
@@ -33,140 +33,138 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Au doigt, tout est multitouch : plusieurs pads à la fois, un pad et un potard, le pad X/Y, et
-les combinaisons de boutons (*Last Step* ou *Copy* + pages, *Erase* + potard…).
-Un appui long (0,5 s) remplace le clic droit (sélection d'un pas, édition d'un Chord sur les
-pads 1–8) et un double tap sur un potard le remet à sa valeur par défaut.
+Everything is multitouch: several pads at once, a pad and a knob, the X/Y pad, and button
+combinations (*Last Step* or *Copy* + pages, *Erase* + knob…). A long press (0.5 s) replaces the
+right click (selecting a step, editing a Chord on pads 1–8) and a double tap on a knob resets it
+to its default value.
 
-L'APK (arm64-v8a, Android 8 minimum) s'ouvre en plein écran paysage. Les polices Noto Sans
-(licence OFL) sont embarquées, le projet est sauvegardé dans le stockage privé de l'application.
+The APK (arm64-v8a, Android 8 minimum) opens in full-screen landscape. The Noto Sans fonts
+(OFL license) are bundled, and the project is saved in the app's private storage.
 
-Rendu hors ligne :
+Offline rendering:
 
 ```sh
-./build/drumfreake --render demo.wav --bars 4 [--grids] [--pattern N] [--project fichier.json]
+./build/drumfreake --render demo.wav --bars 4 [--grids] [--pattern N] [--project file.json]
 ```
 
-## Contrôles
+## Controls
 
-| Façade | Souris | Clavier |
+| Faceplate | Mouse | Keyboard |
 |---|---|---|
-| Pads A–H | clic = joue et sélectionne la piste (Maj = accent) | `Q W E R T Y U I` |
-| Pads 1–8 | selon le mode : Chords, Sounds, Repeats, clavier | `A S D F G H J K` |
-| Potards | glisser verticalement (Maj = fin), molette, double-clic = défaut | |
-| Pas 1–16 | clic = on/off ; clic droit = sélectionner le pas (p-lock) | |
-| Play / Rec | | `Espace` / `Entrée` |
+| Pads A–H | click = plays and selects the track (Shift = accent) | `Q W E R T Y U I` |
+| Pads 1–8 | depends on the mode: Chords, Sounds, Repeats, keyboard | `A S D F G H J K` |
+| Knobs | drag vertically (Shift = fine), wheel, double-click = default | |
+| Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
+| Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`6` |
-| Pages de pas A–D | | `Z` / `X` |
-| Last Step (maintenu) / Poly / Shift (maintenu) | | `L` / `P` / `Alt` |
-| Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Suppr` (au relâchement) |
-| Retour (↺) | ferme Edit/Browse, relâche le pas sélectionné | `Échap` |
+| Step pages A–D | | `Z` / `X` |
+| Last Step (held) / Poly / Shift (held) | | `L` / `P` / `Alt` |
+| Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (on release) |
+| Back (↺) | closes Edit/Browse, releases the selected step | `Esc` |
 
-- **Shift** (en bas à gauche, ou `Alt`) maintenu, comme sur la DrumBrute : les pas deviennent
-  des options — 1 à 5 : division temporelle du pattern (1/8, 1/8T, 1/16, 1/16T, 1/32) ; 13 :
-  métronome ; 14 : *At End* (changer de pattern à la fin ou tout de suite) ; 15 : les pas suivent
-  la page jouée ; 16 : Poly. Shift + pad : sélectionner une piste sans la jouer.
-- **Pas maintenu** (au doigt, 0,5 s ; clic droit à la souris pour le garder sélectionné) :
-  tant qu'il est tenu, les potards posent des parameter locks, les pads 1–4 règlent ses
-  répétitions (1 à 4 coups) et l'encodeur le décale en avance ou en retard (±50 % d'un pas, par
-  pas de 5 %, trait ambré sous le pas). Relâché, on revient à l'édition normale.
-- **Last Step** maintenu (ou `L`) : les pas montrent la longueur ; appuyer sur un pas fixe le
-  dernier pas du pattern (de la piste sélectionnée en Poly), une page le fixe à 16/32/48/64.
-- **Parameter locks** : clic droit sur un pas, puis tourner un potard (anneau orange = verrouillé ;
-  double-clic pour retirer le lock). L'écran permet d'éditer vélocité, probabilité, ratchets et note.
-- **Pages A|16 à D|64** : pendant la lecture, les pas suivent la page jouée par la piste
-  sélectionnée ; choisir une page à la main fige l'affichage jusqu'au prochain Play.
-  *Last Step* maintenu + une page = longueur du pattern (16, 32, 48 ou 64 pas).
-  *Copy* maintenu + une page source + une page destination : par ex. A|16 puis D|64 répète les
-  16 premiers pas (avec leurs locks, sur toutes les pistes) jusqu'au pas 64 et allonge le pattern ;
-  une destination avant la source copie simplement la page. *Last Step* et *Copy* relâchés seuls
-  gardent leur action habituelle.
-- **Polyrythme** : en Poly, *Last Step* + un pas = dernier pas de la piste sélectionnée
-  (re-appuyer sur le même pas = longueur du pattern). *Poly* (par pattern) : chaque piste boucle sur sa propre
-  longueur sans se recaler à la fin du pattern ; tout se réaligne au Play et au changement de
-  pattern. Sans Poly, les pistes courtes repartent avec le pattern.
-- **Retour visuel sur les potards** : halo orange = la note en cours joue un lock sur ce paramètre ;
-  arc + point = écart entre le potard et la valeur réellement jouée (orange pour un lock, bleu pour
-  un LFO ou une macro) ; pastille orange = au moins un pas de la piste verrouille ce paramètre.
-- **Effacer une automation** : maintenir *Erase* (ou `Suppr`) et toucher un potard efface les
-  locks de ce paramètre sur tous les pas de la piste sélectionnée (pastilles rouges pendant le
-  maintien ; *Undo* pour revenir). Relâché seul, *Erase* garde son action habituelle.
-- **Motion recording** : Rec + Play, puis tourner un potard : le lock s'écrit sur le pas en cours.
-- **Pad X/Y** : *Spice* = position dans la carte Grids (recliquer sur Spice pour activer/désactiver ;
-  pistes A–C, densités et chaos sur la page Assign) ; *FX* = filtre DJ (X) et envoi delay (Y) ;
-  *Looper* = boucle du séquenceur tant que le pad est touché (Y = longueur) ; *Macros* = paramètres
-  assignés sur la page Assign.
-- **Pads 1–8** : *Chords* joue des combinaisons de pistes (clic droit sur un pad pour l'éditer) ;
-  *Sounds* charge un son d'usine (re-cliquer Sounds = banque 2) ; *Repeats* répète les pistes tenues
-  à la division choisie ; *Keys* joue la piste sélectionnée sur la gamme choisie et écrit la note
-  du pas sélectionné.
-- **Mode Keys** : tonique, gamme (majeure, mineure, modes, mineure harmonique, pentatoniques,
-  blues, chromatique) et octave, communes à tout le projet. Le bouton *Keys* affiche une page
-  « Keys » (potards 1–3 = tonique, gamme, octave ; re-cliquer Keys pour revenir aux pages de son) ;
-  l'écran montre les réglages et les notes des pads, et l'encodeur modifie le champ sélectionné.
-  Raccourcis : `←`/`→` octave, `↑`/`↓` tonique, `Tab`/`Maj+Tab` gamme. Les notes s'ajoutent au
-  Pitch de la piste : une piste réglée sur C joue dans la tonalité choisie.
-- **Encodeur** : change le moteur Plaits de la piste (ou le son dans Browse).
-- **Song** (chaîne de patterns, comme sur les Arturia) : appuyer sur *Song* (il clignote), puis
-  sur les boutons de pas 1–16 dans l'ordre voulu ; un pattern peut revenir plusieurs fois
-  (ex. 1-1-2-3), jusqu'à 64 entrées. Le premier appui démarre une nouvelle chaîne ; *Undo* retire
-  la dernière entrée, *Erase* vide la chaîne. Ré-appuyer sur *Song* lance la chaîne en boucle
-  (depuis le début au Play ; en cours de lecture, après le pattern en cours). Choisir un pattern
-  en mode *Patterns* quitte le mode Song. La chaîne est sauvegardée avec le projet.
-- **Kits** : chaque pattern a ses propres sons, chargés avec lui (y compris en mode Song) ; les
-  réglages faits sur les potards restent dans le pattern courant. *Copy*/*Paste* d'un pattern
-  copie aussi son kit.
-- **Panel** (comme sur la MatrixBrute) : le son en cours reste en place quand on change de
-  pattern, et ses réglages ne sont enregistrés nulle part tant qu'on ne fait pas *Edit* →
-  *Store kit* (qui l'écrit dans le pattern courant). Éteindre Panel recharge le kit du pattern
-  courant. L'écran affiche « PANEL » quand il est actif.
-- **Edit** : longueur du pattern, swing, longueur par piste (polymétrie), BPM, lecture du Song,
-  métronome, « Bake Grids » (écrit le rythme Grids dans A–C).
-- **Mute** / **Solo** (maintenus + pads, ou tapés pour verrouiller le mode) : coupent ou isolent
-  des pistes ; *Shift* + Mute/Solo efface tous les mutes/solos. Pour sélectionner une piste sans
-  la jouer : *Shift* + pad.
-- **Maintiens avec les pads** (comme sur la DrumBrute) : *Erase* + pad efface la piste à
-  l'arrêt, ou pendant la lecture efface ses coups au passage de la tête tant que le pad est tenu ;
-  *Copy* + pad + pad copie la séquence d'une piste sur une autre.
-- **Repeats en enregistrement** : les répétitions s'écrivent dans le pattern (une par pas, ou en
-  ratchets si elles sont plus rapides que les pas), comme le Roller de la DrumBrute.
-- **MIDI en entrée** (PC : tous les ports ALSA, branchés à chaud, plus un port virtuel
-  « Drumf(re)ake » ; Android : périphériques USB et applications MIDI) :
-  - un instrument = un canal : la piste A écoute le canal 1, B le canal 2… H le canal 8, et joue
-    les notes reçues à leur hauteur, avec la vélocité (elles s'enregistrent en Rec) ;
-  - à défaut (canaux affectés à aucune piste, ex. canal 10), les 8 notes de la gamme majeure à
-    partir de la note *Trig* (C2 par défaut : touches blanches C2 à C3) déclenchent A–H à leur
-    propre hauteur ;
-  - réglages dans *Edit* → *MIDI settings* : canal de chaque piste (off possible), note *Trig*,
-    *Follow MIDI clock* (tempo, Start/Stop/Continue et Song Position de l'horloge MIDI, 24 PPQN ;
-    l'écran affiche alors « EXT » avec le tempo mesuré) ;
-  - le témoin « MIDI » de l'écran clignote à chaque message ; `--midi-monitor` affiche les
-    messages reçus dans le terminal.
-- La sauvegarde est dans `~/.local/share/drumfreake/project.json`, rechargée au démarrage.
+- **Shift** (bottom left, or `Alt`) held, as on the DrumBrute: the steps become options. 1 to 5:
+  pattern time division (1/8, 1/8T, 1/16, 1/16T, 1/32); 13: metronome; 14: *At End* (switch
+  pattern at the end or immediately); 15: steps follow the playing page; 16: Poly. Shift + pad:
+  select a track without playing it.
+- **Held step** (by finger, 0.5 s; right click with the mouse to keep it selected): while it is
+  held, the knobs set parameter locks, pads 1–4 set its repeats (1 to 4 hits) and the encoder
+  shifts it early or late (±50% of a step, in 5% increments, amber line under the step). When
+  released, you are back to normal editing.
+- **Last Step** held (or `L`): the steps show the length; pressing a step sets the last step of
+  the pattern (of the selected track in Poly), a page sets it to 16/32/48/64.
+- **Parameter locks**: right click a step, then turn a knob (orange ring = locked; double-click
+  to remove the lock). The screen lets you edit velocity, probability, ratchets and note.
+- **Pages A|16 to D|64**: during playback, the steps follow the page played by the selected
+  track; choosing a page by hand freezes the display until the next Play. *Last Step* held + a
+  page = pattern length (16, 32, 48 or 64 steps). *Copy* held + a source page + a destination
+  page: for example A|16 then D|64 repeats the first 16 steps (with their locks, on all tracks)
+  up to step 64 and extends the pattern; a destination before the source simply copies the page.
+  *Last Step* and *Copy* released alone keep their usual action.
+- **Polyrhythm**: in Poly, *Last Step* + a step = last step of the selected track (pressing the
+  same step again = pattern length). *Poly* (per pattern): each track loops on its own length
+  without resyncing at the end of the pattern; everything realigns on Play and on pattern
+  change. Without Poly, short tracks restart with the pattern.
+- **Knob visual feedback**: orange halo = the current note plays a lock on this parameter; arc +
+  dot = difference between the knob and the value actually played (orange for a lock, blue for
+  an LFO or a macro); orange dot = at least one step of the track locks this parameter.
+- **Erasing automation**: hold *Erase* (or `Delete`) and touch a knob to erase the locks of this
+  parameter on all steps of the selected track (red dots while held; *Undo* to revert).
+  Released alone, *Erase* keeps its usual action.
+- **Motion recording**: Rec + Play, then turn a knob: the lock is written on the current step.
+- **X/Y pad**: *Spice* = position in the Grids map (click Spice again to turn it on/off;
+  tracks A–C, densities and chaos on the Assign page); *FX* = DJ filter (X) and delay send (Y);
+  *Looper* = sequencer loop while the pad is touched (Y = length); *Macros* = parameters
+  assigned on the Assign page.
+- **Pads 1–8**: *Chords* plays track combinations (right click a pad to edit it); *Sounds* loads
+  a factory sound (click Sounds again = bank 2); *Repeats* repeats the held tracks at the chosen
+  division; *Keys* plays the selected track on the chosen scale and writes the note of the
+  selected step.
+- **Keys mode**: root, scale (major, minor, modes, harmonic minor, pentatonics, blues,
+  chromatic) and octave, shared by the whole project. The *Keys* button shows a "Keys" page
+  (knobs 1–3 = root, scale, octave; click Keys again to go back to the sound pages); the screen
+  shows the settings and the pad notes, and the encoder changes the selected field. Shortcuts:
+  `←`/`→` octave, `↑`/`↓` root, `Tab`/`Shift+Tab` scale. Notes are added to the track's Pitch: a
+  track set to C plays in the chosen key.
+- **Encoder**: changes the track's Plaits engine (or the sound in Browse).
+- **Song** (pattern chain, as on the Arturia units): press *Song* (it blinks), then the step
+  buttons 1–16 in the desired order; a pattern can appear several times (e.g. 1-1-2-3), up to 64
+  entries. The first press starts a new chain; *Undo* removes the last entry, *Erase* clears the
+  chain. Pressing *Song* again loops the chain (from the start on Play; during playback, after
+  the current pattern). Choosing a pattern in *Patterns* mode leaves Song mode. The chain is
+  saved with the project.
+- **Kits**: each pattern has its own sounds, loaded with it (including in Song mode); knob
+  settings stay in the current pattern. *Copy*/*Paste* of a pattern also copies its kit.
+- **Panel** (as on the MatrixBrute): the current sound stays in place when you change pattern,
+  and its settings are stored nowhere until you use *Edit* → *Store kit* (which writes it to the
+  current pattern). Turning Panel off reloads the kit of the current pattern. The screen shows
+  "PANEL" when it is active.
+- **Edit**: pattern length, swing, per-track length (polymeter), BPM, Song playback, metronome,
+  "Bake Grids" (writes the Grids rhythm to A–C).
+- **Mute** / **Solo** (held + pads, or tapped to latch the mode): silence or isolate tracks;
+  *Shift* + Mute/Solo clears all mutes/solos. To select a track without playing it: *Shift* +
+  pad.
+- **Holds with pads** (as on the DrumBrute): *Erase* + pad clears the track when stopped, or
+  during playback erases its hits as the playhead passes while the pad is held; *Copy* + pad +
+  pad copies the sequence of one track onto another.
+- **Repeats while recording**: repeats are written into the pattern (one per step, or as
+  ratchets if they are faster than the steps), like the DrumBrute Roller.
+- **MIDI input** (PC: all ALSA ports, hot-pluggable, plus a virtual "Drumf(re)ake" port;
+  Android: USB devices and MIDI apps):
+  - one instrument = one channel: track A listens on channel 1, B on channel 2… H on channel 8,
+    and plays the received notes at their pitch, with velocity (they are recorded in Rec);
+  - otherwise (channels not assigned to any track, e.g. channel 10), the 8 notes of the major
+    scale starting at the *Trig* note (C2 by default: white keys C2 to C3) trigger A–H at their
+    own pitch;
+  - settings in *Edit* → *MIDI settings*: channel of each track (can be off), *Trig* note,
+    *Follow MIDI clock* (tempo, Start/Stop/Continue and Song Position from the MIDI clock,
+    24 PPQN; the screen then shows "EXT" with the measured tempo);
+  - the "MIDI" indicator on the screen blinks on every message; `--midi-monitor` prints the
+    received messages in the terminal.
+- The project is saved in `~/.local/share/drumfreake/project.json` and reloaded at startup.
 
 ## Architecture
 
 ```
-src/core/    modèle (paramètres, pas, patterns, sons d'usine), JSON, portage de Grids
-src/audio/   TrackVoice (Plaits + filtre + drive + crush + choke), MasterFx, Engine (séquenceur)
-src/ui/      widgets ImGui et façade
-shims/       en-têtes AVR minimaux pour compiler les tables de grids/resources.cc
+src/core/    model (parameters, steps, patterns, factory sounds), JSON, Grids port
+src/audio/   TrackVoice (Plaits + filter + drive + crush + choke), MasterFx, Engine (sequencer)
+src/ui/      ImGui widgets and faceplate
+shims/       minimal AVR headers to compile the grids/resources.cc tables
 ```
 
-L'audio est rendu par blocs de 12 échantillons à 48 kHz ; le séquenceur est précis au bloc près
-(0,25 ms). L'interface modifie le modèle sous le verrou du moteur ; lecture, niveaux et oscilloscope
-passent par des atomiques.
+Audio is rendered in blocks of 12 samples at 48 kHz; the sequencer is accurate to the block
+(0.25 ms). The UI modifies the model under the engine lock; playback state, levels and the
+oscilloscope go through atomics.
 
-## Limites
+## Limitations
 
-- Le sampler (bouton Sample) n'est pas émulé.
-- Les fonctions exactes de la DrumFreak ne sont pas publiques : la façade reprend la disposition
-  de la photo du prototype, et le comportement de chaque bouton est une interprétation.
+- The sampler (Sample button) is not emulated.
+- The exact functions of the DrumFreak are not public: the faceplate follows the layout of the
+  prototype photo, and the behavior of each button is an interpretation.
 
-## Licence
+## License
 
-Drumf(re)ake est distribué sous licence GNU GPL version 3 (voir `LICENSE`).
+Drumf(re)ake is distributed under the GNU GPL version 3 (see `LICENSE`).
 
-Code tiers utilisé :
-- Plaits, Rings et stmlib (Émilie Gillet) : licence MIT ;
-- les tables de Grids (`grids/resources.cc`) : GPLv3.
+Third-party code used:
+- Plaits, Rings and stmlib (Émilie Gillet): MIT license;
+- the Grids tables (`grids/resources.cc`): GPLv3.
