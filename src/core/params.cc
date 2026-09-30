@@ -1,5 +1,6 @@
 #include "core/params.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -95,6 +96,15 @@ static const ParamInfo kTrackParams[kNumTrackParams] = {
   { "LFO2 Shape", "L2Sh", FORMAT_LFO_SHAPE, 0.0f },
   { "LFO2 Depth", "L2Dp", FORMAT_BIPOLAR, 0.5f },
   { "LFO2 Dest", "L2Ds", FORMAT_DESTINATION, 0.0f },
+
+  { "Env Attack", "EAtk", FORMAT_ENV_TIME, 0.1f },
+  { "Env Decay", "EDcy", FORMAT_ENV_TIME, 0.55f },
+  { "Env Amount", "EAmt", FORMAT_BIPOLAR, 0.75f },
+  { "Env Dest", "EDst", FORMAT_DESTINATION, 0.0f },
+  { "Ball Gravity", "BGrv", FORMAT_PERCENT, 0.5f },
+  { "Ball Bounce", "BBnc", FORMAT_PERCENT, 0.5f },
+  { "Ball Amount", "BAmt", FORMAT_BIPOLAR, 0.75f },
+  { "Ball Dest", "BDst", FORMAT_DESTINATION, 0.0f },
 };
 
 static const ParamInfo kMasterParams[M_LAST] = {
@@ -120,7 +130,7 @@ static const ParamInfo kAssignParams[A_LAST] = {
 };
 
 static const char* const kPageNames[PAGE_LAST] = {
-  "Sound", "Filter", "Track", "Master", "Mods", "Assign"
+  "Sound", "Filter", "Track", "Master", "Mods", "Envs", "Assign"
 };
 
 const ParamInfo& track_param_info(int param) {
@@ -141,6 +151,7 @@ const ParamInfo& page_param_info(Page page, int knob) {
     case PAGE_FILTER: return kTrackParams[P_CUTOFF + knob];
     case PAGE_TRACK: return kTrackParams[P_VOLUME + knob];
     case PAGE_MODS: return kTrackParams[P_LFO1_RATE + knob];
+    case PAGE_ENVS: return kTrackParams[P_ENV_ATTACK + knob];
     case PAGE_MASTER: return kMasterParams[knob];
     case PAGE_ASSIGN:
     default: return kAssignParams[knob];
@@ -169,6 +180,15 @@ float FilterDecayToSeconds(float value) {
 
 float GateToSeconds(float value) {
   return 0.001f * powf(2.0f, 9.0f * value);
+}
+
+float EnvTimeToSeconds(float value) {
+  // Peaks' lut_env_increments sampled every 64 entries (of 256), interpolated
+  // geometrically: close enough for a display.
+  static const float kSeconds[5] = { 0.0005f, 0.0357f, 0.3996f, 2.171f, 8.0f };
+  float position = Clamp01(value) * 4.0f;
+  int i = std::min(static_cast<int>(position), 3);
+  return kSeconds[i] * powf(kSeconds[i + 1] / kSeconds[i], position - i);
 }
 
 float CrushToRatio(float value) {
@@ -205,10 +225,12 @@ std::string FormatValue(ParamFormat format, float value) {
       break;
     }
     case FORMAT_FILTER_DECAY:
+    case FORMAT_ENV_TIME:
     case FORMAT_GATE: {
       float seconds = format == FORMAT_GATE
           ? GateToSeconds(value)
-          : FilterDecayToSeconds(value);
+          : (format == FORMAT_ENV_TIME ? EnvTimeToSeconds(value)
+                                       : FilterDecayToSeconds(value));
       if (seconds >= 1.0f) {
         snprintf(buffer, sizeof(buffer), "%.2fs", seconds);
       } else {

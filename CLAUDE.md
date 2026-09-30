@@ -11,8 +11,9 @@ and chorus. Independent project: no Arturia branding in the UI (factual comments
 - `src/core/`: model (params, steps, patterns, per-pattern kits, song, scales), JSON I/O,
   Grids port, MIDI parser. No UI or audio device code.
 - `src/audio/`: `TrackVoice` (Plaits + filter/drive/crush/choke), `MasterFx`, `Engine`
-  (sequencer, clock, MIDI handling). `plaits/resources.h` and `rings/resources.h` define the
-  same macros: never include both in one translation unit (see `audio/buses.h`).
+  (sequencer, clock, MIDI handling), `ModSources` (Peaks envelope + bouncing ball per track).
+  `plaits/resources.h`, `rings/resources.h` and `peaks/resources.h` define the same macros: never
+  include two of them in one translation unit (see `audio/buses.h`; Peaks lives in `mod_sources.cc`).
 - `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, and the
   multitouch layer (fingers captured by pads/knobs/buttons, one free finger drives ImGui).
 - `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android).

@@ -14,6 +14,7 @@
 #include <mutex>
 
 #include "audio/master_fx.h"
+#include "audio/mod_sources.h"
 #include "audio/track_voice.h"
 #include "core/grids_gen.h"
 #include "core/midi_parser.h"
@@ -165,6 +166,7 @@ class Engine {
   std::mutex mutex_;
   std::unique_ptr<Project> project_;
   TrackVoice voices_[kNumTracks];
+  ModSources mods_[kNumTracks];
   std::unique_ptr<MasterFx> master_fx_;
   GridsGenerator grids_;
 

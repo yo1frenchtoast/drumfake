@@ -430,7 +430,12 @@ float* Faceplate::KnobTarget(int knob, bool* is_lock) {
     default:
       break;
   }
-  int param = (page_ == PAGE_MODS ? P_LFO1_RATE : page_ * kKnobsPerPage) + knob;
+  int param = knob;
+  switch (page_) {
+    case PAGE_MODS: param += P_LFO1_RATE; break;
+    case PAGE_ENVS: param += P_ENV_ATTACK; break;
+    default: param += page_ * kKnobsPerPage; break;
+  }
   return &project.sounds[engine_->selected_track].params[param];
 }
 
@@ -1199,7 +1204,7 @@ void Faceplate::DrawKeyKnobs() {
 void Faceplate::DrawPageButtons() {
   const Canvas& c = canvas_;
   const Icon kPageIcons[PAGE_LAST] = {
-    ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ASSIGN
+    ICON_SOUND, ICON_FILTER, ICON_TRACK, ICON_MASTER, ICON_MODS, ICON_ENVS, ICON_ASSIGN
   };
   float w = (layout::kRightX1 - layout::kSoundX0 - (PAGE_LAST - 1) * layout::kGap) / PAGE_LAST;
   for (int i = 0; i < PAGE_LAST; ++i) {
@@ -2155,7 +2160,7 @@ void Faceplate::HandleKeyboard() {
   }
   if (ImGui::IsKeyPressed(ImGuiKey_P, false)) pattern().poly = !pattern().poly;
   const ImGuiKey kPageKeys[PAGE_LAST] = {
-    ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6
+    ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6, ImGuiKey_7
   };
   for (int i = 0; i < PAGE_LAST; ++i) {
     if (ImGui::IsKeyPressed(kPageKeys[i], false)) page_ = static_cast<Page>(i);

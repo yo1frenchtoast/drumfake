@@ -7,7 +7,8 @@ Instruments DSP (unmodified `third_party/eurorack` submodule):
 - **Plaits**: one voice per track (8 tracks, 24 engines, including analog or synthetic kick,
   snare and hi-hat, modal, FM…);
 - **Grids**: algorithmic rhythm generation on the X/Y pad ("Spice" mode);
-- **Rings**: reverb and chorus on the master bus.
+- **Rings**: reverb and chorus on the master bus;
+- **Peaks**: envelope and bouncing ball modulation sources.
 
 ## Building
 
@@ -56,7 +57,7 @@ Offline rendering:
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
-| Pages Sound…Assign | | `1`–`6` |
+| Pages Sound…Assign | | `1`–`7` |
 | Step pages A–D | | `Z` / `X` |
 | Last Step (held) / Poly / Shift (held) | | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (on release) |
@@ -105,6 +106,12 @@ Offline rendering:
   shows the settings and the pad notes, and the encoder changes the selected field. Shortcuts:
   `←`/`→` octave, `↑`/`↓` root, `Tab`/`Shift+Tab` scale. Notes are added to the track's Pitch: a
   track set to C plays in the chosen key.
+- **Envs page** (Peaks modulation sources, one set per track, restarted by every note): an
+  *AD envelope* (attack, decay, bipolar amount, destination) and a *bouncing ball* (gravity,
+  bounce, amount, destination; a higher bounce is more elastic, so the ball takes longer to come
+  to rest). Each one can drive any lockable parameter, like the LFOs of the Mods page: a full
+  amount sweeps the whole range of the destination. The ball gives accelerating or decelerating
+  rolls on a filter cutoff or a pitch.
 - **Encoder**: changes the track's Plaits engine (or the sound in Browse).
 - **Song** (pattern chain, as on the Arturia units): press *Song* (it blinks), then the step
   buttons 1–16 in the desired order; a pattern can appear several times (e.g. 1-1-2-3), up to 64

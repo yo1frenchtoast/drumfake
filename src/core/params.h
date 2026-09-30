@@ -20,6 +20,7 @@ enum Page {
   PAGE_TRACK,
   PAGE_MASTER,
   PAGE_MODS,
+  PAGE_ENVS,
   PAGE_ASSIGN,
   PAGE_LAST
 };
@@ -63,6 +64,15 @@ enum TrackParam {
   P_LFO2_SHAPE,
   P_LFO2_DEPTH,
   P_LFO2_DEST,
+  // Envs page: Peaks modulation sources triggered by every note.
+  P_ENV_ATTACK,
+  P_ENV_DECAY,
+  P_ENV_AMOUNT,
+  P_ENV_DEST,
+  P_BALL_GRAVITY,
+  P_BALL_BOUNCE,
+  P_BALL_AMOUNT,
+  P_BALL_DEST,
   P_LAST
 };
 
@@ -108,6 +118,7 @@ enum ParamFormat {
   FORMAT_LFO_SHAPE,
   FORMAT_DESTINATION,
   FORMAT_DELAY_TIME,
+  FORMAT_ENV_TIME,
 };
 
 struct ParamInfo {
@@ -180,6 +191,7 @@ float FilterDecayToSeconds(float value); // 5 ms to 2 s.
 float GateToSeconds(float value);        // 1 ms to 512 ms.
 float CrushToRatio(float value);         // 1 (off) down to 1/64.
 float NoteToNormalizedPitch(float note);
+float EnvTimeToSeconds(float value);     // 0.5 ms to 8 s (Peaks envelope times).
 
 }  // namespace drumfreake
 

@@ -32,6 +32,8 @@ add_library(mutable_dsp STATIC
   ${EURORACK_DIR}/plaits/resources.cc
   ${EURORACK_DIR}/rings/resources.cc
   ${EURORACK_DIR}/grids/resources.cc
+  ${EURORACK_DIR}/peaks/resources.cc
+  ${EURORACK_DIR}/peaks/modulations/multistage_envelope.cc
   ${EURORACK_DIR}/stmlib/dsp/units.cc
   ${EURORACK_DIR}/stmlib/utils/random.cc)
 # The shims directory comes first so that Grids' AVR headers resolve to it.
@@ -59,6 +61,7 @@ add_library(drumfreake_core STATIC
   src/core/project_io.cc
   src/core/grids_gen.cc
   src/core/midi_parser.cc
+  src/audio/mod_sources.cc
   src/audio/track_voice.cc
   src/audio/master_fx.cc
   src/audio/engine.cc

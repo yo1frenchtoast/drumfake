@@ -328,6 +328,13 @@ void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color
         dl->AddLine(ImVec2(x - s * 0.15f, y), ImVec2(x + s * 0.15f, y), color, t * 1.6f);
       }
       break;
+    case ICON_ENVS:
+      // Fast attack, then a decay with one bounce.
+      dl->AddLine(ImVec2(p.x - s * 0.8f, p.y + s * 0.6f), ImVec2(p.x - s * 0.4f, p.y - s * 0.7f), color, t);
+      dl->AddLine(ImVec2(p.x - s * 0.4f, p.y - s * 0.7f), ImVec2(p.x + s * 0.1f, p.y + s * 0.6f), color, t);
+      dl->AddLine(ImVec2(p.x + s * 0.1f, p.y + s * 0.6f), ImVec2(p.x + s * 0.35f, p.y + s * 0.05f), color, t);
+      dl->AddLine(ImVec2(p.x + s * 0.35f, p.y + s * 0.05f), ImVec2(p.x + s * 0.6f, p.y + s * 0.6f), color, t);
+      break;
     case ICON_ASSIGN:
       dl->AddCircle(p, s * 0.6f, color, 20, t);
       dl->AddLine(ImVec2(p.x, p.y), ImVec2(p.x + s * 0.4f, p.y - s * 0.4f), color, t);

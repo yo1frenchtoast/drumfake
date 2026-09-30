@@ -416,6 +416,7 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
     }
   }
   voices_[track].Trigger(velocity, note, max_gate);
+  mods_[track].Trigger();
   trigger_count[track].fetch_add(1, std::memory_order_relaxed);
   last_trigger_sample[track] = sample_counter_;
 }
@@ -606,6 +607,18 @@ void Engine::ComputeParams(int track, float* params) {
       params[destination] += depth * LfoValue(track, lfo) * 0.5f;
     }
   }
+  // Peaks envelope and bouncing ball, both unipolar: full amount sweeps the
+  // whole range of the destination.
+  const struct { int amount; int dest; float value; } kSources[2] = {
+    { P_ENV_AMOUNT, P_ENV_DEST, mods_[track].envelope() },
+    { P_BALL_AMOUNT, P_BALL_DEST, mods_[track].ball() },
+  };
+  for (const auto& source : kSources) {
+    int destination = DestinationToParam(params[source.dest]);
+    if (destination >= 0) {
+      params[destination] += (params[source.amount] * 2.0f - 1.0f) * source.value;
+    }
+  }
   if (xy_mode == XY_MACROS && xy_touched && track == selected_track) {
     const float* a = project_->assign;
     int x_destination = DestinationToParam(a[A_MACRO_X_DEST]);
@@ -700,6 +713,9 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
   }
   float params[kNumTrackParams];
   for (int t = 0; t < kNumTracks; ++t) {
+    const float* base = project_->sounds[t].params;
+    mods_[t].Process(base[P_ENV_ATTACK], base[P_ENV_DECAY],
+                     base[P_BALL_GRAVITY], base[P_BALL_BOUNCE]);
     ComputeParams(t, params);
     for (int p = 0; p < kNumLockable; ++p) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);

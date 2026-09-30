@@ -296,6 +296,60 @@ void TestLockFeedback() {
   CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.2, 1e-6);
 }
 
+// Peaks envelope and bouncing ball, restarted by every note.
+void TestPeaksMods() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  float* params = project.sounds[0].params;
+  params[P_MORPH] = 0.2f;
+  params[P_ENV_DEST] = DiscreteToNormalized(1 + P_MORPH, kNumDestinations);
+  params[P_ENV_AMOUNT] = 0.75f;  // +50%.
+  params[P_TIMBRE] = 0.0f;
+  params[P_BALL_DEST] = DiscreteToNormalized(1 + P_TIMBRE, kNumDestinations);
+  params[P_BALL_AMOUNT] = 0.75f;
+  params[P_BALL_GRAVITY] = 0.6f;
+  params[P_BALL_BOUNCE] = 0.3f;  // Higher = more elastic.
+
+  std::vector<float> buffer(2 * kBlockSize);
+  auto block = [&]() { engine->Render(buffer.data(), kBlockSize); };
+
+  // Nothing moves before the first note.
+  for (int i = 0; i < 10; ++i) block();
+  CHECK_NEAR(engine->effective_param[0][P_MORPH].load(), 0.2, 1e-6);
+  CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.0, 1e-6);
+
+  engine->LiveTrigger(0, 0.8f, 0);
+  float max_morph = 0.0f;
+  int bounces = 0;
+  float max_timbre = 0.0f;
+  float previous = 0.0f;
+  bool falling = false;
+  for (int i = 0; i < 48000 * 3 / static_cast<int>(kBlockSize); ++i) {
+    block();
+    float morph = engine->effective_param[0][P_MORPH].load();
+    float timbre = engine->effective_param[0][P_TIMBRE].load();
+    max_morph = std::max(max_morph, morph);
+    max_timbre = std::max(max_timbre, timbre);
+    if (timbre > previous + 1e-4f && falling) {
+      ++bounces;  // Was falling, now rising: the ball hit the floor.
+    }
+    if (timbre < previous - 1e-4f) falling = true;
+    else if (timbre > previous + 1e-4f) falling = false;
+    previous = timbre;
+  }
+  CHECK(max_morph > 0.6f);            // Envelope peak: 0.2 + 0.5.
+  CHECK(max_timbre > 0.4f);           // Ball starts at the top.
+  CHECK(bounces >= 2);
+  // The envelope decays (8 s max, 0.5 s default) and the ball comes to rest.
+  CHECK_NEAR(engine->effective_param[0][P_MORPH].load(), 0.2, 0.02);
+  CHECK(engine->effective_param[0][P_TIMBRE].load() < 0.05f);
+
+  // A new note restarts both.
+  engine->LiveTrigger(0, 0.8f, 0);
+  for (int i = 0; i < 100; ++i) block();
+  CHECK(engine->effective_param[0][P_MORPH].load() > 0.5f);
+}
+
 // Patterns 1-3 are 4 steps long; pattern N plays track N on its first step.
 std::unique_ptr<Engine> MakeSongEngine() {
   auto engine = MakeEngine();
@@ -873,6 +927,7 @@ int main() {
   TestTrackLengthAndPatternChain();
   TestPolyrhythm();
   TestLockFeedback();
+  TestPeaksMods();
   TestSong();
   TestMidiParser();
   TestMidiNotes();
