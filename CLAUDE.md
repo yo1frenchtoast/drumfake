@@ -24,6 +24,8 @@ and chorus. Independent project: no Arturia branding in the UI (factual comments
 
 ## Build, test, run
 
+Full details in `docs/building.md` and `docs/development.md`.
+
 ```sh
 cmake -B build && cmake --build build -j
 ./build/drumfreake_tests        # must pass before any commit
@@ -50,4 +52,6 @@ adb -s <device> shell am start -n org.drumfreake.app/.DrumfreakeActivity
 - The audio thread flushes denormals (x86 FTZ/DAZ, ARM64 FPCR.FZ): keep it that way.
 - New engine features get tests in `tests/tests.cc`; UI changes are checked with
   `--screenshot` (desktop) or `adb exec-out screencap` (tablet).
-- Update README.md (English, user-facing) when behavior changes.
+- Docs are in `docs/` (English): update `user-guide.md` and `controls.md` when behavior changes,
+  `building.md` and `development.md` when the build or the architecture changes. `README.md` stays
+  a short overview with links.

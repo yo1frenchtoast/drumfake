@@ -1,0 +1,187 @@
+# Development guide
+
+How the code is organised, the rules that keep it working, and recipes for the usual changes.
+To build and run, see [building](building.md).
+
+## Layout
+
+```
+third_party/eurorack   Mutable Instruments code (submodule, never edited)
+third_party/SDL        SDL3 (submodule, used by the Android build)
+shims/                 minimal AVR headers so grids/resources.cc compiles on a desktop
+patches/               header overrides that shadow the submodule (see patches/README.md)
+src/core/              model and logic with no UI or audio device: params, steps, patterns,
+                       kits, song, scales, JSON I/O, Grids and Marbles ports, MIDI parser
+src/audio/             TrackVoice, MasterFx, CloudsFx, ModSources, Engine, WAV renderer
+src/ui/                ImGui faceplate, widgets, multitouch layer
+src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android)
+src/app.cc, main.cc    window and audio device setup, command line
+android/               Gradle project building the same CMakeLists.txt into libmain.so
+tests/tests.cc         the test suite (one executable, no framework)
+docs/                  this documentation
+```
+
+The CMake targets: `mutable_dsp` (the Mutable Instruments sources, built as a static library
+with `-w`), `drumfreake_core` (everything in `src/core` and `src/audio`, built with `-Wall
+-Wextra`), `drumfreake_tests`, and `drumfreake` (the application).
+
+## Data flow
+
+```
+ UI thread (ImGui)                         audio thread (SDL callback)
+ ─────────────────                         ───────────────────────────
+ Faceplate  ── writes under lock ──►  Project (params, patterns, kits, song…)
+                                          │
+                                      Engine::Render(): RenderBlock() per 12 frames
+                                          │  sequencer → FireTrack/FireStep
+                                          │  per track: ModSources → ComputeParams → TrackVoice::Render
+                                          │  buses → MasterFx → CloudsFx → click
+                                          ▼
+ Faceplate  ◄── reads atomics ───  playhead, meters, scope, effective params, CPU load
+```
+
+### Threading rules
+
+- `Project` and every non-atomic member of `Engine` are shared between the two threads. The UI
+  holds `engine.mutex()` while it reads or writes them; `Engine::Render()` takes the same lock.
+  Keep the work done under the lock short.
+- Audio-to-UI values (playhead, peaks, scope, active locks, CPU load) go through atomics.
+- Nothing allocates, logs or does I/O on the audio thread. Buffers are sized in `Init()`.
+- The audio thread flushes denormals (x86 FTZ/DAZ, ARM64 FPCR.FZ). Keep it that way: decaying
+  reverb tails otherwise make x86 rendering slow in bursts.
+- Timing: audio is rendered in blocks of 12 samples at 48 kHz (`kBlockSize`, the Plaits block),
+  so the sequencer is accurate to 0.25 ms.
+
+### Parameters
+
+Every track parameter is a float normalized to [0, 1] in `TrackSound::params`, indexed by the
+`TrackParam` enum (`src/core/params.h`). The engine maps it to real units; `ParamInfo` and
+`FormatValue()` print it on the screen. The first `kNumLockable` parameters can be
+parameter-locked per step and used as modulation destinations. The others (LFO, Envs) are not.
+`ComputeParams()` in `engine.cc` builds the *effective* values of a block: knob value, then
+step lock, then LFOs, Peaks sources and macros.
+
+Master (`M_*`), assign (`A_*`) and Clouds (`C_*`) parameters are project-wide arrays with the
+same normalized convention.
+
+## Using the Mutable Instruments code
+
+The submodule is **never edited**. Three rules follow.
+
+1. **Never include two `resources.h` in one translation unit.** The ones of Plaits, Rings,
+   Peaks, Marbles and Clouds define the same macros (`LUT_*`…) with different values. The
+   modules that would clash are therefore isolated in their own `.cc` file, behind a header
+   that includes no Mutable Instruments header, usually with a pimpl:
+
+   | Module | Isolated in |
+   |---|---|
+   | Plaits | `audio/track_voice.*` |
+   | Rings | `audio/master_fx.*` |
+   | Peaks | `audio/mod_sources.*` |
+   | Clouds | `audio/clouds_fx.*` |
+   | Grids | `core/grids_gen.*` |
+   | Marbles | `core/marbles_gen.*` |
+
+   `audio/buses.h` holds the shared constants (`kSampleRate`, `kBlockSize`) for this reason.
+2. **Fix upstream bugs with an override, not an edit.** `patches/` precedes the submodule in
+   the include path, so a file placed there shadows the original. Document each one in
+   `patches/README.md`. There is one: Clouds' `window.h`.
+3. **Zero what the firmware relied on being zero.** The modules are written for firmware
+   globals, which start zeroed. Allocate their objects value-initialized (`new Impl()`), as in
+   `CloudsFx`, and set flags explicitly when `Init()` does not.
+
+### Adding another module
+
+1. Add its `.cc` files to `mutable_dsp` in `CMakeLists.txt` (list the `resources.cc` and only
+   the DSP sources you use; tables such as `stmlib/dsp/atan.cc` may be needed too).
+2. Write `src/<dir>/<name>.{h,cc}`: the header exposes a small class with no Mutable
+   Instruments types, the `.cc` holds the include and the `Impl`.
+3. Drive it from the `Engine` (audio) or from the model (offline generators like Marbles and
+   Grids), add its parameters to `params.h`, and save them in `project_io.cc`.
+4. Add tests, run them, and check the CPU cost on the tablet (`CPU` is on the screen).
+
+## Common changes
+
+### Add a track parameter
+
+1. Add the enum value to `TrackParam` and its `ParamInfo` in `kTrackParams` (same order), in
+   `params.h` and `params.cc`. A new format goes in `ParamFormat` and `FormatValue()`.
+2. Give it a default that changes nothing: old projects have no value for it.
+3. Use it: in `TrackVoice::Render()` for sound, in `ComputeParams()` for modulation.
+4. If it lives on a page, make sure `page_param_info()` and `KnobTarget()` (in
+   `faceplate.cc`) map the page's knobs to it.
+5. Add a test.
+
+The project file stores arrays by index and tolerates arrays that are shorter than the code
+expects, so appending parameters keeps old projects loading. **Do not reorder or insert
+parameters** in the middle of an enum without a migration.
+
+### Add a page of knobs
+
+Add it to the `Page` enum (before `PAGE_ASSIGN`, which is last), then update: `kPageNames` and
+`page_param_info()` in `params.cc`; `KnobTarget()`, the icon table in `DrawPageButtons()` and
+the key table in `HandleKeyboard()` in `faceplate.cc`; and a new `Icon` in `widgets.{h,cc}`.
+Check the width of the page buttons with a screenshot.
+
+### Add a screen on the display
+
+The display shows one view at a time (`ScreenView` in `faceplate.h`). Add a value, a
+`DrawXxxView(min, max)` method, the dispatch in `DrawScreen()`, and a way to enter it (a button
+in `DrawEditView()` for example). The *Back* button returns to `VIEW_MAIN`. `DrawMarblesView()`
+and `DrawKitsView()` are short examples.
+
+### Change the project file
+
+`project_io.cc` writes and reads JSON (`kFormatVersion`). Read every new field with a default
+(`j.value("name", default)`) and clamp it, so old files load. Add the field to the round trip
+test in `tests.cc`.
+
+## Testing
+
+```sh
+./build/drumfreake_tests
+```
+
+The suite is one executable (`tests/tests.cc`) with no framework: `CHECK(cond)` and
+`CHECK_NEAR(value, expected, tolerance)` count failures, and the exit code is non-zero when one
+fails. **It must pass before every commit.** Useful helpers:
+
+- `MakeEngine()`: an engine with an empty pattern 1 at 120 BPM (6000 samples per step);
+- `RenderAndCollect(engine, track, frames)`: renders and returns the sample time of each trigger;
+- read `engine->effective_param[track][param]` to check modulations and locks.
+
+Every engine feature gets tests. For DSP integrations, test the behavior that matters to the
+user (it plays sound, it is finite, the same seed gives the same result), not the internals of
+the Mutable Instruments code.
+
+### Checking the UI
+
+- Desktop: `./build/drumfreake --screenshot out.ppm` renders a few frames and writes the
+  window. Convert it to PNG to look at it (`python3 -c "from PIL import Image;
+  Image.open('out.ppm').save('out.png')"`). To capture a given page or view, set the default
+  of `page_` or `view_` in `faceplate.h` temporarily.
+- Tablet: `adb -s <device> exec-out screencap -p > screen.png`.
+
+### Offline renders
+
+`--render` runs the engine without a window: handy to listen to a change, to compare two
+versions (same pattern, same seed), or to measure the CPU load in a script.
+
+## Conventions
+
+- Mutable Instruments style: 2-space indent, `snake_case_` members, comments in English.
+- Code reads like its neighbours: same comment density, naming and idioms.
+- UI model state is written by the UI thread under `engine.mutex()`; the audio thread reads it.
+- New engine features get tests; UI changes are checked with a screenshot.
+- Update the [user guide](user-guide.md) and [controls](controls.md) when a behavior changes.
+- The project is GPLv3. Independent project: no Arturia branding in the UI (factual comments in
+  the code are fine).
+
+## Android notes
+
+- The same `CMakeLists.txt` builds `libmain.so`; the Gradle project only packages it.
+- Audio uses AAudio through SDL3 (`minSdk` 26). MIDI goes through Java's `MidiManager`, with
+  JNI into `src/io/midi_android.cc`.
+- Fingers are captured by pads, knobs and buttons; one free finger drives ImGui
+  (`src/ui/faceplate.cc`, `FingerDown` and friends). Touch targets matter: test on the tablet.
+- Fonts (Noto Sans, OFL) are bundled in `android/app/src/main/assets/fonts`.
