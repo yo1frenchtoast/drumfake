@@ -1539,7 +1539,7 @@ void Faceplate::DrawSequencer() {
   // Editing.
   // Panel: keep the sound playing across pattern changes (MatrixBrute).
   // Shift + Panel, a right click or a long press arms a snapshot of everything playable:
-  // edit freely (a drop), and the same gesture puts it all back.
+  // edit freely (a drop), and a press of Panel puts it all back.
   {
     const bool armed = engine_->snapshot_armed();
     // The button blinks while a snapshot is armed.
@@ -1561,11 +1561,13 @@ void Faceplate::DrawSequencer() {
         Toast("Snapshot restored");
       } else {
         engine_->ArmSnapshot();
-        Toast("Snapshot armed: Shift + Panel restores it");
+        Toast("Snapshot armed: press Panel to restore it");
       }
     } else if (plain) {
+      // While a snapshot is armed, Panel has no other use: a plain press restores it.
       if (armed) {
-        Toast("Snapshot armed: Shift + Panel restores it");
+        engine_->RestoreSnapshot();
+        Toast("Snapshot restored");
       } else {
         engine_->SetPanel(!engine_->panel());
         Toast(engine_->panel() ? "Panel: sound kept across patterns"
