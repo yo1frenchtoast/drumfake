@@ -1786,6 +1786,9 @@ void Faceplate::DrawPads() {
     if (in.pressed) {
       TrackPadDown(t);
     }
+    if (in.right_clicked) {
+      engine_->selected_track = t;  // Right click: select without playing.
+    }
     if (in.released) {
       TrackPadUp(t);
     }
