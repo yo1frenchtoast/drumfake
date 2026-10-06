@@ -37,6 +37,9 @@ class TrackVoice {
   // Peak level of the last blocks, for the UI meters.
   float peak() const { return peak_; }
   bool gate_high() const { return last_trigger_high_; }
+  // True while the voice makes sound: a note is starting or sounding, or its tail has not
+  // died out. An idle voice need not be rendered.
+  bool busy() const { return gate_pending_ || gate_remaining_ > 0 || peak_ > 1e-4f; }
   // Output of the last block (post-filter, pre-pan), for the scope.
   const float* last_block() const { return mono_; }
 

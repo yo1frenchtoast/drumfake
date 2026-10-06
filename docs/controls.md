@@ -9,7 +9,7 @@ the [user guide](user-guide.md).
 | Faceplate | Mouse | Keyboard |
 |---|---|---|
 | Pads A–H | click = plays and selects the track (Shift = accent); right click = selects it without playing | `Q W E R T Y U I` |
-| Pads 1–8 | depends on the mode: Chords, Sounds, Repeats, Keys | `A S D F G H J K` |
+| Pads 1–8 | depends on the mode: Chords (chords of the scale), Sounds, Repeats, Keys | `A S D F G H J K` |
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
 | Perform: Matrix | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
@@ -23,7 +23,8 @@ the [user guide](user-guide.md).
 The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods**, **Envs**,
 **Clouds**, **Assign**.
 
-In Keys mode: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
+In Keys and Chords modes: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
+In Chords mode the pads A–H choose the kind of chord (Triad, 7th, Sus2, Sus4, Add9, 6th, 9th, Power).
 The pads A–H (`Q W E R T Y U I`) play the black keys, G and H are Oct − / Oct +; with `Shift` they
 choose the scale, and `Shift` + a pad 1–8 sets the root. Right click a pad A–H to select the track.
 
@@ -35,7 +36,7 @@ on-screen menus.
 
 | Gesture | Replaces |
 |---|---|
-| Long press (0.5 s) | Right click: select a step, edit a chord on pads 1–8 |
+| Long press (0.5 s) | Right click: select a step |
 | Double tap on a knob | Double-click: reset the knob to its default |
 
 ## Hold combinations

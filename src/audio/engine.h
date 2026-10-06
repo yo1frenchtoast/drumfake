@@ -92,8 +92,15 @@ class Engine {
 
   // Plays a track now (pads). When recording, also writes the step.
   void LiveTrigger(int track, float velocity, int note_offset);
+  // Plays a chord on a track: `note_offset` and the `count` notes at `extras` semitones
+  // above it. The extra notes use voices from a shared pool (kChordVoices), with the
+  // sound and the effects of the track.
+  void LiveChord(int track, float velocity, int note_offset, const int8_t* extras, int count);
   // When recording, writes a hit on the step nearest to the playhead.
-  void RecordHit(int track, float velocity, int note_offset, int ratchets);
+  void RecordHit(int track, float velocity, int note_offset, int ratchets,
+                 const int8_t* extras = nullptr, int count = 0);
+  // For the tests: voices of the pool that are sounding.
+  int chord_voices_active() const;
 
   // MIDI input: notes play tracks A-H; clock, Start, Stop, Continue and Song
   // Position drive the transport when the project follows the MIDI clock.
@@ -157,6 +164,10 @@ class Engine {
   void RunSequencer(double start, double end);
   void ProcessWindow(double start, double end, bool allow_pattern_change);
   void FireStep(int track, const Step& step, double step_duration);
+  // The extra notes of a chord, each on a voice of the pool (the free one, or else the
+  // one that started first).
+  void FireChord(int track, float velocity, int note, const int8_t* extras, int count,
+                 size_t max_gate, size_t gate_samples);
   // `gate_samples` overrides the Gate parameter; `slide_samples` glides the continuous
   // parameters from where they were to this note's locks over that time.
   void FireTrack(int track, float velocity, int note, const float* locks,
@@ -177,6 +188,10 @@ class Engine {
   std::mutex mutex_;
   std::unique_ptr<Project> project_;
   TrackVoice voices_[kNumTracks];
+  static const int kChordVoices = 4;
+  TrackVoice chord_voices_[kChordVoices];
+  int chord_owner_[kChordVoices];       // Track whose sound a pool voice plays.
+  int64_t chord_started_[kChordVoices];  // Sample time of its note.
   ModSources mods_[kNumTracks];
   std::unique_ptr<MasterFx> master_fx_;
   std::unique_ptr<CloudsFx> clouds_fx_;

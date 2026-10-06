@@ -54,6 +54,11 @@ Engine::~Engine() { }
 
 void Engine::Init() {
   project_->Init();
+  for (int i = 0; i < kChordVoices; ++i) {
+    chord_voices_[i].Init();
+    chord_owner_[i] = 0;
+    chord_started_[i] = 0;
+  }
   for (int i = 0; i < kNumTracks; ++i) {
     voices_[i].Init();
     track_step[i] = -1;
@@ -353,7 +358,16 @@ void Engine::LiveTrigger(int track, float velocity, int note_offset) {
   RecordHit(track, velocity, note_offset, 1);
 }
 
-void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets) {
+void Engine::LiveChord(int track, float velocity, int note_offset, const int8_t* extras,
+                       int count) {
+  const size_t gate = SamplesPerStep() * 16;
+  FireTrack(track, velocity, note_offset, nullptr, gate);
+  FireChord(track, velocity, note_offset, extras, count, gate, 0);
+  RecordHit(track, velocity, note_offset, 1, extras, count);
+}
+
+void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
+                       const int8_t* extras, int count) {
   if (!recording || !playing_ || looping_) {
     return;
   }
@@ -365,6 +379,10 @@ void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets)
   step.note = note_offset;
   step.ratchets = ratchets;
   step.probability = 1.0f;
+  step.chord_size = static_cast<uint8_t>(std::min(count, kMaxChordNotes - 1));
+  for (int i = 0; i < step.chord_size; ++i) {
+    step.chord[i] = extras[i];
+  }
   if (static_cast<double>(n) > position_) {
     // Rounded to an upcoming step: don't play it twice.
     skip_step_[track] = n;
@@ -456,6 +474,11 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
       if (other != track &&
           Discrete(project_->sounds[other].params[P_CHOKE], kNumChokeGroups) == group) {
         voices_[other].Choke();
+        for (int k = 0; k < kChordVoices; ++k) {
+          if (chord_owner_[k] == other) {
+            chord_voices_[k].Choke();
+          }
+        }
       }
     }
   }
@@ -463,6 +486,33 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
   mods_[track].Trigger();
   trigger_count[track].fetch_add(1, std::memory_order_relaxed);
   last_trigger_sample[track] = sample_counter_;
+}
+
+void Engine::FireChord(int track, float velocity, int note, const int8_t* extras, int count,
+                       size_t max_gate, size_t gate_samples) {
+  for (int i = 0; i < count; ++i) {
+    int voice = 0;
+    for (int k = 0; k < kChordVoices; ++k) {
+      if (!chord_voices_[k].busy()) {
+        voice = k;
+        break;
+      }
+      if (chord_started_[k] < chord_started_[voice]) {
+        voice = k;
+      }
+    }
+    chord_owner_[voice] = track;
+    chord_started_[voice] = sample_counter_ + 1;  // Nonzero, and later than idle voices.
+    chord_voices_[voice].Trigger(velocity, note + extras[i], max_gate, gate_samples);
+  }
+}
+
+int Engine::chord_voices_active() const {
+  int active = 0;
+  for (int k = 0; k < kChordVoices; ++k) {
+    active += chord_voices_[k].busy() ? 1 : 0;
+  }
+  return active;
 }
 
 void Engine::FireStep(int track, const Step& step, double step_duration) {
@@ -481,6 +531,10 @@ void Engine::FireStep(int track, const Step& step, double step_duration) {
   size_t slide_samples = step.slide ? static_cast<size_t>(step_duration) : 0;
   FireTrack(track, step.velocity, step.note, step.locks, max_gate, gate_samples,
             slide_samples);
+  if (step.chord_size > 0) {
+    FireChord(track, step.velocity, step.note, step.chord, step.chord_size, max_gate,
+              gate_samples);
+  }
 }
 
 void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) {
@@ -788,6 +842,11 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);
     }
     voices_[t].Render(params, extra_delay_send, &buses_);
+    for (int k = 0; k < kChordVoices; ++k) {
+      if (chord_owner_[k] == t && chord_voices_[k].busy()) {
+        chord_voices_[k].Render(params, extra_delay_send, &buses_);
+      }
+    }
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);
     track_gate[t].store(voices_[t].gate_high(), std::memory_order_relaxed);
   }

@@ -59,6 +59,81 @@ bool KeySharpOffset(int root, int scale_index, int octave, int pad, int* offset)
   return true;
 }
 
+namespace {
+
+const ChordShape kChordShapes[kNumChordShapes] = {
+  { "Triad", 2, { 2, 4 } },
+  { "7th", 3, { 2, 4, 6 } },
+  { "Sus2", 2, { 1, 4 } },
+  { "Sus4", 2, { 3, 4 } },
+  { "Add9", 3, { 2, 4, 8 } },
+  { "6th", 3, { 2, 4, 5 } },
+  { "9th", 4, { 2, 4, 6, 8 } },
+  { "Power", 1, { 4 } },
+};
+
+struct ChordSuffix {
+  const char* suffix;
+  int size;
+  int intervals[4];
+};
+
+const ChordSuffix kChordSuffixes[] = {
+  { "", 2, { 4, 7 } },
+  { "m", 2, { 3, 7 } },
+  { "dim", 2, { 3, 6 } },
+  { "aug", 2, { 4, 8 } },
+  { "sus2", 2, { 2, 7 } },
+  { "sus4", 2, { 5, 7 } },
+  { "5", 1, { 7 } },
+  { "7", 3, { 4, 7, 10 } },
+  { "maj7", 3, { 4, 7, 11 } },
+  { "m7", 3, { 3, 7, 10 } },
+  { "mMaj7", 3, { 3, 7, 11 } },
+  { "m7b5", 3, { 3, 6, 10 } },
+  { "dim7", 3, { 3, 6, 9 } },
+  { "6", 3, { 4, 7, 9 } },
+  { "m6", 3, { 3, 7, 9 } },
+  { "add9", 3, { 4, 7, 14 } },
+  { "m add9", 3, { 3, 7, 14 } },
+  { "9", 4, { 4, 7, 10, 14 } },
+  { "maj9", 4, { 4, 7, 11, 14 } },
+  { "m9", 4, { 3, 7, 10, 14 } },
+};
+
+}  // namespace
+
+const ChordShape& chord_shape(int index) {
+  return kChordShapes[index < 0 || index >= kNumChordShapes ? 0 : index];
+}
+
+int ChordNotes(int root, int scale_index, int octave, int degree, int shape, int* notes) {
+  const ChordShape& s = chord_shape(shape);
+  const int base = kKeyBaseNote + root + 12 * octave;
+  notes[0] = base + ScaleDegree(scale_index, degree);
+  for (int i = 0; i < s.size; ++i) {
+    notes[1 + i] = base + ScaleDegree(scale_index, degree + s.steps[i]);
+  }
+  return 1 + s.size;
+}
+
+std::string ChordName(const int* notes, int count) {
+  std::string name = PitchClassName(notes[0]);
+  for (const ChordSuffix& c : kChordSuffixes) {
+    if (c.size != count - 1) {
+      continue;
+    }
+    bool same = true;
+    for (int i = 0; i < c.size && same; ++i) {
+      same = notes[1 + i] - notes[0] == c.intervals[i];
+    }
+    if (same) {
+      return name + c.suffix;
+    }
+  }
+  return name;
+}
+
 const char* PitchClassName(int pitch_class) {
   return kPitchClasses[((pitch_class % 12) + 12) % 12];
 }

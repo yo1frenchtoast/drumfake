@@ -218,10 +218,22 @@ pad with the [modulation matrix](#modulation)):
 
 | Mode | Behaviour |
 |---|---|
-| **Chords** | Each pad plays a combination of tracks. Right click a pad (long press on a tablet) to edit it: tap tracks A–H to add or remove them. |
+| **Chords** | Plays real chords on the selected track, built on the scale of the Keys settings (see below). |
 | **Sounds** | Loads factory sounds on the selected track. |
 | **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step), like the DrumBrute Roller. |
 | **Keys** | Plays the selected track on a scale and writes the note into the selected step. Pads 1–8 are the notes of the scale, the instrument pads A–H are the black keys (see below). |
+
+**Chords.** In *Chords* mode, pads 1–8 play a chord on the selected track: the chord built on
+each note of the scale (in C major: C, Dm, Em, F, G, Am, B°, C), named on the pad. The pads A–H
+choose the kind of chord: **Triad**, **7th**, **Sus2**, **Sus4**, **Add9**, **6th**, **9th** and
+**Power** (root and fifth); the chosen one is lit. Chords use the root, scale and octave of
+the Keys settings (press *Chords* again for that page, *Shift* works as in Keys mode: Shift + A–H
+the scale, Shift + 1–8 the root). The notes play at fixed pitches, on the sound of the track.
+They are played by a shared pool of four extra voices: a chord can have up to five notes, and
+when the voices are all busy the oldest note is cut. With a step held, a chord is written into
+that step (the pad of the step shows dots, one per note), and with **Rec** and **Play** into the
+step that is playing; playing a single note on the step replaces the chord. A step chord plays
+with its gate, locks and probability like any note.
 
 **Layout** (like the BeatStep Pro). Pads 1–8 are the white keys, the instrument pads A–H sit
 above them like the black keys: A and B are the C♯ and D♯ keys, there is no key above the third

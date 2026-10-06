@@ -95,6 +95,7 @@ class Faceplate {
   bool KeySharp(int pad, int* offset);
   // Plays a key of the Keys mode on the selected track, and writes it into the held step.
   void PlayKey(int offset);
+  void PlayChord(int pad);
   int TrackNote(int track);
   void ChangeKey(int field, int delta);
   Pattern& pattern();
@@ -109,7 +110,6 @@ class Faceplate {
 
   ImVec2 ToPanel(ImVec2 display) const;
   void SetXyFromTouch(const TouchTarget& target, ImVec2 panel);
-  void UpdateLongPresses();
 
   Engine* engine_ = nullptr;
   Canvas canvas_;
@@ -135,7 +135,6 @@ class Faceplate {
   bool solo_mode_ = false;
   int held_step_ = -1;
   int preset_bank_ = 0;
-  int chord_edit_ = -1;
   float encoder_ = 0.5f;
   float encoder_accumulator_ = 0.0f;
   int browse_index_ = 0;

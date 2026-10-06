@@ -321,6 +321,105 @@ int64_t MeasureGate(Engine* engine, int track, size_t frames) {
   return high;
 }
 
+// Chords built on the scale of the Keys mode, and their names.
+void TestChordNotes() {
+  int notes[kMaxChordNotes];
+  // C major (the piano): C, Dm, Bdim, then the other kinds on C.
+  CHECK(ChordNotes(0, kChromaticScale, 0, 0, 0, notes) == 3);
+  CHECK(notes[0] == 48 && notes[1] == 52 && notes[2] == 55);
+  CHECK(ChordName(notes, 3) == "C");
+  ChordNotes(0, kChromaticScale, 0, 1, 0, notes);
+  CHECK(ChordName(notes, 3) == "Dm");
+  ChordNotes(0, kChromaticScale, 0, 6, 0, notes);
+  CHECK(ChordName(notes, 3) == "Bdim");
+  ChordNotes(0, 0, 0, 7, 0, notes);  // Pad 8: the root an octave up.
+  CHECK(notes[0] == 60 && ChordName(notes, 3) == "C");
+  const char* const kOnC[kNumChordShapes] = {
+    "C", "Cmaj7", "Csus2", "Csus4", "Cadd9", "C6", "Cmaj9", "C5"
+  };
+  for (int shape = 0; shape < kNumChordShapes; ++shape) {
+    int count = ChordNotes(0, 0, 0, 0, shape, notes);
+    CHECK(count == 1 + chord_shape(shape).size && count <= kMaxChordNotes);
+    CHECK(ChordName(notes, count) == kOnC[shape]);
+  }
+  // Root and octave move the whole chord.
+  ChordNotes(2, 0, -1, 0, 1, notes);  // D, one octave down.
+  CHECK(notes[0] == 48 + 2 - 12);
+  // Another scale: the chords come from its notes (A minor: Am, Bdim, C...).
+  ChordNotes(9, 1, 0, 0, 0, notes);
+  CHECK(ChordName(notes, 3) == "Am");
+  ChordNotes(9, 1, 0, 1, 0, notes);
+  CHECK(ChordName(notes, 3) == "Bdim");
+  ChordNotes(9, 1, 0, 2, 1, notes);
+  CHECK(ChordName(notes, 4) == "Cmaj7");
+}
+
+// A chord step plays its extra notes on the voices of the pool.
+void TestChordPlayback() {
+  auto engine = MakeEngine();
+  Step& step = engine->project().patterns[0].tracks[0].steps[0];
+  step.on = true;
+  step.chord_size = 2;
+  step.chord[0] = 4;
+  step.chord[1] = 7;
+  engine->Play();
+  std::vector<float> buffer(2 * kBlockSize);
+  int most = 0;
+  for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    most = std::max(most, engine->chord_voices_active());
+  }
+  CHECK(most == 2);
+  // A step without a chord does not use the pool (after the tail died out).
+  auto single = MakeEngine();
+  single->project().patterns[0].tracks[0].steps[0].on = true;
+  single->Play();
+  int used = 0;
+  for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+    single->Render(buffer.data(), kBlockSize);
+    used = std::max(used, single->chord_voices_active());
+  }
+  CHECK(used == 0);
+  // A chord makes more sound than its root alone.
+  auto rms = [&](bool with_chord) {
+    auto e = MakeEngine();
+    Step& s = e->project().patterns[0].tracks[0].steps[0];
+    s.on = true;
+    if (with_chord) {
+      s.chord_size = 2;
+      s.chord[0] = 4;
+      s.chord[1] = 7;
+    }
+    e->Play();
+    double sum = 0.0;
+    for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+      e->Render(buffer.data(), kBlockSize);
+      for (float v : buffer) {
+        CHECK(std::isfinite(v));
+        sum += static_cast<double>(v) * v;
+      }
+    }
+    return sum;
+  };
+  CHECK(rms(true) > 1.3 * rms(false));
+}
+
+// A chord played live is written into the step, and a single note clears it.
+void TestChordRecording() {
+  auto engine = MakeEngine();
+  engine->recording = true;
+  engine->Play();
+  std::vector<float> buffer(2 * kBlockSize);
+  engine->Render(buffer.data(), kBlockSize);
+  const int8_t extras[2] = { 3, 7 };
+  engine->LiveChord(0, 0.8f, 5, extras, 2);
+  const Step& step = engine->project().patterns[0].tracks[0].steps[0];
+  CHECK(step.on && step.note == 5);
+  CHECK(step.chord_size == 2 && step.chord[0] == 3 && step.chord[1] == 7);
+  engine->LiveTrigger(0, 0.8f, 2);
+  CHECK(engine->project().patterns[0].tracks[0].steps[0].chord_size == 0);
+}
+
 // A step's own gate length replaces the Gate parameter, and can tie past a step.
 void TestStepGate() {
   const int64_t kTolerance = 3 * kBlockSize;
@@ -1088,7 +1187,10 @@ void TestProjectRoundTrip() {
   project.patterns[3].tracks[4].steps[17].locks[P_CUTOFF] = 0.25f;
   project.sounds[6].params[P_MORPH] = 0.125f;
   ApplyPreset(PRESET_SPEECH, &project.patterns[5].kit[2]);
-  project.chords[2] = 0x42;
+  project.chord_type = 6;
+  project.patterns[3].tracks[4].steps[17].chord_size = 2;
+  project.patterns[3].tracks[4].steps[17].chord[0] = 4;
+  project.patterns[3].tracks[4].steps[17].chord[1] = 7;
   project.patterns[3].poly = true;
   project.patterns[3].division = 1;
   project.patterns[3].tracks[4].steps[17].micro = -0.2f;
@@ -1130,7 +1232,10 @@ void TestProjectRoundTrip() {
   CHECK(loaded->patterns[5].kit[2].name == "Speech");
   CHECK(loaded->patterns[4].kit[2].name == project.patterns[4].kit[2].name);
   CHECK(loaded->sounds[0].name == project.sounds[0].name);
-  CHECK(loaded->chords[2] == 0x42);
+  CHECK(loaded->chord_type == 6);
+  const Step& chord_step = loaded->patterns[3].tracks[4].steps[17];
+  CHECK(chord_step.chord_size == 2 && chord_step.chord[0] == 4 && chord_step.chord[1] == 7);
+  CHECK(loaded->patterns[3].tracks[4].steps[16].chord_size == 0);
   CHECK(loaded->patterns[3].poly);
   CHECK(loaded->patterns[3].division == 1);
   CHECK(loaded->patterns[0].division == kDefaultDivision);
@@ -1218,6 +1323,9 @@ int main() {
   TestPolyrhythm();
   TestLockFeedback();
   TestStepGate();
+  TestChordNotes();
+  TestChordPlayback();
+  TestChordRecording();
   TestStepSlide();
   TestPeaksMods();
   TestMarbles();
