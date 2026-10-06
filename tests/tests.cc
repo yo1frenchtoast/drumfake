@@ -420,6 +420,88 @@ void TestChordRecording() {
   CHECK(engine->project().patterns[0].tracks[0].steps[0].chord_size == 0);
 }
 
+// Snapshot: everything playable is saved on arming and comes back on restoring, whatever
+// is done in between, and the patterns never see the edits.
+void TestSnapshot() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.sounds[0].params[P_TIMBRE] = 0.3f;
+  project.master[M_REVERB_LEVEL] = 0.4f;
+  project.clouds[C_DRY_WET] = 0.6f;
+  project.assign[A_MACRO_X_DEPTH] = 0.2f;
+  project.bpm = 100.0f;
+  project.volume = 0.5f;
+  project.key_scale = 3;
+  project.chord_type = 2;
+  engine->muted[2] = true;
+  engine->soloed[3] = true;
+  engine->grids_x = 0.2f;
+  engine->grids_enabled = true;
+  CHECK(!engine->snapshot_armed());
+  engine->ArmSnapshot();
+  CHECK(engine->snapshot_armed() && engine->panel());
+  // A drop: change everything, also the pattern.
+  project.sounds[0].params[P_TIMBRE] = 0.9f;
+  project.sounds[5].name = "Drop";
+  project.master[M_REVERB_LEVEL] = 1.0f;
+  project.clouds[C_DRY_WET] = 0.0f;
+  project.assign[A_MACRO_X_DEPTH] = 0.9f;
+  project.bpm = 140.0f;
+  project.volume = 1.0f;
+  project.key_scale = 7;
+  project.chord_type = 5;
+  engine->muted[2] = false;
+  engine->muted[4] = true;
+  engine->soloed[3] = false;
+  engine->grids_x = 0.9f;
+  engine->grids_enabled = false;
+  engine->SelectPattern(1);
+  project.sounds[1].params[P_MORPH] = 0.1f;
+  // The edits did not reach the patterns.
+  CHECK_NEAR(project.patterns[0].kit[0].params[P_TIMBRE], 0.3, 1e-6);
+  const float pattern1_morph = project.patterns[1].kit[1].params[P_MORPH];
+  CHECK(pattern1_morph != 0.1f);
+  engine->RestoreSnapshot();
+  CHECK(!engine->snapshot_armed() && !engine->panel());
+  CHECK_NEAR(project.master[M_REVERB_LEVEL], 0.4, 1e-6);
+  CHECK_NEAR(project.clouds[C_DRY_WET], 0.6, 1e-6);
+  CHECK_NEAR(project.assign[A_MACRO_X_DEPTH], 0.2, 1e-6);
+  CHECK_NEAR(project.bpm, 100.0, 1e-6);
+  CHECK_NEAR(project.volume, 0.5, 1e-6);
+  CHECK(project.key_scale == 3 && project.chord_type == 2);
+  CHECK(engine->muted[2] && !engine->muted[4] && engine->soloed[3]);
+  CHECK_NEAR(engine->grids_x, 0.2, 1e-6);
+  CHECK(engine->grids_enabled);
+  // The pattern changed meanwhile: its own kit is playing, untouched by the drop.
+  CHECK(engine->current_pattern() == 1);
+  CHECK_NEAR(project.sounds[1].params[P_MORPH], pattern1_morph, 1e-6);
+  CHECK(project.sounds[5].name != "Drop");
+
+  // On the same pattern: the sound is exactly as it was, even unsaved edits.
+  auto same = MakeEngine();
+  same->project().sounds[0].params[P_TIMBRE] = 0.3f;  // Not stored in the pattern.
+  same->ArmSnapshot();
+  same->project().sounds[0].params[P_TIMBRE] = 0.9f;
+  same->RestoreSnapshot();
+  CHECK_NEAR(same->project().sounds[0].params[P_TIMBRE], 0.3, 1e-6);
+  CHECK_NEAR(same->project().patterns[0].kit[0].params[P_TIMBRE], 0.3, 1e-6);
+
+  // With Panel mode on before, the sound playing comes back and Panel stays on.
+  auto panel = MakeEngine();
+  panel->SetPanel(true);
+  panel->project().sounds[0].params[P_TIMBRE] = 0.3f;
+  panel->ArmSnapshot();
+  panel->project().sounds[0].params[P_TIMBRE] = 0.9f;
+  panel->SelectPattern(1);
+  panel->RestoreSnapshot();
+  CHECK(panel->panel());
+  CHECK_NEAR(panel->project().sounds[0].params[P_TIMBRE], 0.3, 1e-6);
+  // Restoring when nothing is armed does nothing.
+  panel->project().sounds[0].params[P_TIMBRE] = 0.7f;
+  panel->RestoreSnapshot();
+  CHECK_NEAR(panel->project().sounds[0].params[P_TIMBRE], 0.7, 1e-6);
+}
+
 // A step's own gate length replaces the Gate parameter, and can tie past a step.
 void TestStepGate() {
   const int64_t kTolerance = 3 * kBlockSize;
@@ -1323,6 +1405,7 @@ int main() {
   TestPolyrhythm();
   TestLockFeedback();
   TestStepGate();
+  TestSnapshot();
   TestChordNotes();
   TestChordPlayback();
   TestChordRecording();

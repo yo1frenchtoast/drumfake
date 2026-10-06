@@ -49,6 +49,7 @@ These work with the button held down, like on a DrumBrute.
 | Shift | step 13 / 14 / 15 / 16 | Metronome / At End / steps follow the playing page / Poly |
 | Shift | pad A–H | Select a track without playing it (in Keys mode: choose the scale; Shift + pad 1–8 sets the root) |
 | Shift | Mute or Solo | Clear all mutes or solos |
+| Shift | Panel (or right click, long press) | Arm the snapshot of all sounds and settings; the same gesture restores it |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
 | Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |
 | Copy | source page, then destination page | Copy a page, or repeat it up to the destination |

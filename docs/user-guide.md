@@ -144,6 +144,15 @@ A **kit** is the 8 sounds of a pattern (engine, all parameters, modulation setti
   pattern. Your edits are stored nowhere until you use *Edit* → *Store kit*, which writes them
   to the current pattern. Turning Panel off reloads the kit of the current pattern. The screen
   shows `PANEL` when active.
+- **Snapshot** (for a drop): **Shift + Panel**, a right click or a long press on *Panel* arms a
+  snapshot of everything you can play with: the sounds of the 8 tracks, the Master, Clouds and
+  Assign settings, tempo and volume, **mute and solo**, the Grids position and the Keys and
+  Chords settings. Turn knobs, mute, change pattern, change tempo, as much as you like (as in
+  Panel mode, none of it reaches the patterns), then do the same gesture again: everything comes
+  back to what it was when you armed it. The button blinks and the screen shows `SNAPSHOT`
+  while it is armed; a plain press of *Panel* only reminds you. The steps of the patterns are
+  not part of it. If you changed pattern in the meantime, the sound of the pattern you are on
+  comes back (its own kit), the rest returns to the snapshot.
 - **Kit library**: *Edit* → *Kit library...*. Kits saved as files, shared by all projects
   (`kits/` beside `project.json`):
   - *Save new* stores the current 8 sounds as the next "Kit N";
