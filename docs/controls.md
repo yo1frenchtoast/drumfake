@@ -8,9 +8,10 @@ the [user guide](user-guide.md).
 
 | Faceplate | Mouse | Keyboard |
 |---|---|---|
-| Pads A–H | click = plays and selects the track (Shift = accent) | `Q W E R T Y U I` |
-| Pads 1–8 | depends on the mode: Chords, Sounds, Repeats, Keys | `A S D F G H J K` |
-| Knobs | drag vertically (Shift = fine), wheel, double-click = default | |
+| Pads A–H | click = plays and selects the track (Shift = accent); right click = selects it without playing | `Q W E R T Y U I` |
+| Pads 1–8 | depends on the mode: Chords (chords of the scale), Sounds, Repeats, Keys | `A S D F G H J K` |
+| Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
+| Perform: Matrix | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`8` |
@@ -22,7 +23,10 @@ the [user guide](user-guide.md).
 The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods**, **Envs**,
 **Clouds**, **Assign**.
 
-In Keys mode: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
+In Keys and Chords modes: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
+In Chords mode the pads A–H choose the kind of chord (Triad, 7th, Sus2, Sus4, Add9, 6th, 9th, Power).
+The pads A–H (`Q W E R T Y U I`) play the black keys, G and H are Oct − / Oct +; with `Shift` they
+choose the scale, and `Shift` + a pad 1–8 sets the root. Right click a pad A–H to select the track.
 
 ## Touch
 
@@ -32,7 +36,7 @@ on-screen menus.
 
 | Gesture | Replaces |
 |---|---|
-| Long press (0.5 s) | Right click: select a step, edit a chord on pads 1–8 |
+| Long press (0.5 s) | Right click: select a step |
 | Double tap on a knob | Double-click: reset the knob to its default |
 
 ## Hold combinations
@@ -43,7 +47,7 @@ These work with the button held down, like on a DrumBrute.
 |---|---|---|
 | Shift | step 1–5 | Time division: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
 | Shift | step 13 / 14 / 15 / 16 | Metronome / At End / steps follow the playing page / Poly |
-| Shift | pad | Select a track without playing it |
+| Shift | pad A–H | Select a track without playing it (in Keys mode: choose the scale; Shift + pad 1–8 sets the root) |
 | Shift | Mute or Solo | Clear all mutes or solos |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
 | Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |
@@ -54,6 +58,7 @@ These work with the button held down, like on a DrumBrute.
 | Mute / Solo | pads | Mute or isolate tracks (tap instead of hold to latch the mode) |
 | A step (0.5 s, or right click) | knobs | Set parameter locks for that step |
 | A step | pads 1–4 | Set its repeats (1 to 4 hits) |
+| A step | Gate, Slide to locks (on the screen) | Give it its own gate length (up to 4 steps), or glide into its locks |
 | A step | encoder | Shift it early or late (±50 % of a step, in 5 % increments) |
 
 ## Copy and Paste

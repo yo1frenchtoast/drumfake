@@ -12,6 +12,7 @@
 
 #include "core/marbles_gen.h"
 #include "core/params.h"
+#include "core/scales.h"
 
 namespace drumfreake {
 
@@ -28,6 +29,7 @@ const int kDefaultDivision = 2;  // 1/16.
 extern const float kDivisionSteps[kNumDivisions];
 extern const char* const kDivisionNames[kNumDivisions];
 const float kMaxMicroTiming = 0.5f;  // Of a step, either way.
+const float kMaxStepGate = 4.0f;     // Longest step gate, in steps (ties over the next ones).
 
 struct Step {
   bool on;
@@ -36,6 +38,12 @@ struct Step {
   int ratchets;       // 1 to kMaxRatchets.
   int note;           // Semitones relative to the track pitch.
   float micro;        // Timing offset, in steps (-0.5 to 0.5).
+  float gate;         // Gate length, in steps (of a ratchet); 0 = the Gate parameter.
+  bool slide;         // Glide the parameters into this step's locks instead of jumping.
+  // A chord: the notes besides `note`, in semitones above it (the voices of the engine
+  // play them with the track's own sound).
+  uint8_t chord_size;
+  int8_t chord[kMaxChordNotes - 1];
   float locks[kNumLockable];  // NAN when the parameter is not locked.
 
   void Clear();
@@ -94,12 +102,12 @@ struct Project {
   float clouds[C_LAST];
   float bpm;
   float volume;
-  // "Chords" mode: each of pads 1-8 plays a set of tracks (bit mask).
-  uint8_t chords[8];
-  // Keys pad mode: root (0 = C), scale and octave shift, for the whole project.
+  // Keys and Chords pad modes: root (0 = C), scale and octave shift, for the whole
+  // project, and the kind of chord the pads of the Chords mode play.
   int key_root;
   int key_scale;
   int key_octave;
+  int chord_type;
   // MIDI input. Each track listens on its own channel (1-16, 0 = none) and
   // plays the notes it receives at their pitch. On the other channels, the
   // eight notes of a major scale from `midi_trigger_note` trigger tracks A-H

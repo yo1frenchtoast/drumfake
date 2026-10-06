@@ -36,6 +36,10 @@ inline float ReadDelay(const std::vector<float>& line, size_t write, float delay
 MasterFx::MasterFx()
     : reverb_(new rings::Reverb()),
       chorus_(new rings::Chorus()) {
+  // rings::Reverb::Init() leaves its two low-pass states (lp_decay_*) alone: on the
+  // module they start at zero with the RAM, here they would hold whatever the heap
+  // held, which turns the reverb into NaN. Zero the object (the submodule is never edited).
+  memset(static_cast<void*>(reverb_.get()), 0, sizeof(rings::Reverb));
 }
 
 MasterFx::~MasterFx() { }

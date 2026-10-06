@@ -35,6 +35,7 @@ with `-w`), `drumfreake_core` (everything in `src/core` and `src/audio`, built w
                                       Engine::Render(): RenderBlock() per 12 frames
                                           │  sequencer → FireTrack/FireStep
                                           │  per track: ModSources → ComputeParams → TrackVoice::Render
+                                          │  chords: FireChord → pool of 4 extra TrackVoices, rendered with the params of their track
                                           │  buses → MasterFx → CloudsFx → click
                                           ▼
  Faceplate  ◄── reads atomics ───  playhead, meters, scope, effective params, CPU load

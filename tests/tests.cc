@@ -103,7 +103,19 @@ void TestScales() {
   for (int pad = 0; pad < 8; ++pad) {
     CHECK(KeyOffset(0, 0, 0, pad) == kMajor[pad]);
     CHECK(KeyOffset(0, 8, 0, pad) == kPentatonicMinor[pad]);
-    CHECK(KeyOffset(0, 10, 0, pad) == pad);  // Chromatic.
+    CHECK(KeyOffset(0, kChromaticScale, 0, pad) == kMajor[pad]);  // The piano's white keys.
+  }
+  // Black keys: a semitone above the pad, when the next pad is at least a tone away.
+  const int kBlack[8] = { 1, 3, -1, 6, 8, 10, -1, 13 };
+  for (int pad = 0; pad < 8; ++pad) {
+    int offset = 0;
+    bool exists = KeySharpOffset(0, kChromaticScale, 0, pad, &offset);
+    CHECK(exists == (kBlack[pad] >= 0));
+    if (exists) {
+      CHECK(offset == kBlack[pad]);
+    }
+    CHECK(KeySharpOffset(5, 8, -1, pad, &offset));  // Pentatonic minor: gaps all >= 2.
+    CHECK(offset == 5 - 12 + kPentatonicMinor[pad] + 1);
   }
   // Root and octave transpose everything.
   CHECK(KeyOffset(2, 1, -1, 0) == 2 - 12);  // D minor, one octave down.
@@ -294,6 +306,195 @@ void TestLockFeedback() {
   RenderAndCollect(engine.get(), 0, 2 * kSamplesPerStep);
   CHECK(engine->active_lock_mask[0].load() == 0);
   CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.2, 1e-6);
+}
+
+// Number of samples the gate of `track` stays high, from the first block of a note.
+int64_t MeasureGate(Engine* engine, int track, size_t frames) {
+  std::vector<float> buffer(2 * kBlockSize);
+  int64_t high = 0;
+  for (size_t done = 0; done < frames; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    if (engine->track_gate[track].load()) {
+      high += kBlockSize;
+    }
+  }
+  return high;
+}
+
+// Chords built on the scale of the Keys mode, and their names.
+void TestChordNotes() {
+  int notes[kMaxChordNotes];
+  // C major (the piano): C, Dm, Bdim, then the other kinds on C.
+  CHECK(ChordNotes(0, kChromaticScale, 0, 0, 0, notes) == 3);
+  CHECK(notes[0] == 48 && notes[1] == 52 && notes[2] == 55);
+  CHECK(ChordName(notes, 3) == "C");
+  ChordNotes(0, kChromaticScale, 0, 1, 0, notes);
+  CHECK(ChordName(notes, 3) == "Dm");
+  ChordNotes(0, kChromaticScale, 0, 6, 0, notes);
+  CHECK(ChordName(notes, 3) == "Bdim");
+  ChordNotes(0, 0, 0, 7, 0, notes);  // Pad 8: the root an octave up.
+  CHECK(notes[0] == 60 && ChordName(notes, 3) == "C");
+  const char* const kOnC[kNumChordShapes] = {
+    "C", "Cmaj7", "Csus2", "Csus4", "Cadd9", "C6", "Cmaj9", "C5"
+  };
+  for (int shape = 0; shape < kNumChordShapes; ++shape) {
+    int count = ChordNotes(0, 0, 0, 0, shape, notes);
+    CHECK(count == 1 + chord_shape(shape).size && count <= kMaxChordNotes);
+    CHECK(ChordName(notes, count) == kOnC[shape]);
+  }
+  // Root and octave move the whole chord.
+  ChordNotes(2, 0, -1, 0, 1, notes);  // D, one octave down.
+  CHECK(notes[0] == 48 + 2 - 12);
+  // Another scale: the chords come from its notes (A minor: Am, Bdim, C...).
+  ChordNotes(9, 1, 0, 0, 0, notes);
+  CHECK(ChordName(notes, 3) == "Am");
+  ChordNotes(9, 1, 0, 1, 0, notes);
+  CHECK(ChordName(notes, 3) == "Bdim");
+  ChordNotes(9, 1, 0, 2, 1, notes);
+  CHECK(ChordName(notes, 4) == "Cmaj7");
+}
+
+// A chord step plays its extra notes on the voices of the pool.
+void TestChordPlayback() {
+  auto engine = MakeEngine();
+  Step& step = engine->project().patterns[0].tracks[0].steps[0];
+  step.on = true;
+  step.chord_size = 2;
+  step.chord[0] = 4;
+  step.chord[1] = 7;
+  engine->Play();
+  std::vector<float> buffer(2 * kBlockSize);
+  int most = 0;
+  for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    most = std::max(most, engine->chord_voices_active());
+  }
+  CHECK(most == 2);
+  // A step without a chord does not use the pool (after the tail died out).
+  auto single = MakeEngine();
+  single->project().patterns[0].tracks[0].steps[0].on = true;
+  single->Play();
+  int used = 0;
+  for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+    single->Render(buffer.data(), kBlockSize);
+    used = std::max(used, single->chord_voices_active());
+  }
+  CHECK(used == 0);
+  // A chord makes more sound than its root alone.
+  auto rms = [&](bool with_chord) {
+    auto e = MakeEngine();
+    Step& s = e->project().patterns[0].tracks[0].steps[0];
+    s.on = true;
+    if (with_chord) {
+      s.chord_size = 2;
+      s.chord[0] = 4;
+      s.chord[1] = 7;
+    }
+    e->Play();
+    double sum = 0.0;
+    for (size_t done = 0; done < kSamplesPerStep; done += kBlockSize) {
+      e->Render(buffer.data(), kBlockSize);
+      for (float v : buffer) {
+        CHECK(std::isfinite(v));
+        sum += static_cast<double>(v) * v;
+      }
+    }
+    return sum;
+  };
+  CHECK(rms(true) > 1.3 * rms(false));
+}
+
+// A chord played live is written into the step, and a single note clears it.
+void TestChordRecording() {
+  auto engine = MakeEngine();
+  engine->recording = true;
+  engine->Play();
+  std::vector<float> buffer(2 * kBlockSize);
+  engine->Render(buffer.data(), kBlockSize);
+  const int8_t extras[2] = { 3, 7 };
+  engine->LiveChord(0, 0.8f, 5, extras, 2);
+  const Step& step = engine->project().patterns[0].tracks[0].steps[0];
+  CHECK(step.on && step.note == 5);
+  CHECK(step.chord_size == 2 && step.chord[0] == 3 && step.chord[1] == 7);
+  engine->LiveTrigger(0, 0.8f, 2);
+  CHECK(engine->project().patterns[0].tracks[0].steps[0].chord_size == 0);
+}
+
+// A step's own gate length replaces the Gate parameter, and can tie past a step.
+void TestStepGate() {
+  const int64_t kTolerance = 3 * kBlockSize;
+  for (float gate : { 0.25f, 0.5f, 2.0f }) {
+    auto engine = MakeEngine();
+    Project& project = engine->project();
+    project.sounds[0].params[P_GATE] = 0.0f;  // The knob alone gives about 1 ms.
+    project.patterns[0].tracks[0].steps[0].on = true;
+    project.patterns[0].tracks[0].steps[0].gate = gate;
+    engine->Play();
+    int64_t measured = MeasureGate(engine.get(), 0, 4 * kSamplesPerStep);
+    CHECK_NEAR(measured, gate * kSamplesPerStep, kTolerance);
+  }
+  // Without a step gate, the Gate knob decides.
+  auto engine = MakeEngine();
+  engine->project().sounds[0].params[P_GATE] = 0.0f;
+  engine->project().patterns[0].tracks[0].steps[0].on = true;
+  engine->Play();
+  CHECK(MeasureGate(engine.get(), 0, 4 * kSamplesPerStep) < kSamplesPerStep / 4);
+  // With ratchets, the gate is a fraction of one ratchet.
+  auto ratcheted = MakeEngine();
+  Step& step = ratcheted->project().patterns[0].tracks[0].steps[0];
+  step.on = true;
+  step.ratchets = 2;
+  step.gate = 0.5f;
+  ratcheted->Play();
+  int64_t measured = MeasureGate(ratcheted.get(), 0, kSamplesPerStep);
+  CHECK_NEAR(measured, 2 * (0.5 * kSamplesPerStep / 2), 2 * kTolerance);
+}
+
+// A slide step glides from the previous values to its locks over the step, and
+// the next step without slide jumps again.
+void TestStepSlide() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.sounds[0].params[P_TIMBRE] = 0.2f;
+  Pattern& pattern = project.patterns[0];
+  pattern.tracks[0].steps[0].on = true;           // Base value.
+  pattern.tracks[0].steps[2].on = true;
+  pattern.tracks[0].steps[2].locks[P_TIMBRE] = 0.8f;
+  pattern.tracks[0].steps[2].slide = true;
+  pattern.tracks[0].steps[4].on = true;           // Lock without slide.
+  pattern.tracks[0].steps[4].locks[P_TIMBRE] = 0.8f;
+  engine->Play();
+  RenderAndCollect(engine.get(), 0, 2 * kSamplesPerStep + kSamplesPerStep / 2);
+  float middle = engine->effective_param[0][P_TIMBRE].load();
+  CHECK(middle > 0.4f && middle < 0.6f);  // Halfway between 0.2 and 0.8.
+  RenderAndCollect(engine.get(), 0, kSamplesPerStep / 2 - 4 * kBlockSize);
+  CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.8, 0.05);
+  RenderAndCollect(engine.get(), 0, 4 * kBlockSize + kBlockSize);
+  // Step 5 locks the same value without sliding: no movement at all.
+  RenderAndCollect(engine.get(), 0, kSamplesPerStep);
+  CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.8, 1e-6);
+  // A slide step without locks glides back to the knob.
+  auto back = MakeEngine();
+  back->project().sounds[0].params[P_TIMBRE] = 0.2f;
+  Pattern& p = back->project().patterns[0];
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[0].locks[P_TIMBRE] = 0.8f;
+  p.tracks[0].steps[1].on = true;
+  p.tracks[0].steps[1].slide = true;
+  back->Play();
+  RenderAndCollect(back.get(), 0, kSamplesPerStep + kSamplesPerStep / 2);
+  float returning = back->effective_param[0][P_TIMBRE].load();
+  CHECK(returning > 0.4f && returning < 0.6f);
+  // The choices never glide: the engine jumps to its lock at once.
+  auto jump = MakeEngine();
+  jump->project().sounds[0].params[P_ENGINE] = DiscreteToNormalized(3, kNumEngines);
+  Step& s = jump->project().patterns[0].tracks[0].steps[0];
+  s.on = true;
+  s.slide = true;
+  s.locks[P_ENGINE] = DiscreteToNormalized(9, kNumEngines);
+  jump->Play();
+  RenderAndCollect(jump.get(), 0, kSamplesPerStep / 4);
+  CHECK(Discrete(jump->effective_param[0][P_ENGINE].load(), kNumEngines) == 9);
 }
 
 // Peaks envelope and bouncing ball, restarted by every note.
@@ -986,10 +1187,15 @@ void TestProjectRoundTrip() {
   project.patterns[3].tracks[4].steps[17].locks[P_CUTOFF] = 0.25f;
   project.sounds[6].params[P_MORPH] = 0.125f;
   ApplyPreset(PRESET_SPEECH, &project.patterns[5].kit[2]);
-  project.chords[2] = 0x42;
+  project.chord_type = 6;
+  project.patterns[3].tracks[4].steps[17].chord_size = 2;
+  project.patterns[3].tracks[4].steps[17].chord[0] = 4;
+  project.patterns[3].tracks[4].steps[17].chord[1] = 7;
   project.patterns[3].poly = true;
   project.patterns[3].division = 1;
   project.patterns[3].tracks[4].steps[17].micro = -0.2f;
+  project.patterns[3].tracks[4].steps[17].gate = 1.5f;
+  project.patterns[3].tracks[4].steps[17].slide = true;
   project.switch_at_end = false;
   project.midi_clock_sync = true;
   project.midi_channels[2] = 10;
@@ -1026,7 +1232,10 @@ void TestProjectRoundTrip() {
   CHECK(loaded->patterns[5].kit[2].name == "Speech");
   CHECK(loaded->patterns[4].kit[2].name == project.patterns[4].kit[2].name);
   CHECK(loaded->sounds[0].name == project.sounds[0].name);
-  CHECK(loaded->chords[2] == 0x42);
+  CHECK(loaded->chord_type == 6);
+  const Step& chord_step = loaded->patterns[3].tracks[4].steps[17];
+  CHECK(chord_step.chord_size == 2 && chord_step.chord[0] == 4 && chord_step.chord[1] == 7);
+  CHECK(loaded->patterns[3].tracks[4].steps[16].chord_size == 0);
   CHECK(loaded->patterns[3].poly);
   CHECK(loaded->patterns[3].division == 1);
   CHECK(loaded->patterns[0].division == kDefaultDivision);
@@ -1048,6 +1257,9 @@ void TestProjectRoundTrip() {
   CHECK(!loaded->patterns[0].poly);
   CHECK(loaded->patterns[3].tracks[4].length == 5);
   CHECK(loaded->patterns[0].tracks[7].steps[8].has_lock(P_TIMBRE));
+  CHECK_NEAR(loaded->patterns[3].tracks[4].steps[17].gate, 1.5, 1e-6);
+  CHECK(loaded->patterns[3].tracks[4].steps[17].slide);
+  CHECK(!loaded->patterns[3].tracks[4].steps[16].slide);
 }
 
 void TestGridsPlayback() {
@@ -1110,6 +1322,11 @@ int main() {
   TestTrackLengthAndPatternChain();
   TestPolyrhythm();
   TestLockFeedback();
+  TestStepGate();
+  TestChordNotes();
+  TestChordPlayback();
+  TestChordRecording();
+  TestStepSlide();
   TestPeaksMods();
   TestMarbles();
   TestClouds();

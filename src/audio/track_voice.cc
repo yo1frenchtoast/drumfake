@@ -17,6 +17,7 @@ void TrackVoice::Init() {
   gate_pending_ = false;
   last_trigger_high_ = false;
   max_gate_ = 0;
+  gate_override_ = 0;
   velocity_ = 0.0f;
   note_offset_ = 0.0f;
   filter_envelope_ = 0.0f;
@@ -26,7 +27,9 @@ void TrackVoice::Init() {
   std::fill(mono_, mono_ + kBlockSize, 0.0f);
 }
 
-void TrackVoice::Trigger(float velocity, int note_offset, size_t max_gate_samples) {
+void TrackVoice::Trigger(float velocity, int note_offset, size_t max_gate_samples,
+                         size_t gate_samples) {
+  gate_override_ = gate_samples;
   velocity_ = velocity;
   note_offset_ = static_cast<float>(note_offset);
   max_gate_ = std::max(max_gate_samples, kBlockSize);
@@ -43,7 +46,9 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   // Gate. Plaits detects a trigger on a rising edge, so when a note is
   // retriggered while its gate is still high, the gate goes low for one block.
   if (gate_pending_ && !last_trigger_high_) {
-    size_t gate = static_cast<size_t>(GateToSeconds(params[P_GATE]) * kSampleRate);
+    size_t gate = gate_override_ > 0
+        ? gate_override_
+        : static_cast<size_t>(GateToSeconds(params[P_GATE]) * kSampleRate);
     gate_remaining_ = std::max(kBlockSize, std::min(gate, max_gate_));
     gate_pending_ = false;
     filter_envelope_ = 1.0f;

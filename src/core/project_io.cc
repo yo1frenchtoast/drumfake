@@ -62,6 +62,15 @@ json StepToJson(int index, const Step& s) {
   if (s.micro != 0.0f) {
     j["micro"] = s.micro;
   }
+  if (s.gate != 0.0f) {
+    j["gate"] = s.gate;
+  }
+  if (s.slide) {
+    j["slide"] = true;
+  }
+  if (s.chord_size > 0) {
+    j["chord"] = std::vector<int>(s.chord, s.chord + s.chord_size);
+  }
   json locks = json::object();
   for (int p = 0; p < kNumLockable; ++p) {
     if (s.has_lock(p)) {
@@ -82,6 +91,14 @@ void StepFromJson(const json& j, Step* s) {
   s->ratchets = std::max(1, std::min(kMaxRatchets, j.value("rat", 1)));
   s->note = std::max(-48, std::min(48, j.value("note", 0)));
   s->micro = std::max(-kMaxMicroTiming, std::min(kMaxMicroTiming, j.value("micro", 0.0f)));
+  s->gate = std::max(0.0f, std::min(kMaxStepGate, j.value("gate", 0.0f)));
+  s->slide = j.value("slide", false);
+  if (j.contains("chord") && j["chord"].is_array()) {
+    for (size_t i = 0; i < j["chord"].size() && i < kMaxChordNotes - 1; ++i) {
+      s->chord[i] = static_cast<int8_t>(std::max(-48, std::min(48, j["chord"][i].get<int>())));
+      s->chord_size = static_cast<uint8_t>(i + 1);
+    }
+  }
   if (j.contains("locks")) {
     for (auto& [key, value] : j["locks"].items()) {
       int p = std::atoi(key.c_str());
@@ -102,7 +119,6 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
   j["master"] = FloatArray(project.master);
   j["assign"] = FloatArray(project.assign);
   j["clouds"] = FloatArray(project.clouds);
-  j["chords"] = std::vector<int>(project.chords, project.chords + 8);
   j["switch_at_end"] = project.switch_at_end;
   j["midi"] = {
     { "clock_sync", project.midi_clock_sync },
@@ -113,6 +129,7 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
     { "root", project.key_root },
     { "scale", project.key_scale },
     { "octave", project.key_octave },
+    { "chord", project.chord_type },
   };
   j["marbles"] = {
     { "model", project.marbles.model },
@@ -178,11 +195,6 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
     ReadFloatArray(j["master"], loaded.master);
     ReadFloatArray(j["assign"], loaded.assign);
     ReadFloatArray(j["clouds"], loaded.clouds);
-    if (j.contains("chords")) {
-      for (size_t i = 0; i < 8 && i < j["chords"].size(); ++i) {
-        loaded.chords[i] = static_cast<uint8_t>(j["chords"][i].get<int>());
-      }
-    }
     loaded.switch_at_end = j.value("switch_at_end", true);
     if (j.contains("midi")) {
       const json& midi = j["midi"];
@@ -197,8 +209,9 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
     if (j.contains("keys")) {
       const json& keys = j["keys"];
       loaded.key_root = std::max(0, std::min(11, keys.value("root", 0)));
-      loaded.key_scale = std::max(0, std::min(kNumScales - 1, keys.value("scale", 0)));
+      loaded.key_scale = std::max(0, std::min(kNumScales - 1, keys.value("scale", kChromaticScale)));
       loaded.key_octave = std::max(kMinKeyOctave, std::min(kMaxKeyOctave, keys.value("octave", 0)));
+      loaded.chord_type = std::max(0, std::min(kNumChordShapes - 1, keys.value("chord", 0)));
     }
     if (j.contains("marbles")) {
       const json& m = j["marbles"];

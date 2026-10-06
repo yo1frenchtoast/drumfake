@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "core/presets.h"
+#include "core/scales.h"
 
 namespace drumfreake {
 
@@ -20,6 +21,9 @@ void Step::Clear() {
   ratchets = 1;
   note = 0;
   micro = 0.0f;
+  gate = 0.0f;
+  slide = false;
+  chord_size = 0;
   ClearLocks();
 }
 
@@ -173,13 +177,6 @@ void Project::Init() {
   }
   bpm = 120.0f;
   volume = 0.8f;
-  // Default drum "chords": kick + hat, kick + snare, snare + clap...
-  const uint8_t kDefaultChords[8] = {
-    0x05, 0x03, 0x12, 0x09, 0x21, 0x41, 0x81, 0x1f
-  };
-  for (int i = 0; i < 8; ++i) {
-    chords[i] = kDefaultChords[i];
-  }
   for (int i = 0; i < kMaxSongLength; ++i) {
     song[i] = 0;
   }
@@ -191,7 +188,8 @@ void Project::Init() {
   }
   midi_trigger_note = 36;  // C2 (C4 = 60): white keys C2-C3 trigger A-H.
   key_root = 0;
-  key_scale = 0;
+  key_scale = kChromaticScale;
+  chord_type = 0;
   key_octave = 0;
   for (int i = 0; i < C_LAST; ++i) {
     clouds[i] = clouds_param_info(i).default_value;

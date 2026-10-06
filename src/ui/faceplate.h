@@ -40,6 +40,7 @@ class Faceplate {
   void DrawChrome();
   void DrawTopLeft();
   void DrawXySection();
+  void DrawModMatrix(ImVec2 min, ImVec2 max);
   void DrawScreenSection();
   void DrawSoundEdit();
   void DrawSequencer();
@@ -50,6 +51,9 @@ class Faceplate {
   void DrawSongView(ImVec2 min, ImVec2 max);
   void DrawKeysView(ImVec2 min, ImVec2 max);
   void DrawSoundKnobs();
+  // Name and value bubble above a knob being touched or hovered (works for fingers,
+  // unlike ImGui tooltips). Drawn on the foreground list so nothing covers it.
+  void DrawKnobReadout(ImVec2 center, float radius, const char* name, const std::string& value);
   void DrawKeyKnobs();
   void DrawPageButtons();
   ImVec2 SoundKnobCenter(int knob) const;
@@ -86,6 +90,12 @@ class Faceplate {
   // Keys mode: offset of pad 1-8 from the track pitch, the track pitch as a
   // MIDI note, and changes to the root (0), scale (1) or octave (2).
   int KeyNote(int pad);
+  // The black key on instrument pad `pad` (A-H) in Keys mode, as an offset from the
+  // track pitch; false when this pad has none.
+  bool KeySharp(int pad, int* offset);
+  // Plays a key of the Keys mode on the selected track, and writes it into the held step.
+  void PlayKey(int offset);
+  void PlayChord(int pad);
   int TrackNote(int track);
   void ChangeKey(int field, int delta);
   Pattern& pattern();
@@ -100,7 +110,6 @@ class Faceplate {
 
   ImVec2 ToPanel(ImVec2 display) const;
   void SetXyFromTouch(const TouchTarget& target, ImVec2 panel);
-  void UpdateLongPresses();
 
   Engine* engine_ = nullptr;
   Canvas canvas_;
@@ -126,7 +135,6 @@ class Faceplate {
   bool solo_mode_ = false;
   int held_step_ = -1;
   int preset_bank_ = 0;
-  int chord_edit_ = -1;
   float encoder_ = 0.5f;
   float encoder_accumulator_ = 0.0f;
   int browse_index_ = 0;
@@ -148,6 +156,8 @@ class Faceplate {
   bool track_pad_touched_[kNumTracks] = {};
   bool lower_pad_touched_[8] = {};
   bool xy_touched_ = false;
+  bool matrix_open_ = false;  // The Perform pad shows the modulation matrix.
+  int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
   bool long_press_fired_ = false;  // The held step already got its long press.

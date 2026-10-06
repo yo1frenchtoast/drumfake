@@ -55,7 +55,8 @@ with the project.
 
 Hold a step for half a second (or right click it) to select it. While it is held:
 
-- the screen shows its **velocity**, **probability**, **ratchets**, **note** and **nudge**;
+- the screen shows its **velocity**, **probability**, **ratchets**, **note**, **nudge**,
+  **gate** and **slide**;
 - turning a knob sets a **parameter lock**: that step plays with its own value for that
   parameter (see below);
 - pads 1–4 set its repeats (1 to 4 hits);
@@ -65,6 +66,16 @@ Hold a step for half a second (or right click it) to select it. While it is held
 remove the lock. While a locked step plays, the knob has an orange halo. An orange dot shows
 that some step of the track locks that parameter. To remove the locks of a parameter on the
 whole track, hold *Erase* and touch the knob.
+
+**Gate.** By default a note lasts as long as the *Gate* knob of the Filter page says (1 ms to
+about half a second). A step can have its own gate instead, from a fraction of a step up to 4
+steps (with ratchets, a fraction of one hit). Past one step the note is tied over the next
+steps. The step shows a bar for it: white up to one step, amber beyond.
+
+**Slide.** With *Slide to locks* on, the parameters do not jump to the step's locks: they glide
+there linearly from their previous values during the step (a small line in the corner of the
+step shows it). A slide step without locks glides back to the knobs. The choices (engine,
+filter mode, choke group) always jump. Use it for filter sweeps and pitch glides between steps.
 
 **Motion recording.** Press **Rec** and **Play**, then turn a knob: the value is written as a
 lock on the step that is playing.
@@ -114,6 +125,12 @@ Modulations are per track, and saved in the kit.
     cutoff.
 - **Macros.** With the **Macros** mode of the X/Y pad, the pad moves two parameters of the
   selected track at once (chosen on the *Assign* page).
+- **Modulation matrix.** The **Matrix** button, after *Macros*, swaps the X/Y pad for a grid: one
+  row per source (LFO 1, LFO 2, Env, Ball), one column per parameter, on three tabs (Sound,
+  Filter, Track). Tap a cell to send the source there, tap the lit cell to turn it off. The fill
+  of the cell shows the amount (blue-green up, amber down), which you set with the knobs of the
+  Mods and Envs pages. A dot on a tab means a source points to that page. A source has a single
+  destination, so a row lights at most one cell.
 
 ### Kits and sounds
 
@@ -187,7 +204,8 @@ deja vu up to 100 %, generate until you like the loop, then edit the steps by ha
 
 ### The X/Y pad
 
-Four modes, chosen with the buttons above the pad:
+Four modes, chosen with the buttons above the pad (the fifth button, **Matrix**, replaces the
+pad with the [modulation matrix](#modulation)):
 
 | Mode | Effect while you touch the pad |
 |---|---|
@@ -200,16 +218,41 @@ Four modes, chosen with the buttons above the pad:
 
 | Mode | Behaviour |
 |---|---|
-| **Chords** | Each pad plays a combination of tracks. Right click a pad (long press on a tablet) to edit it: tap tracks A–H to add or remove them. |
+| **Chords** | Plays real chords on the selected track, built on the scale of the Keys settings (see below). |
 | **Sounds** | Loads factory sounds on the selected track. |
 | **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step), like the DrumBrute Roller. |
-| **Keys** | Plays the selected track on a scale and writes the note into the selected step. |
+| **Keys** | Plays the selected track on a scale and writes the note into the selected step. Pads 1–8 are the notes of the scale, the instrument pads A–H are the black keys (see below). |
+
+**Chords.** In *Chords* mode, pads 1–8 play a chord on the selected track: the chord built on
+each note of the scale (in C major: C, Dm, Em, F, G, Am, B°, C), named on the pad. The pads A–H
+choose the kind of chord: **Triad**, **7th**, **Sus2**, **Sus4**, **Add9**, **6th**, **9th** and
+**Power** (root and fifth); the chosen one is lit. Chords use the root, scale and octave of
+the Keys settings (press *Chords* again for that page, *Shift* works as in Keys mode: Shift + A–H
+the scale, Shift + 1–8 the root). The notes play at fixed pitches, on the sound of the track.
+They are played by a shared pool of four extra voices: a chord can have up to five notes, and
+when the voices are all busy the oldest note is cut. With a step held, a chord is written into
+that step (the pad of the step shows dots, one per note), and with **Rec** and **Play** into the
+step that is playing; playing a single note on the step replaces the chord. A step chord plays
+with its gate, locks and probability like any note.
+
+**Layout** (like the BeatStep Pro). Pads 1–8 are the white keys, the instrument pads A–H sit
+above them like the black keys: A and B are the C♯ and D♯ keys, there is no key above the third
+pad (E–F), then D, E and F are F♯, G♯ and A♯. **G** and **H** are *Oct −* and *Oct +*. Each pad
+shows its note.
+
+- **Scale.** Hold *Shift* and press A–H: Chromatic, Major, Minor, Dorian, Mixolydian, Harmonic
+  Minor, Blues, Pentatonic Minor. The default, **Chromatic**, is the piano. With the other scales,
+  pads 1–8 are the degrees of the scale and the black keys sit a semitone above each degree.
+- **Root (transposition).** Hold *Shift* and press a pad 1–8: that key becomes the root, and the
+  whole keyboard moves with it (root D: D E F♯ G A B C♯ D).
+- A right click on a pad A–H selects that track without playing, since the pads are keys here.
 
 **Keys settings**: root, scale (major, minor, modes, harmonic minor, pentatonics, blues,
 chromatic) and octave, shared by the whole project. The *Keys* button shows a dedicated page
 (knobs 1–3 set root, scale and octave; press *Keys* again to come back); the screen shows the
-pad notes. Notes are added to the Pitch of the track: a track set to C plays in the key you
-chose.
+pad notes. The keyboard has fixed pitches, whatever the Pitch knob of the track: with root C and
+octave 0, pad 1 is C3 and the pads follow a standard piano. Changing the root transposes all the
+keys together (root D: D E F♯ G A B C♯ D), the octave moves them by 12 semitones.
 
 ### Mute and Solo
 

@@ -70,19 +70,6 @@ ImU32 WithAlpha(ImU32 color, int alpha) {
   return (color & 0x00ffffff) | (static_cast<ImU32>(alpha) << 24);
 }
 
-std::string ChordName(uint8_t mask) {
-  std::string name;
-  for (int t = 0; t < kNumTracks; ++t) {
-    if (mask & (1 << t)) {
-      if (!name.empty()) {
-        name += "+";
-      }
-      name += static_cast<char>('A' + t);
-    }
-  }
-  return name.empty() ? "-" : name;
-}
-
 }  // namespace
 
 void Faceplate::Init(Engine* engine, const std::string& project_path,
@@ -114,11 +101,18 @@ void Faceplate::TogglePlay() {
   }
 }
 
+namespace {
+
+// Keys mode, pads A-H: the last two are the octave down and up, and with Shift the
+// pads pick a scale (Chromatic, Major, Minor, Dorian, Mixolydian, Harmonic Minor,
+// Blues, Pentatonic Minor).
+const int kOctaveDownPad = 6;
+const int kOctaveUpPad = 7;
+const int kKeyScaleShortcuts[kNumTracks] = { 10, 0, 1, 2, 5, 6, 9, 8 };
+
+}  // namespace
+
 void Faceplate::TrackPadDown(int track) {
-  if (chord_edit_ >= 0) {
-    engine_->project().chords[chord_edit_] ^= 1 << track;
-    return;
-  }
   // Held buttons turn the pads into targets, as on the DrumBrute.
   if (erase_held_) {
     erase_used_ = true;
@@ -166,6 +160,28 @@ void Faceplate::TrackPadDown(int track) {
     solo_used_ = solo_used_ || solo_held_;
     return;
   }
+  if (pad_mode_ == PADS_KEYS || pad_mode_ == PADS_CHORDS) {
+    // Keys mode, laid out like the BeatStep Pro: the pads A-F are the black keys (none
+    // between E and F), G and H the octave down and up. In Chords mode they choose the
+    // kind of chord. With Shift they choose the scale in both. A right click selects a
+    // track.
+    Project& project = engine_->project();
+    if (shift_held_) {
+      project.key_scale = kKeyScaleShortcuts[track];
+      Toast(std::string("Scale: ") + scale(project.key_scale).name);
+    } else if (pad_mode_ == PADS_CHORDS) {
+      project.chord_type = track;
+      Toast(std::string("Chords: ") + chord_shape(track).name);
+    } else if (track == kOctaveDownPad || track == kOctaveUpPad) {
+      ChangeKey(2, track == kOctaveUpPad ? 1 : -1);
+    } else {
+      int offset;
+      if (KeySharp(track, &offset)) {
+        PlayKey(offset);
+      }
+    }
+    return;
+  }
   engine_->selected_track = track;
   if (shift_held_) {
     return;  // Shift + pad: select without playing.
@@ -184,7 +200,7 @@ void Faceplate::TrackPadUp(int track) {
 void Faceplate::LowerPadDown(int pad) {
   Project& project = engine_->project();
   int track = engine_->selected_track;
-  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS) {
+  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS) {
     // Held step: pads 1-4 set its repeats (the DrumBrute's Step Repeat).
     if (pad < kMaxRatchets) {
       PushUndo();
@@ -208,20 +224,22 @@ void Faceplate::LowerPadDown(int pad) {
       UpdateRepeat();
       break;
     case PADS_CHORDS:
-      for (int t = 0; t < kNumTracks; ++t) {
-        if (project.chords[pad] & (1 << t)) {
-          engine_->LiveTrigger(t, 0.8f, 0);
-        }
+      if (shift_held_) {
+        // Shift + pad: this note becomes the root of the keyboard and of the chords.
+        project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
+        Toast(std::string("Root: ") + PitchClassName(project.key_root));
+      } else {
+        PlayChord(pad);
       }
       break;
     case PADS_KEYS:
-      if (held_step_ >= 0) {
-        PushUndo();
-        Step& step = pattern().tracks[track].steps[held_step_];
-        step.on = true;
-        step.note = KeyNote(pad);
+      if (shift_held_) {
+        // Shift + key: this key becomes the root (the keyboard is transposed).
+        project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
+        Toast(std::string("Root: ") + PitchClassName(project.key_root));
+      } else {
+        PlayKey(KeyNote(pad));
       }
-      engine_->LiveTrigger(track, 0.8f, KeyNote(pad));
       break;
   }
 }
@@ -394,9 +412,61 @@ void Faceplate::Save() {
   }
 }
 
+void Faceplate::PlayKey(int offset) {
+  int track = engine_->selected_track;
+  if (held_step_ >= 0) {
+    PushUndo();
+    Step& step = pattern().tracks[track].steps[held_step_];
+    step.on = true;
+    step.note = std::clamp(offset, -48, 48);
+    step.chord_size = 0;
+  }
+  engine_->LiveTrigger(track, 0.8f, offset);
+}
+
+// The chord of pad `pad` (a degree of the scale) with the chosen kind of chord, played on
+// the selected track and written into the held step. The notes are fixed pitches, like the
+// keys of the Keys mode.
+void Faceplate::PlayChord(int pad) {
+  const Project& project = engine_->project();
+  int track = engine_->selected_track;
+  int notes[kMaxChordNotes];
+  int count = ChordNotes(project.key_root, project.key_scale, project.key_octave, pad,
+                         project.chord_type, notes);
+  int8_t extras[kMaxChordNotes - 1];
+  for (int i = 1; i < count; ++i) {
+    extras[i - 1] = static_cast<int8_t>(notes[i] - notes[0]);
+  }
+  int root = std::clamp(notes[0] - TrackNote(track), -48, 48);
+  if (held_step_ >= 0) {
+    PushUndo();
+    Step& step = pattern().tracks[track].steps[held_step_];
+    step.on = true;
+    step.note = root;
+    step.chord_size = static_cast<uint8_t>(count - 1);
+    std::copy(extras, extras + count - 1, step.chord);
+  }
+  engine_->LiveChord(track, 0.8f, root, extras, count - 1);
+}
+
+bool Faceplate::KeySharp(int pad, int* offset) {
+  const Project& project = engine_->project();
+  if (pad >= kOctaveDownPad) {
+    return false;
+  }
+  if (!KeySharpOffset(project.key_root, project.key_scale, project.key_octave, pad, offset)) {
+    return false;
+  }
+  *offset += kKeyBaseNote - TrackNote(engine_->selected_track);
+  return true;
+}
+
 int Faceplate::KeyNote(int pad) {
   const Project& project = engine_->project();
-  return KeyOffset(project.key_root, project.key_scale, project.key_octave, pad);
+  // The keyboard has fixed pitches (the root note starts it); notes are offsets from
+  // the pitch of the track.
+  return KeyOffset(project.key_root, project.key_scale, project.key_octave, pad) +
+         kKeyBaseNote - TrackNote(engine_->selected_track);
 }
 
 int Faceplate::TrackNote(int track) {
@@ -469,7 +539,6 @@ void Faceplate::Draw() {
     }
   }
 
-  UpdateLongPresses();
   DrawChrome();
   DrawTopLeft();
   DrawXySection();
@@ -640,20 +709,6 @@ void Faceplate::FingerUp(uint64_t finger) {
   fingers_.erase(it);
 }
 
-void Faceplate::UpdateLongPresses() {
-  // Holding a lower pad in Chords mode edits its chord (right click with a
-  // mouse).
-  double now = ImGui::GetTime();
-  for (auto& [id, f] : fingers_) {
-    if (f.target.kind == TOUCH_LOWER_PAD && !f.long_press_done && now - f.down_time >= 0.5) {
-      f.long_press_done = true;
-      if (pad_mode_ == PADS_CHORDS) {
-        chord_edit_ = chord_edit_ == f.target.index ? -1 : f.target.index;
-      }
-    }
-  }
-}
-
 void Faceplate::DrawChrome() {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
@@ -702,16 +757,28 @@ void Faceplate::DrawTopLeft() {
   const float knob_y = 150.0f;
   const float label_y = knob_y + 42.0f;
 
+  Interaction volume_in;
   Knob(c, "##volume", ImVec2(layout::kLeftX0 + 45, knob_y), 27, &project.volume, 0.8f,
-       KNOB_BLACK, false, 0);
+       KNOB_BLACK, false, 0, &volume_in);
   c.Text(layout::kLeftX0 + 45, label_y, 9.5f, colors::kLabel, "Volume", true, true);
+  if (volume_in.hovered || volume_in.active || volume_in.touch_active) {
+    char text[16];
+    snprintf(text, sizeof(text), "%d%%", static_cast<int>(std::round(project.volume * 100.0f)));
+    DrawKnobReadout(ImVec2(layout::kLeftX0 + 45, knob_y), 27, "Volume", text);
+  }
 
   float tempo = (project.bpm - 30.0f) / 270.0f;
+  Interaction tempo_in;
   if (Knob(c, "##tempo", ImVec2(layout::kLeftX0 + 150, knob_y), 27, &tempo, 90.0f / 270.0f,
-           KNOB_AMBER, false, 0)) {
+           KNOB_AMBER, false, 0, &tempo_in)) {
     project.bpm = std::round((30.0f + tempo * 270.0f) * 10.0f) / 10.0f;
   }
   c.Text(layout::kLeftX0 + 150, label_y, 9.5f, colors::kLabel, "Tempo", true, true);
+  if (tempo_in.hovered || tempo_in.active || tempo_in.touch_active) {
+    char text[16];
+    snprintf(text, sizeof(text), "%.1f BPM", project.bpm);
+    DrawKnobReadout(ImVec2(layout::kLeftX0 + 150, knob_y), 27, "Tempo", text);
+  }
 
   // TAP, with the metronome LED under it.
   ImVec2 tap_min(layout::kLeftX1 - 76, knob_y - 26);
@@ -781,8 +848,9 @@ void Faceplate::DrawTopLeft() {
         preset_bank_ = 1 - preset_bank_;
         Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
       }
+      // Chords uses the root, scale and octave of the Keys settings page.
+      keys_page_ = m.mode == PADS_CHORDS ? (pad_mode_ == PADS_CHORDS ? !keys_page_ : true) : false;
       pad_mode_ = m.mode;
-      keys_page_ = false;
     }
   }
   // Solo and Mute: held + pads toggle tracks; tapped alone, latch the mode;
@@ -791,7 +859,7 @@ void Faceplate::DrawTopLeft() {
   Interaction solo = Button(c, "##solo", min, max, "Solo", "", ICON_NONE,
                             solo_mode_ || solo_held_, colors::kAmber);
   cell(4, &min, &max);
-  Interaction mute = Button(c, "##mute", min, max, "", "", ICON_MUTE,
+  Interaction mute = Button(c, "##mute", min, max, "Mute", "", ICON_NONE,
                             mute_mode_ || mute_held_, colors::kAccent);
   auto hold_button = [&](const Interaction& in, bool* held, bool* used, bool* mode,
                          bool* other_mode, bool* tracks, const char* cleared) {
@@ -814,7 +882,7 @@ void Faceplate::DrawTopLeft() {
   hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
               "Mutes cleared");
   cell(5, &min, &max);
-  if (Button(c, "##keys", min, max, "", "", ICON_KEYBOARD, pad_mode_ == PADS_KEYS,
+  if (Button(c, "##keys", min, max, "Keys", "", ICON_NONE, pad_mode_ == PADS_KEYS,
              colors::kAccent).pressed) {
     // First press: Keys mode and its page; next presses show or hide the page.
     keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
@@ -854,11 +922,11 @@ void Faceplate::DrawXySection() {
     { "##looper", ICON_LOOPER, "Looper", XY_LOOPER },
     { "##macros", ICON_XY, "Macros", XY_MACROS },
   };
-  float w = (layout::kLeftX1 - layout::kLeftX0 - 3 * layout::kGap) / 4.0f;
+  float w = (layout::kLeftX1 - layout::kLeftX0 - 4 * layout::kGap) / 5.0f;
   for (int i = 0; i < 4; ++i) {
     const ModeButton& m = kModes[i];
     float x0 = layout::kLeftX0 + i * (w + layout::kGap);
-    bool lit = engine_->xy_mode == m.mode;
+    bool lit = !matrix_open_ && engine_->xy_mode == m.mode;
     ImU32 led = colors::kLedWhite;
     if (m.mode == XY_GRIDS && engine_->grids_enabled) {
       lit = true;
@@ -873,6 +941,19 @@ void Faceplate::DrawXySection() {
         Toast(engine_->grids_enabled ? "Grids on (tracks A-C)" : "Grids off");
       }
       engine_->xy_mode = m.mode;
+      matrix_open_ = false;
+    }
+  }
+  // After Macros: swaps the pad for the modulation matrix of the selected track.
+  {
+    float x0 = layout::kLeftX0 + 4 * (w + layout::kGap);
+    Interaction in = Button(c, "##matrix", ImVec2(x0, layout::kFunctionRowY0),
+                            ImVec2(x0 + w, layout::kFunctionRowY1), "Matrix", "", ICON_MODS,
+                            matrix_open_, colors::kLedWhite, true);
+    if (in.pressed) {
+      matrix_open_ = !matrix_open_;
+      engine_->xy_touched = false;
+      xy_touched_ = false;
     }
   }
 
@@ -887,6 +968,11 @@ void Faceplate::DrawXySection() {
     for (float gy = min.y + 22; gy < max.y - 10; gy += 22) {
       dl->AddCircleFilled(c.P(gx, gy), c.S(1.1f), IM_COL32(120, 135, 145, 110));
     }
+  }
+
+  if (matrix_open_) {
+    DrawModMatrix(min, max);
+    return;
   }
 
   Interaction in = HitBox(c, "##xy", min, max, false);
@@ -950,6 +1036,110 @@ void Faceplate::DrawXySection() {
   c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
 }
 
+// Modulation sources of the selected track against the parameters they can drive.
+// Each source has a single destination, so a row lights at most one cell: tapping
+// a cell moves the source there, tapping the lit cell turns it off. The amount is
+// set with the knobs of the Mods / Envs pages and drawn as the fill of the cell.
+void Faceplate::DrawModMatrix(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  struct Source {
+    const char* name;
+    int dest;
+    int amount;
+  };
+  static const Source kSources[] = {
+    { "LFO 1", P_LFO1_DEST, P_LFO1_DEPTH },
+    { "LFO 2", P_LFO2_DEST, P_LFO2_DEPTH },
+    { "Env", P_ENV_DEST, P_ENV_AMOUNT },
+    { "Ball", P_BALL_DEST, P_BALL_AMOUNT },
+  };
+  const int kNumSources = 4;
+  static const char* const kTabs[] = { "Sound", "Filter", "Track" };
+  TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+
+  // Page tabs; a dot marks the pages that hold a destination.
+  const float tab_w = (max.x - min.x - 16.0f - 2 * 6.0f) / 3.0f;
+  for (int t = 0; t < 3; ++t) {
+    float x0 = min.x + 8.0f + t * (tab_w + 6.0f);
+    ImVec2 a(x0, min.y + 8.0f);
+    ImVec2 b(x0 + tab_w, min.y + 30.0f);
+    char id[16];
+    snprintf(id, sizeof(id), "##mtab%d", t);
+    Interaction in = HitBox(c, id, a, b);
+    if (in.pressed) {
+      matrix_page_ = t;
+    }
+    bool current = t == matrix_page_;
+    dl->AddRectFilled(c.P(a), c.P(b), current ? WithAlpha(colors::kAccent, 60) : colors::kPanel,
+                      c.S(4));
+    dl->AddRect(c.P(a), c.P(b), current ? colors::kAccent : colors::kPanelEdge, c.S(4), 0,
+                c.S(1));
+    c.Text((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, 9, current ? colors::kAccent : colors::kLabel,
+           kTabs[t], true, true);
+    for (int s = 0; s < kNumSources; ++s) {
+      int p = DestinationToParam(sound.params[kSources[s].dest]);
+      if (p >= t * kKnobsPerPage && p < (t + 1) * kKnobsPerPage) {
+        dl->AddCircleFilled(c.P(b.x - 6, a.y + 6), c.S(2.5f), colors::kAmber);
+        break;
+      }
+    }
+  }
+
+  const float label_w = 46.0f;
+  const float grid_x0 = min.x + 8.0f + label_w;
+  const float cell_w = (max.x - 8.0f - grid_x0) / kKnobsPerPage;
+  const float head_y = min.y + 42.0f;
+  const float row_y0 = min.y + 58.0f;
+  const float row_h = 34.0f;
+  for (int k = 0; k < kKnobsPerPage; ++k) {
+    c.Text(grid_x0 + (k + 0.5f) * cell_w, head_y, 8, colors::kLabelDim,
+           track_param_info(matrix_page_ * kKnobsPerPage + k).short_name, true, true);
+  }
+
+  char readout[64] = "";
+  for (int s = 0; s < kNumSources; ++s) {
+    float y0 = row_y0 + s * row_h;
+    c.Text(min.x + 8.0f, y0 + (row_h - 4) * 0.5f, 9, colors::kLabel, kSources[s].name, false,
+           true);
+    int dest_param = DestinationToParam(sound.params[kSources[s].dest]);
+    float amount = sound.params[kSources[s].amount] * 2.0f - 1.0f;
+    for (int k = 0; k < kKnobsPerPage; ++k) {
+      int param = matrix_page_ * kKnobsPerPage + k;
+      ImVec2 a(grid_x0 + k * cell_w + 1.5f, y0);
+      ImVec2 b(grid_x0 + (k + 1) * cell_w - 1.5f, y0 + row_h - 4.0f);
+      char id[24];
+      snprintf(id, sizeof(id), "##mcell%d_%d", s, k);
+      Interaction in = HitBox(c, id, a, b);
+      bool lit = dest_param == param;
+      if (in.pressed) {
+        float next = lit ? DiscreteToNormalized(0, kNumDestinations)
+                         : DiscreteToNormalized(param + 1, kNumDestinations);
+        sound.params[kSources[s].dest] = next;
+        lit = !lit;
+        dest_param = lit ? param : -1;
+      }
+      dl->AddRectFilled(c.P(a), c.P(b), in.hovered ? colors::kPanelEdge : colors::kPanel,
+                        c.S(3));
+      dl->AddRect(c.P(a), c.P(b), lit ? colors::kAccent : colors::kPanelEdge, c.S(3), 0,
+                  c.S(lit ? 1.5f : 1.0f));
+      if (lit) {
+        // Fill from the bottom: how much of the range the source sweeps.
+        float height = (b.y - a.y - 4.0f) * std::fabs(amount);
+        ImU32 fill = amount >= 0.0f ? colors::kAccent : colors::kAmber;
+        dl->AddRectFilled(c.P(a.x + 3, b.y - 2 - height), c.P(b.x - 3, b.y - 2),
+                          WithAlpha(fill, 200), c.S(2));
+        snprintf(readout, sizeof(readout), "%c  %s > %s  %s", 'A' + engine_->selected_track,
+                 kSources[s].name, track_param_info(param).name,
+                 FormatValue(track_param_info(kSources[s].amount).format,
+                             sound.params[kSources[s].amount]).c_str());
+      }
+    }
+  }
+  const char* hint = readout[0] ? readout : "Tap a cell to route a source";
+  c.Text(min.x + 8.0f, max.y - 14.0f, 9, colors::kLabelDim, hint, false);
+}
+
 void Faceplate::DrawScreenSection() {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
@@ -1001,7 +1191,6 @@ void Faceplate::DrawScreenSection() {
              false, 0).pressed) {
     view_ = VIEW_MAIN;
     held_step_ = -1;
-    chord_edit_ = -1;
     song_edit_ = false;
   }
 
@@ -1159,12 +1348,29 @@ void Faceplate::DrawSoundKnobs() {
     // Short parameter name under each knob.
     c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim,
            page_param_info(page_, k).short_name, true, true);
-    if (in.hovered || in.active) {
-      std::string tip = std::string(page_param_info(page_, k).name) + ": " +
-          FormatValue(page_param_info(page_, k).format, value);
-      ImGui::SetTooltip("%s", tip.c_str());
+    if (in.hovered || in.active || grabbed) {
+      DrawKnobReadout(center, 22, page_param_info(page_, k).name,
+                      FormatValue(page_param_info(page_, k).format, value));
     }
   }
+}
+
+void Faceplate::DrawKnobReadout(ImVec2 center, float radius, const char* name,
+                                const std::string& value) {
+  Canvas c = canvas_;
+  c.draw_list = ImGui::GetForegroundDrawList();
+  std::string text = std::string(name) + "  " + value;
+  const float size = 11.0f;
+  ImVec2 extent = c.bold->CalcTextSizeA(c.S(size), FLT_MAX, 0.0f, text.c_str());
+  float half_w = extent.x / c.scale * 0.5f + 8.0f;
+  float y = center.y - radius - 20.0f;
+  // Keep the bubble inside the panel.
+  float x = ImClamp(center.x, half_w + 2.0f, kPanelWidth - half_w - 2.0f);
+  c.draw_list->AddRectFilled(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
+                             colors::kScreen, c.S(4.0f));
+  c.draw_list->AddRect(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
+                       colors::kPanelEdge, c.S(4.0f));
+  c.Text(x, y, size, colors::kScreenText, text.c_str(), true, true);
 }
 
 void Faceplate::DrawKeyKnobs() {
@@ -1542,6 +1748,22 @@ void Faceplate::DrawSequencer() {
     if (step.has_any_lock()) {
       dl->AddCircleFilled(c.P(max.x - 7, min.y + 7), c.S(2.5f), colors::kAccent);
     }
+    if (step.on && step.gate > 0.0f) {
+      // Gate length as a bar along the bottom (a tie past one step reaches the edge).
+      float bar = (max.x - min.x - 8.0f) * ImMin(step.gate, 1.0f);
+      dl->AddRectFilled(c.P(min.x + 4, max.y - 5), c.P(min.x + 4 + bar, max.y - 3),
+                        step.gate > 1.0f ? colors::kAmber : colors::kLabel, c.S(1));
+    }
+    if (step.on && step.chord_size > 0) {
+      float cx = (min.x + max.x) * 0.5f;
+      for (int n = 0; n <= step.chord_size; ++n) {
+        dl->AddCircleFilled(c.P(cx - 4.0f + n * 4.0f, min.y + 7), c.S(1.4f), colors::kLabel);
+      }
+    }
+    if (step.on && step.slide) {
+      dl->AddLine(c.P(min.x + 5, min.y + 11), c.P(min.x + 14, min.y + 5), colors::kAccent,
+                  c.S(1.5f));
+    }
     if (step.ratchets > 1 && step.on) {
       for (int r = 0; r < step.ratchets; ++r) {
         dl->AddCircleFilled(c.P(min.x + 7 + r * 5.0f, max.y - 8), c.S(1.5f), colors::kLabel);
@@ -1625,6 +1847,9 @@ void Faceplate::DrawPads() {
     if (in.pressed) {
       TrackPadDown(t);
     }
+    if (in.right_clicked) {
+      engine_->selected_track = t;  // Right click: select without playing.
+    }
     if (in.released) {
       TrackPadUp(t);
     }
@@ -1634,7 +1859,7 @@ void Faceplate::DrawPads() {
     bool selected = t == engine_->selected_track;
     bool muted = !engine_->TrackAudible(t);
     bool soloed = engine_->soloed[t];
-    bool in_chord = chord_edit_ >= 0 && (project.chords[chord_edit_] & (1 << t));
+    bool in_chord = pad_mode_ == PADS_CHORDS && !shift_held_ && project.chord_type == t;
 
     float split = min.y + (max.y - min.y) * 0.5f;
     dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
@@ -1663,6 +1888,22 @@ void Faceplate::DrawPads() {
                       colors::kAccent, c.S(2));
     char letter[2] = { static_cast<char>('A' + t), 0 };
     c.Text(min.x + 10, max.y - 26, 15, kPadInk, letter, false, true);
+    if (pad_mode_ == PADS_KEYS || pad_mode_ == PADS_CHORDS) {
+      // Black key of the piano, nothing where the next note is a semitone up, the
+      // octave pads, and the scales while Shift is held.
+      int offset;
+      std::string key = "-";
+      if (shift_held_) {
+        key = scale(kKeyScaleShortcuts[t]).name;
+      } else if (pad_mode_ == PADS_CHORDS) {
+        key = chord_shape(t).name;
+      } else if (t == kOctaveDownPad || t == kOctaveUpPad) {
+        key = t == kOctaveUpPad ? "Oct +" : "Oct -";
+      } else if (KeySharp(t, &offset)) {
+        key = NoteName(TrackNote(engine_->selected_track) + offset);
+      }
+      c.Text((min.x + max.x) * 0.5f, split + 24, 13, kPadInk, key.c_str(), true, true);
+    }
     if (soloed) {
       c.Text(max.x - 36, max.y - 22, 9, colors::kAmber, "SOLO", false, true);
     } else if (engine_->muted[t]) {
@@ -1688,16 +1929,12 @@ void Faceplate::DrawPads() {
     if (in.released) {
       LowerPadUp(i);
     }
-    if (in.right_clicked && pad_mode_ == PADS_CHORDS) {
-      chord_edit_ = chord_edit_ == i ? -1 : i;
-    }
-
     bool held = lower_pad_held_[i] || in.active || lower_pad_touched_[i];
     ImU32 face = colors::kPadFace;
-    if (held || chord_edit_ == i) {
+    if (held) {
       face = ImGui::ColorConvertFloat4ToU32(ImLerp(
           ImGui::ColorConvertU32ToFloat4(face),
-          ImGui::ColorConvertU32ToFloat4(colors::kAccent), chord_edit_ == i ? 0.7f : 0.5f));
+          ImGui::ColorConvertU32ToFloat4(colors::kAccent), 0.5f));
     }
     dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
     dl->AddRectFilled(c.P(min), c.P(max), face, c.S(8));
@@ -1709,9 +1946,22 @@ void Faceplate::DrawPads() {
     switch (pad_mode_) {
       case PADS_SOUNDS: function = preset_name(preset_bank_ * 8 + i); break;
       case PADS_REPEATS: function = kRepeatNames[i]; break;
-      case PADS_CHORDS: function = ChordName(project.chords[i]); break;
+      case PADS_CHORDS: {
+        if (shift_held_) {
+          function = std::string("Root ") +
+              PitchClassName(project.key_root + ScaleDegree(project.key_scale, i));
+        } else {
+          int notes[kMaxChordNotes];
+          int count = ChordNotes(project.key_root, project.key_scale, project.key_octave, i,
+                                 project.chord_type, notes);
+          function = ChordName(notes, count);
+        }
+        break;
+      }
       case PADS_KEYS:
-        function = NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
+        function = shift_held_
+            ? std::string("Root ") + PitchClassName(project.key_root + ScaleDegree(project.key_scale, i))
+            : NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
         break;
     }
     c.Text((min.x + max.x) * 0.5f, min.y + 40, 10, IM_COL32(95, 104, 110, 255),
@@ -1726,15 +1976,7 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
   ImDrawList* dl = c.draw_list;
   dl->AddRectFilled(c.P(min), c.P(max), colors::kScreen, c.S(2));
   dl->PushClipRect(c.P(min), c.P(max), true);
-  if (chord_edit_ >= 0) {
-    char title[48];
-    snprintf(title, sizeof(title), "CHORD PAD %d", chord_edit_ + 1);
-    c.Text(min.x + 8, min.y + 6, 11, colors::kScreenAccent, title, false, true);
-    c.Text(min.x + 8, min.y + 30, 18, colors::kScreenText,
-           ChordName(engine_->project().chords[chord_edit_]).c_str(), false, true);
-    c.Text(min.x + 8, min.y + 70, 9, colors::kScreenDim, "Tap pads A-H to add or remove", false);
-    c.Text(min.x + 8, min.y + 84, 9, colors::kScreenDim, "tracks. Back button to finish.", false);
-  } else if (song_edit_) {
+  if (song_edit_) {
     DrawSongView(min, max);
   } else if (held_step_ >= 0) {
     DrawStepView(min, max);
@@ -1882,7 +2124,8 @@ void Faceplate::DrawKeysView(ImVec2 min, ImVec2 max) {
   const Project& project = engine_->project();
   int track = engine_->selected_track;
   char text[64];
-  snprintf(text, sizeof(text), "KEYS  |  %c %s", 'A' + track,
+  const bool chords = pad_mode_ == PADS_CHORDS;
+  snprintf(text, sizeof(text), "%s  |  %c %s", chords ? "CHORDS" : "KEYS", 'A' + track,
            project.sounds[track].name.c_str());
   c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
 
@@ -1925,11 +2168,23 @@ void Faceplate::DrawKeysView(ImVec2 min, ImVec2 max) {
                       IM_COL32(30, 50, 56, 255), c.S(2));
     snprintf(text, sizeof(text), "%d", i + 1);
     c.Text(cx + 4, min.y + 74, 7.5f, colors::kScreenDim, text, false);
-    c.Text(cx + (cell - 4) * 0.5f, min.y + 93, 10, colors::kScreenText,
-           NoteName(base + KeyNote(i)).c_str(), true, true);
+    std::string label;
+    if (chords) {
+      int notes[kMaxChordNotes];
+      int count = ChordNotes(project.key_root, project.key_scale, project.key_octave, i,
+                             project.chord_type, notes);
+      label = ChordName(notes, count);
+    } else {
+      label = NoteName(base + KeyNote(i));
+    }
+    c.Text(cx + (cell - 4) * 0.5f, min.y + 93, chords ? 9 : 10, colors::kScreenText,
+           label.c_str(), true, true);
   }
   c.Text(min.x + 6, min.y + 114, 8, colors::kScreenDim,
          "Encoder: change field   Arrows: octave / root   Tab: scale", false);
+  c.Text(min.x + 6, min.y + 126, 8, colors::kScreenDim,
+         chords ? "A-H kind of chord  Shift+A-H scale  Shift+1-8 root"
+                : "A-F black keys  G/H octave  Shift+A-H scale  Shift+1-8 root", false);
 }
 
 void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
@@ -1939,6 +2194,15 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   char text[64];
   snprintf(text, sizeof(text), "STEP %02d  |  %c %s", held_step_ + 1, 'A' + track,
            engine_->project().sounds[track].name.c_str());
+  if (step.chord_size > 0) {
+    int notes[kMaxChordNotes];
+    notes[0] = TrackNote(track) + step.note;
+    for (int i = 0; i < step.chord_size; ++i) {
+      notes[1 + i] = notes[0] + step.chord[i];
+    }
+    size_t used = strlen(text);
+    snprintf(text + used, sizeof(text) - used, "  %s", ChordName(notes, 1 + step.chord_size).c_str());
+  }
   c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
 
   float width = c.S(max.x - min.x - 16);
@@ -1965,6 +2229,18 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   if (ImGui::SliderFloat("##micro", &nudge, -50.0f, 50.0f, "Nudge %+.0f%%")) {
     step.micro = nudge / 100.0f;
   }
+  ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 114));
+  ImGui::SetNextItemWidth(half);
+  char gate_format[24];
+  if (step.gate > 0.0f) {
+    snprintf(gate_format, sizeof(gate_format), "Gate %%.2f");
+  } else {
+    snprintf(gate_format, sizeof(gate_format), "Gate: knob");
+  }
+  ImGui::SliderFloat("##gate", &step.gate, 0.0f, kMaxStepGate, gate_format);
+  ImGui::SetCursorScreenPos(ImVec2(c.P(min.x + 8, min.y + 114).x + half + c.S(4),
+                                   c.P(min.x + 8, min.y + 114).y));
+  ImGui::Checkbox("Slide to locks", &step.slide);
   ImGui::PopItemWidth();
 
   std::string locks;
@@ -1973,10 +2249,10 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
       locks += std::string(locks.empty() ? "" : ", ") + track_param_info(p).short_name;
     }
   }
-  c.Text(min.x + 8, min.y + 116, 8.5f, colors::kScreenDim,
+  c.Text(min.x + 8, min.y + 136, 8.5f, colors::kScreenDim,
          locks.empty() ? "No locks: turn a knob to lock it" : ("Locks: " + locks).c_str(), false);
   if (!locks.empty()) {
-    ImGui::SetCursorScreenPos(c.P(max.x - 72, min.y + 128));
+    ImGui::SetCursorScreenPos(c.P(max.x - 72, min.y + 132));
     if (ImGui::SmallButton("Clear locks")) {
       step.ClearLocks();
     }
@@ -2330,11 +2606,10 @@ void Faceplate::HandleKeyboard() {
     song_edit_ = false;
     view_ = VIEW_MAIN;
     held_step_ = -1;
-    chord_edit_ = -1;
   }
   if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) view_page_ = std::max(0, view_page_ - 1);
   if (ImGui::IsKeyPressed(ImGuiKey_X, false)) view_page_ = std::min(kNumPages - 1, view_page_ + 1);
-  if (pad_mode_ == PADS_KEYS) {
+  if (pad_mode_ == PADS_KEYS || pad_mode_ == PADS_CHORDS) {
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) ChangeKey(2, 1);
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) ChangeKey(2, -1);
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) ChangeKey(0, 1);

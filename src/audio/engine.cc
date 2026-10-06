@@ -54,17 +54,27 @@ Engine::~Engine() { }
 
 void Engine::Init() {
   project_->Init();
+  for (int i = 0; i < kChordVoices; ++i) {
+    chord_voices_[i].Init();
+    chord_owner_[i] = 0;
+    chord_started_[i] = 0;
+  }
   for (int i = 0; i < kNumTracks; ++i) {
     voices_[i].Init();
     track_step[i] = -1;
     trigger_count[i] = 0;
     track_peak[i] = 0.0f;
+    track_gate[i] = false;
     last_trigger_sample[i] = -1;
     active_lock_mask[i] = 0;
     skip_step_[i] = -1;
     for (int p = 0; p < kNumLockable; ++p) {
       active_locks_[i][p] = NAN;
+      lock_layer_[i][p] = NAN;
+      slide_from_[i][p] = NAN;
     }
+    slide_total_[i] = 0;
+    slide_left_[i] = 0;
   }
   for (int i = 0; i < kNumTracks; ++i) {
     for (int p = 0; p < kNumLockable; ++p) {
@@ -348,7 +358,16 @@ void Engine::LiveTrigger(int track, float velocity, int note_offset) {
   RecordHit(track, velocity, note_offset, 1);
 }
 
-void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets) {
+void Engine::LiveChord(int track, float velocity, int note_offset, const int8_t* extras,
+                       int count) {
+  const size_t gate = SamplesPerStep() * 16;
+  FireTrack(track, velocity, note_offset, nullptr, gate);
+  FireChord(track, velocity, note_offset, extras, count, gate, 0);
+  RecordHit(track, velocity, note_offset, 1, extras, count);
+}
+
+void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
+                       const int8_t* extras, int count) {
   if (!recording || !playing_ || looping_) {
     return;
   }
@@ -360,6 +379,10 @@ void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets)
   step.note = note_offset;
   step.ratchets = ratchets;
   step.probability = 1.0f;
+  step.chord_size = static_cast<uint8_t>(std::min(count, kMaxChordNotes - 1));
+  for (int i = 0; i < step.chord_size; ++i) {
+    step.chord[i] = extras[i];
+  }
   if (static_cast<double>(n) > position_) {
     // Rounded to an upcoming step: don't play it twice.
     skip_step_[track] = n;
@@ -423,7 +446,16 @@ void Engine::BakeMarbles(uint32_t seed) {
 }
 
 void Engine::FireTrack(int track, float velocity, int note, const float* locks,
-                       size_t max_gate) {
+                       size_t max_gate, size_t gate_samples, size_t slide_samples) {
+  if (slide_samples > 0) {
+    // Start from what the parameters were on the last block (a slide still running
+    // continues from where it is).
+    std::copy(&lock_layer_[track][0], &lock_layer_[track][0] + kNumLockable,
+              &slide_from_[track][0]);
+    slide_total_[track] = slide_left_[track] = slide_samples;
+  } else {
+    slide_left_[track] = 0;
+  }
   uint32_t mask = 0;
   for (int p = 0; p < kNumLockable; ++p) {
     active_locks_[track][p] = locks ? locks[p] : NAN;
@@ -442,22 +474,67 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
       if (other != track &&
           Discrete(project_->sounds[other].params[P_CHOKE], kNumChokeGroups) == group) {
         voices_[other].Choke();
+        for (int k = 0; k < kChordVoices; ++k) {
+          if (chord_owner_[k] == other) {
+            chord_voices_[k].Choke();
+          }
+        }
       }
     }
   }
-  voices_[track].Trigger(velocity, note, max_gate);
+  voices_[track].Trigger(velocity, note, max_gate, gate_samples);
   mods_[track].Trigger();
   trigger_count[track].fetch_add(1, std::memory_order_relaxed);
   last_trigger_sample[track] = sample_counter_;
 }
 
+void Engine::FireChord(int track, float velocity, int note, const int8_t* extras, int count,
+                       size_t max_gate, size_t gate_samples) {
+  for (int i = 0; i < count; ++i) {
+    int voice = 0;
+    for (int k = 0; k < kChordVoices; ++k) {
+      if (!chord_voices_[k].busy()) {
+        voice = k;
+        break;
+      }
+      if (chord_started_[k] < chord_started_[voice]) {
+        voice = k;
+      }
+    }
+    chord_owner_[voice] = track;
+    chord_started_[voice] = sample_counter_ + 1;  // Nonzero, and later than idle voices.
+    chord_voices_[voice].Trigger(velocity, note + extras[i], max_gate, gate_samples);
+  }
+}
+
+int Engine::chord_voices_active() const {
+  int active = 0;
+  for (int k = 0; k < kChordVoices; ++k) {
+    active += chord_voices_[k].busy() ? 1 : 0;
+  }
+  return active;
+}
+
 void Engine::FireStep(int track, const Step& step, double step_duration) {
   size_t max_gate = SamplesPerStep() * 16;
+  const size_t sub = static_cast<size_t>(step_duration / step.ratchets);
   if (step.ratchets > 1) {
-    size_t sub = static_cast<size_t>(step_duration / step.ratchets);
     max_gate = sub > kBlockSize * 2 ? sub - kBlockSize : kBlockSize;
   }
-  FireTrack(track, step.velocity, step.note, step.locks, max_gate);
+  // A step's own gate length, in steps of a ratchet: it replaces the Gate parameter
+  // (and may tie over the next steps when there is no ratchet).
+  size_t gate_samples = 0;
+  if (step.gate > 0.0f) {
+    gate_samples = std::max(kBlockSize, static_cast<size_t>(step.gate * sub));
+    gate_samples = std::min(gate_samples, max_gate);
+  }
+  size_t slide_samples = step.slide ? static_cast<size_t>(step_duration) : 0;
+  FireTrack(track, step.velocity, step.note, step.locks, max_gate, gate_samples,
+            slide_samples);
+  if (step.chord_size > 0) {
+    FireChord(track, step.velocity, step.note, step.chord, step.chord_size, max_gate,
+              gate_samples);
+  }
 }
 
 void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) {
@@ -629,6 +706,20 @@ void Engine::ComputeParams(int track, float* params) {
       params[p] = active_locks_[track][p];
     }
   }
+  // Slide: move linearly from the previous values to the base and locks. The
+  // choices (engine, filter mode, choke group) jump.
+  if (slide_left_[track] > 0) {
+    float t = 1.0f - static_cast<float>(slide_left_[track]) /
+                         static_cast<float>(slide_total_[track]);
+    for (int p = 0; p < kNumLockable; ++p) {
+      float from = slide_from_[track][p];
+      if (p != P_ENGINE && p != P_FILTER_MODE && p != P_CHOKE && !std::isnan(from)) {
+        params[p] = from + (params[p] - from) * t;
+      }
+    }
+    slide_left_[track] -= std::min(slide_left_[track], kBlockSize);
+  }
+  std::copy(params, params + kNumLockable, &lock_layer_[track][0]);
   for (int lfo = 0; lfo < 2; ++lfo) {
     int base_param = lfo == 0 ? P_LFO1_RATE : P_LFO2_RATE;
     int destination = DestinationToParam(params[base_param + 3]);
@@ -751,7 +842,13 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);
     }
     voices_[t].Render(params, extra_delay_send, &buses_);
+    for (int k = 0; k < kChordVoices; ++k) {
+      if (chord_owner_[k] == t && chord_voices_[k].busy()) {
+        chord_voices_[k].Render(params, extra_delay_send, &buses_);
+      }
+    }
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);
+    track_gate[t].store(voices_[t].gate_high(), std::memory_order_relaxed);
   }
   master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);
