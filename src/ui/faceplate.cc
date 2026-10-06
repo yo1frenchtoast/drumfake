@@ -114,6 +114,17 @@ void Faceplate::TogglePlay() {
   }
 }
 
+namespace {
+
+// Keys mode, pads A-H: the last two are the octave down and up, and with Shift the
+// pads pick a scale (Chromatic, Major, Minor, Dorian, Mixolydian, Harmonic Minor,
+// Blues, Pentatonic Minor).
+const int kOctaveDownPad = 6;
+const int kOctaveUpPad = 7;
+const int kKeyScaleShortcuts[kNumTracks] = { 10, 0, 1, 2, 5, 6, 9, 8 };
+
+}  // namespace
+
 void Faceplate::TrackPadDown(int track) {
   if (chord_edit_ >= 0) {
     engine_->project().chords[chord_edit_] ^= 1 << track;
@@ -166,12 +177,21 @@ void Faceplate::TrackPadDown(int track) {
     solo_used_ = solo_used_ || solo_held_;
     return;
   }
-  if (pad_mode_ == PADS_KEYS && !shift_held_) {
-    // Keys mode: the pads A-H are the black keys. Shift + pad or a right click
-    // selects a track instead.
-    int offset;
-    if (KeySharp(track, &offset)) {
-      PlayKey(offset);
+  if (pad_mode_ == PADS_KEYS) {
+    // Keys mode, laid out like the BeatStep Pro: the pads A-F are the black keys (none
+    // between E and F), G and H the octave down and up. With Shift they choose the scale.
+    // A right click selects a track.
+    Project& project = engine_->project();
+    if (shift_held_) {
+      project.key_scale = kKeyScaleShortcuts[track];
+      Toast(std::string("Scale: ") + scale(project.key_scale).name);
+    } else if (track == kOctaveDownPad || track == kOctaveUpPad) {
+      ChangeKey(2, track == kOctaveUpPad ? 1 : -1);
+    } else {
+      int offset;
+      if (KeySharp(track, &offset)) {
+        PlayKey(offset);
+      }
     }
     return;
   }
@@ -224,7 +244,13 @@ void Faceplate::LowerPadDown(int pad) {
       }
       break;
     case PADS_KEYS:
-      PlayKey(KeyNote(pad));
+      if (shift_held_) {
+        // Shift + key: this key becomes the root (the keyboard is transposed).
+        project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
+        Toast(std::string("Root: ") + PitchClassName(project.key_root));
+      } else {
+        PlayKey(KeyNote(pad));
+      }
       break;
   }
 }
@@ -410,6 +436,9 @@ void Faceplate::PlayKey(int offset) {
 
 bool Faceplate::KeySharp(int pad, int* offset) {
   const Project& project = engine_->project();
+  if (pad >= kOctaveDownPad) {
+    return false;
+  }
   if (!KeySharpOffset(project.key_root, project.key_scale, project.key_octave, pad, offset)) {
     return false;
   }
@@ -1854,10 +1883,17 @@ void Faceplate::DrawPads() {
     char letter[2] = { static_cast<char>('A' + t), 0 };
     c.Text(min.x + 10, max.y - 26, 15, kPadInk, letter, false, true);
     if (pad_mode_ == PADS_KEYS) {
-      // Black key of the piano, or nothing where the next note is a semitone up.
+      // Black key of the piano, nothing where the next note is a semitone up, the
+      // octave pads, and the scales while Shift is held.
       int offset;
-      std::string key = KeySharp(t, &offset)
-          ? NoteName(TrackNote(engine_->selected_track) + offset) : "-";
+      std::string key = "-";
+      if (shift_held_) {
+        key = scale(kKeyScaleShortcuts[t]).name;
+      } else if (t == kOctaveDownPad || t == kOctaveUpPad) {
+        key = t == kOctaveUpPad ? "Oct +" : "Oct -";
+      } else if (KeySharp(t, &offset)) {
+        key = NoteName(TrackNote(engine_->selected_track) + offset);
+      }
       c.Text((min.x + max.x) * 0.5f, split + 24, 13, kPadInk, key.c_str(), true, true);
     }
     if (soloed) {
@@ -1908,7 +1944,9 @@ void Faceplate::DrawPads() {
       case PADS_REPEATS: function = kRepeatNames[i]; break;
       case PADS_CHORDS: function = ChordName(project.chords[i]); break;
       case PADS_KEYS:
-        function = NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
+        function = shift_held_
+            ? std::string("Root ") + PitchClassName(project.key_root + ScaleDegree(project.key_scale, i))
+            : NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
         break;
     }
     c.Text((min.x + max.x) * 0.5f, min.y + 40, 10, IM_COL32(95, 104, 110, 255),
@@ -2128,7 +2166,7 @@ void Faceplate::DrawKeysView(ImVec2 min, ImVec2 max) {
   c.Text(min.x + 6, min.y + 114, 8, colors::kScreenDim,
          "Encoder: change field   Arrows: octave / root   Tab: scale", false);
   c.Text(min.x + 6, min.y + 126, 8, colors::kScreenDim,
-         "Pads A-H: black keys   Shift or right click: select a track", false);
+         "A-F black keys  G/H octave  Shift+A-H scale  Shift+1-8 root", false);
 }
 
 void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {

@@ -24,7 +24,8 @@ The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods*
 **Clouds**, **Assign**.
 
 In Keys mode: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
-The pads A–H (`Q W E R T Y U I`) play the black keys; `Shift` + pad or a right click selects the track.
+The pads A–H (`Q W E R T Y U I`) play the black keys, G and H are Oct − / Oct +; with `Shift` they
+choose the scale, and `Shift` + a pad 1–8 sets the root. Right click a pad A–H to select the track.
 
 ## Touch
 
@@ -45,7 +46,7 @@ These work with the button held down, like on a DrumBrute.
 |---|---|---|
 | Shift | step 1–5 | Time division: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
 | Shift | step 13 / 14 / 15 / 16 | Metronome / At End / steps follow the playing page / Poly |
-| Shift | pad | Select a track without playing it |
+| Shift | pad A–H | Select a track without playing it (in Keys mode: choose the scale; Shift + pad 1–8 sets the root) |
 | Shift | Mute or Solo | Clear all mutes or solos |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
 | Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |

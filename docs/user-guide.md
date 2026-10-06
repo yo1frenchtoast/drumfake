@@ -223,12 +223,17 @@ pad with the [modulation matrix](#modulation)):
 | **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step), like the DrumBrute Roller. |
 | **Keys** | Plays the selected track on a scale and writes the note into the selected step. Pads 1–8 are the notes of the scale, the instrument pads A–H are the black keys (see below). |
 
-**Black keys.** In Keys mode the instrument pads A–H are the keys between the pads 1–8, a
-semitone above the pad below them, like the black keys of a piano. Where the next note is only a
-semitone away (E–F, B–C on a piano) the pad has no key and stays silent; each pad shows its note.
-To select another track in Keys mode, hold *Shift* and press its pad, or right click it. The
-default scale, **Chromatic**, is the piano: pads 1–8 are the white keys C D E F G A B C and
-A–H the black ones. With the other scales, the black keys sit a semitone above each degree.
+**Layout** (like the BeatStep Pro). Pads 1–8 are the white keys, the instrument pads A–H sit
+above them like the black keys: A and B are the C♯ and D♯ keys, there is no key above the third
+pad (E–F), then D, E and F are F♯, G♯ and A♯. **G** and **H** are *Oct −* and *Oct +*. Each pad
+shows its note.
+
+- **Scale.** Hold *Shift* and press A–H: Chromatic, Major, Minor, Dorian, Mixolydian, Harmonic
+  Minor, Blues, Pentatonic Minor. The default, **Chromatic**, is the piano. With the other scales,
+  pads 1–8 are the degrees of the scale and the black keys sit a semitone above each degree.
+- **Root (transposition).** Hold *Shift* and press a pad 1–8: that key becomes the root, and the
+  whole keyboard moves with it (root D: D E F♯ G A B C♯ D).
+- A right click on a pad A–H selects that track without playing, since the pads are keys here.
 
 **Keys settings**: root, scale (major, minor, modes, harmonic minor, pentatonics, blues,
 chromatic) and octave, shared by the whole project. The *Keys* button shows a dedicated page
