@@ -803,7 +803,7 @@ void Faceplate::DrawTopLeft() {
   Interaction solo = Button(c, "##solo", min, max, "Solo", "", ICON_NONE,
                             solo_mode_ || solo_held_, colors::kAmber);
   cell(4, &min, &max);
-  Interaction mute = Button(c, "##mute", min, max, "", "", ICON_MUTE,
+  Interaction mute = Button(c, "##mute", min, max, "Mute", "", ICON_NONE,
                             mute_mode_ || mute_held_, colors::kAccent);
   auto hold_button = [&](const Interaction& in, bool* held, bool* used, bool* mode,
                          bool* other_mode, bool* tracks, const char* cleared) {
