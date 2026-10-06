@@ -40,6 +40,7 @@ class Faceplate {
   void DrawChrome();
   void DrawTopLeft();
   void DrawXySection();
+  void DrawModMatrix(ImVec2 min, ImVec2 max);
   void DrawScreenSection();
   void DrawSoundEdit();
   void DrawSequencer();
@@ -50,6 +51,9 @@ class Faceplate {
   void DrawSongView(ImVec2 min, ImVec2 max);
   void DrawKeysView(ImVec2 min, ImVec2 max);
   void DrawSoundKnobs();
+  // Name and value bubble above a knob being touched or hovered (works for fingers,
+  // unlike ImGui tooltips). Drawn on the foreground list so nothing covers it.
+  void DrawKnobReadout(ImVec2 center, float radius, const char* name, const std::string& value);
   void DrawKeyKnobs();
   void DrawPageButtons();
   ImVec2 SoundKnobCenter(int knob) const;
@@ -148,6 +152,8 @@ class Faceplate {
   bool track_pad_touched_[kNumTracks] = {};
   bool lower_pad_touched_[8] = {};
   bool xy_touched_ = false;
+  bool matrix_open_ = false;  // The Perform pad shows the modulation matrix.
+  int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
   bool long_press_fired_ = false;  // The held step already got its long press.

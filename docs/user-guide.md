@@ -114,6 +114,12 @@ Modulations are per track, and saved in the kit.
     cutoff.
 - **Macros.** With the **Macros** mode of the X/Y pad, the pad moves two parameters of the
   selected track at once (chosen on the *Assign* page).
+- **Modulation matrix.** The **Matrix** button, after *Macros*, swaps the X/Y pad for a grid: one
+  row per source (LFO 1, LFO 2, Env, Ball), one column per parameter, on three tabs (Sound,
+  Filter, Track). Tap a cell to send the source there, tap the lit cell to turn it off. The fill
+  of the cell shows the amount (blue-green up, amber down), which you set with the knobs of the
+  Mods and Envs pages. A dot on a tab means a source points to that page. A source has a single
+  destination, so a row lights at most one cell.
 
 ### Kits and sounds
 
@@ -187,7 +193,8 @@ deja vu up to 100 %, generate until you like the loop, then edit the steps by ha
 
 ### The X/Y pad
 
-Four modes, chosen with the buttons above the pad:
+Four modes, chosen with the buttons above the pad (the fifth button, **Matrix**, replaces the
+pad with the [modulation matrix](#modulation)):
 
 | Mode | Effect while you touch the pad |
 |---|---|

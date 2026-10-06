@@ -10,7 +10,8 @@ the [user guide](user-guide.md).
 |---|---|---|
 | Pads A–H | click = plays and selects the track (Shift = accent) | `Q W E R T Y U I` |
 | Pads 1–8 | depends on the mode: Chords, Sounds, Repeats, Keys | `A S D F G H J K` |
-| Knobs | drag vertically (Shift = fine), wheel, double-click = default | |
+| Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
+| Perform: Matrix | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`8` |

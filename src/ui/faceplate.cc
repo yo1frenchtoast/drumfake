@@ -702,16 +702,28 @@ void Faceplate::DrawTopLeft() {
   const float knob_y = 150.0f;
   const float label_y = knob_y + 42.0f;
 
+  Interaction volume_in;
   Knob(c, "##volume", ImVec2(layout::kLeftX0 + 45, knob_y), 27, &project.volume, 0.8f,
-       KNOB_BLACK, false, 0);
+       KNOB_BLACK, false, 0, &volume_in);
   c.Text(layout::kLeftX0 + 45, label_y, 9.5f, colors::kLabel, "Volume", true, true);
+  if (volume_in.hovered || volume_in.active || volume_in.touch_active) {
+    char text[16];
+    snprintf(text, sizeof(text), "%d%%", static_cast<int>(std::round(project.volume * 100.0f)));
+    DrawKnobReadout(ImVec2(layout::kLeftX0 + 45, knob_y), 27, "Volume", text);
+  }
 
   float tempo = (project.bpm - 30.0f) / 270.0f;
+  Interaction tempo_in;
   if (Knob(c, "##tempo", ImVec2(layout::kLeftX0 + 150, knob_y), 27, &tempo, 90.0f / 270.0f,
-           KNOB_AMBER, false, 0)) {
+           KNOB_AMBER, false, 0, &tempo_in)) {
     project.bpm = std::round((30.0f + tempo * 270.0f) * 10.0f) / 10.0f;
   }
   c.Text(layout::kLeftX0 + 150, label_y, 9.5f, colors::kLabel, "Tempo", true, true);
+  if (tempo_in.hovered || tempo_in.active || tempo_in.touch_active) {
+    char text[16];
+    snprintf(text, sizeof(text), "%.1f BPM", project.bpm);
+    DrawKnobReadout(ImVec2(layout::kLeftX0 + 150, knob_y), 27, "Tempo", text);
+  }
 
   // TAP, with the metronome LED under it.
   ImVec2 tap_min(layout::kLeftX1 - 76, knob_y - 26);
@@ -854,11 +866,11 @@ void Faceplate::DrawXySection() {
     { "##looper", ICON_LOOPER, "Looper", XY_LOOPER },
     { "##macros", ICON_XY, "Macros", XY_MACROS },
   };
-  float w = (layout::kLeftX1 - layout::kLeftX0 - 3 * layout::kGap) / 4.0f;
+  float w = (layout::kLeftX1 - layout::kLeftX0 - 4 * layout::kGap) / 5.0f;
   for (int i = 0; i < 4; ++i) {
     const ModeButton& m = kModes[i];
     float x0 = layout::kLeftX0 + i * (w + layout::kGap);
-    bool lit = engine_->xy_mode == m.mode;
+    bool lit = !matrix_open_ && engine_->xy_mode == m.mode;
     ImU32 led = colors::kLedWhite;
     if (m.mode == XY_GRIDS && engine_->grids_enabled) {
       lit = true;
@@ -873,6 +885,19 @@ void Faceplate::DrawXySection() {
         Toast(engine_->grids_enabled ? "Grids on (tracks A-C)" : "Grids off");
       }
       engine_->xy_mode = m.mode;
+      matrix_open_ = false;
+    }
+  }
+  // After Macros: swaps the pad for the modulation matrix of the selected track.
+  {
+    float x0 = layout::kLeftX0 + 4 * (w + layout::kGap);
+    Interaction in = Button(c, "##matrix", ImVec2(x0, layout::kFunctionRowY0),
+                            ImVec2(x0 + w, layout::kFunctionRowY1), "Matrix", "", ICON_MODS,
+                            matrix_open_, colors::kLedWhite, true);
+    if (in.pressed) {
+      matrix_open_ = !matrix_open_;
+      engine_->xy_touched = false;
+      xy_touched_ = false;
     }
   }
 
@@ -887,6 +912,11 @@ void Faceplate::DrawXySection() {
     for (float gy = min.y + 22; gy < max.y - 10; gy += 22) {
       dl->AddCircleFilled(c.P(gx, gy), c.S(1.1f), IM_COL32(120, 135, 145, 110));
     }
+  }
+
+  if (matrix_open_) {
+    DrawModMatrix(min, max);
+    return;
   }
 
   Interaction in = HitBox(c, "##xy", min, max, false);
@@ -948,6 +978,110 @@ void Faceplate::DrawXySection() {
       break;
   }
   c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
+}
+
+// Modulation sources of the selected track against the parameters they can drive.
+// Each source has a single destination, so a row lights at most one cell: tapping
+// a cell moves the source there, tapping the lit cell turns it off. The amount is
+// set with the knobs of the Mods / Envs pages and drawn as the fill of the cell.
+void Faceplate::DrawModMatrix(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  struct Source {
+    const char* name;
+    int dest;
+    int amount;
+  };
+  static const Source kSources[] = {
+    { "LFO 1", P_LFO1_DEST, P_LFO1_DEPTH },
+    { "LFO 2", P_LFO2_DEST, P_LFO2_DEPTH },
+    { "Env", P_ENV_DEST, P_ENV_AMOUNT },
+    { "Ball", P_BALL_DEST, P_BALL_AMOUNT },
+  };
+  const int kNumSources = 4;
+  static const char* const kTabs[] = { "Sound", "Filter", "Track" };
+  TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+
+  // Page tabs; a dot marks the pages that hold a destination.
+  const float tab_w = (max.x - min.x - 16.0f - 2 * 6.0f) / 3.0f;
+  for (int t = 0; t < 3; ++t) {
+    float x0 = min.x + 8.0f + t * (tab_w + 6.0f);
+    ImVec2 a(x0, min.y + 8.0f);
+    ImVec2 b(x0 + tab_w, min.y + 30.0f);
+    char id[16];
+    snprintf(id, sizeof(id), "##mtab%d", t);
+    Interaction in = HitBox(c, id, a, b);
+    if (in.pressed) {
+      matrix_page_ = t;
+    }
+    bool current = t == matrix_page_;
+    dl->AddRectFilled(c.P(a), c.P(b), current ? WithAlpha(colors::kAccent, 60) : colors::kPanel,
+                      c.S(4));
+    dl->AddRect(c.P(a), c.P(b), current ? colors::kAccent : colors::kPanelEdge, c.S(4), 0,
+                c.S(1));
+    c.Text((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, 9, current ? colors::kAccent : colors::kLabel,
+           kTabs[t], true, true);
+    for (int s = 0; s < kNumSources; ++s) {
+      int p = DestinationToParam(sound.params[kSources[s].dest]);
+      if (p >= t * kKnobsPerPage && p < (t + 1) * kKnobsPerPage) {
+        dl->AddCircleFilled(c.P(b.x - 6, a.y + 6), c.S(2.5f), colors::kAmber);
+        break;
+      }
+    }
+  }
+
+  const float label_w = 46.0f;
+  const float grid_x0 = min.x + 8.0f + label_w;
+  const float cell_w = (max.x - 8.0f - grid_x0) / kKnobsPerPage;
+  const float head_y = min.y + 42.0f;
+  const float row_y0 = min.y + 58.0f;
+  const float row_h = 34.0f;
+  for (int k = 0; k < kKnobsPerPage; ++k) {
+    c.Text(grid_x0 + (k + 0.5f) * cell_w, head_y, 8, colors::kLabelDim,
+           track_param_info(matrix_page_ * kKnobsPerPage + k).short_name, true, true);
+  }
+
+  char readout[64] = "";
+  for (int s = 0; s < kNumSources; ++s) {
+    float y0 = row_y0 + s * row_h;
+    c.Text(min.x + 8.0f, y0 + (row_h - 4) * 0.5f, 9, colors::kLabel, kSources[s].name, false,
+           true);
+    int dest_param = DestinationToParam(sound.params[kSources[s].dest]);
+    float amount = sound.params[kSources[s].amount] * 2.0f - 1.0f;
+    for (int k = 0; k < kKnobsPerPage; ++k) {
+      int param = matrix_page_ * kKnobsPerPage + k;
+      ImVec2 a(grid_x0 + k * cell_w + 1.5f, y0);
+      ImVec2 b(grid_x0 + (k + 1) * cell_w - 1.5f, y0 + row_h - 4.0f);
+      char id[24];
+      snprintf(id, sizeof(id), "##mcell%d_%d", s, k);
+      Interaction in = HitBox(c, id, a, b);
+      bool lit = dest_param == param;
+      if (in.pressed) {
+        float next = lit ? DiscreteToNormalized(0, kNumDestinations)
+                         : DiscreteToNormalized(param + 1, kNumDestinations);
+        sound.params[kSources[s].dest] = next;
+        lit = !lit;
+        dest_param = lit ? param : -1;
+      }
+      dl->AddRectFilled(c.P(a), c.P(b), in.hovered ? colors::kPanelEdge : colors::kPanel,
+                        c.S(3));
+      dl->AddRect(c.P(a), c.P(b), lit ? colors::kAccent : colors::kPanelEdge, c.S(3), 0,
+                  c.S(lit ? 1.5f : 1.0f));
+      if (lit) {
+        // Fill from the bottom: how much of the range the source sweeps.
+        float height = (b.y - a.y - 4.0f) * std::fabs(amount);
+        ImU32 fill = amount >= 0.0f ? colors::kAccent : colors::kAmber;
+        dl->AddRectFilled(c.P(a.x + 3, b.y - 2 - height), c.P(b.x - 3, b.y - 2),
+                          WithAlpha(fill, 200), c.S(2));
+        snprintf(readout, sizeof(readout), "%c  %s > %s  %s", 'A' + engine_->selected_track,
+                 kSources[s].name, track_param_info(param).name,
+                 FormatValue(track_param_info(kSources[s].amount).format,
+                             sound.params[kSources[s].amount]).c_str());
+      }
+    }
+  }
+  const char* hint = readout[0] ? readout : "Tap a cell to route a source";
+  c.Text(min.x + 8.0f, max.y - 14.0f, 9, colors::kLabelDim, hint, false);
 }
 
 void Faceplate::DrawScreenSection() {
@@ -1159,12 +1293,29 @@ void Faceplate::DrawSoundKnobs() {
     // Short parameter name under each knob.
     c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim,
            page_param_info(page_, k).short_name, true, true);
-    if (in.hovered || in.active) {
-      std::string tip = std::string(page_param_info(page_, k).name) + ": " +
-          FormatValue(page_param_info(page_, k).format, value);
-      ImGui::SetTooltip("%s", tip.c_str());
+    if (in.hovered || in.active || grabbed) {
+      DrawKnobReadout(center, 22, page_param_info(page_, k).name,
+                      FormatValue(page_param_info(page_, k).format, value));
     }
   }
+}
+
+void Faceplate::DrawKnobReadout(ImVec2 center, float radius, const char* name,
+                                const std::string& value) {
+  Canvas c = canvas_;
+  c.draw_list = ImGui::GetForegroundDrawList();
+  std::string text = std::string(name) + "  " + value;
+  const float size = 11.0f;
+  ImVec2 extent = c.bold->CalcTextSizeA(c.S(size), FLT_MAX, 0.0f, text.c_str());
+  float half_w = extent.x / c.scale * 0.5f + 8.0f;
+  float y = center.y - radius - 20.0f;
+  // Keep the bubble inside the panel.
+  float x = ImClamp(center.x, half_w + 2.0f, kPanelWidth - half_w - 2.0f);
+  c.draw_list->AddRectFilled(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
+                             colors::kScreen, c.S(4.0f));
+  c.draw_list->AddRect(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
+                       colors::kPanelEdge, c.S(4.0f));
+  c.Text(x, y, size, colors::kScreenText, text.c_str(), true, true);
 }
 
 void Faceplate::DrawKeyKnobs() {
