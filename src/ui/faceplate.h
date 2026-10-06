@@ -116,7 +116,7 @@ class Faceplate {
   std::string project_path_;
 
   Page page_ = PAGE_SOUND;
-  PadMode pad_mode_ = PADS_CHORDS;
+  PadMode pad_mode_ = PADS_SOUNDS;
   ScreenView view_ = VIEW_MAIN;
   // Kit library view.
   std::vector<KitFile> kit_files_;
