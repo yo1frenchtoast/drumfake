@@ -826,7 +826,7 @@ void Faceplate::DrawTopLeft() {
   hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
               "Mutes cleared");
   cell(5, &min, &max);
-  if (Button(c, "##keys", min, max, "", "", ICON_KEYBOARD, pad_mode_ == PADS_KEYS,
+  if (Button(c, "##keys", min, max, "Keys", "", ICON_NONE, pad_mode_ == PADS_KEYS,
              colors::kAccent).pressed) {
     // First press: Keys mode and its page; next presses show or hide the page.
     keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
