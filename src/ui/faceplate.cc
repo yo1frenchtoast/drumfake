@@ -871,6 +871,10 @@ void Faceplate::DrawTopLeft() {
         Toast(cleared);
       }
     }
+    if (in.right_clicked) {
+      std::fill(tracks, tracks + kNumTracks, false);
+      Toast(cleared);
+    }
     if (!in.active && *held && !*used) {
       *mode = !*mode;
       *other_mode = false;
