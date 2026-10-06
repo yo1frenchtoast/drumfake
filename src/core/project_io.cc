@@ -205,7 +205,7 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
     if (j.contains("keys")) {
       const json& keys = j["keys"];
       loaded.key_root = std::max(0, std::min(11, keys.value("root", 0)));
-      loaded.key_scale = std::max(0, std::min(kNumScales - 1, keys.value("scale", 0)));
+      loaded.key_scale = std::max(0, std::min(kNumScales - 1, keys.value("scale", kChromaticScale)));
       loaded.key_octave = std::max(kMinKeyOctave, std::min(kMaxKeyOctave, keys.value("octave", 0)));
     }
     if (j.contains("marbles")) {

@@ -14,6 +14,7 @@ struct Scale {
 };
 
 const int kNumScales = 11;
+const int kChromaticScale = kNumScales - 1;  // The default: a piano.
 const int kMinKeyOctave = -3;
 const int kMaxKeyOctave = 3;
 
@@ -29,6 +30,11 @@ int MajorScaleDegree(int root_note, int note);
 
 // Offset of pad `pad` (0-7) in Keys mode, relative to the track pitch.
 int KeyOffset(int root, int scale_index, int octave, int pad);
+
+// The key between pad `pad` and the next one, a semitone above it, as on the black
+// keys of a piano (pads A-H in Keys mode). False when the next pad is a semitone
+// away (E-F, B-C) and there is no such key.
+bool KeySharpOffset(int root, int scale_index, int octave, int pad, int* offset);
 
 // "C", "C#"... for a pitch class, "C3"-style names for a MIDI note.
 const char* PitchClassName(int pitch_class);

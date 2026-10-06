@@ -103,7 +103,19 @@ void TestScales() {
   for (int pad = 0; pad < 8; ++pad) {
     CHECK(KeyOffset(0, 0, 0, pad) == kMajor[pad]);
     CHECK(KeyOffset(0, 8, 0, pad) == kPentatonicMinor[pad]);
-    CHECK(KeyOffset(0, 10, 0, pad) == pad);  // Chromatic.
+    CHECK(KeyOffset(0, kChromaticScale, 0, pad) == kMajor[pad]);  // The piano's white keys.
+  }
+  // Black keys: a semitone above the pad, when the next pad is at least a tone away.
+  const int kBlack[8] = { 1, 3, -1, 6, 8, 10, -1, 13 };
+  for (int pad = 0; pad < 8; ++pad) {
+    int offset = 0;
+    bool exists = KeySharpOffset(0, kChromaticScale, 0, pad, &offset);
+    CHECK(exists == (kBlack[pad] >= 0));
+    if (exists) {
+      CHECK(offset == kBlack[pad]);
+    }
+    CHECK(KeySharpOffset(5, 8, -1, pad, &offset));  // Pentatonic minor: gaps all >= 2.
+    CHECK(offset == 5 - 12 + kPentatonicMinor[pad] + 1);
   }
   // Root and octave transpose everything.
   CHECK(KeyOffset(2, 1, -1, 0) == 2 - 12);  // D minor, one octave down.

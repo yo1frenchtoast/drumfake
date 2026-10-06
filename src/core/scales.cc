@@ -17,7 +17,8 @@ const Scale kScales[kNumScales] = {
   { "Pent. Major", 5, { 0, 2, 4, 7, 9 } },
   { "Pent. Minor", 5, { 0, 3, 5, 7, 10 } },
   { "Blues", 6, { 0, 3, 5, 6, 7, 10 } },
-  { "Chromatic", 12, { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 } },
+  // The piano: pads 1-8 are the white keys, the pads A-H the black ones.
+  { "Chromatic", 7, { 0, 2, 4, 5, 7, 9, 11 } },
 };
 
 const char* const kPitchClasses[12] = {
@@ -46,6 +47,16 @@ int MajorScaleDegree(int root_note, int note) {
 
 int KeyOffset(int root, int scale_index, int octave, int pad) {
   return root + ScaleDegree(scale_index, pad) + 12 * octave;
+}
+
+bool KeySharpOffset(int root, int scale_index, int octave, int pad, int* offset) {
+  int base = KeyOffset(root, scale_index, octave, pad);
+  int next = KeyOffset(root, scale_index, octave, pad + 1);
+  if (next - base < 2) {
+    return false;  // The next note is a semitone up: no key in between.
+  }
+  *offset = base + 1;
+  return true;
 }
 
 const char* PitchClassName(int pitch_class) {

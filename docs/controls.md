@@ -24,6 +24,7 @@ The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods*
 **Clouds**, **Assign**.
 
 In Keys mode: `←` / `→` change the octave, `↑` / `↓` the root, `Tab` / `Shift+Tab` the scale.
+The pads A–H (`Q W E R T Y U I`) play the black keys; `Shift` + pad or a right click selects the track.
 
 ## Touch
 

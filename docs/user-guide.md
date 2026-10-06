@@ -221,7 +221,14 @@ pad with the [modulation matrix](#modulation)):
 | **Chords** | Each pad plays a combination of tracks. Right click a pad (long press on a tablet) to edit it: tap tracks A–H to add or remove them. |
 | **Sounds** | Loads factory sounds on the selected track. |
 | **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step), like the DrumBrute Roller. |
-| **Keys** | Plays the selected track on a scale and writes the note into the selected step. |
+| **Keys** | Plays the selected track on a scale and writes the note into the selected step. Pads 1–8 are the notes of the scale, the instrument pads A–H are the black keys (see below). |
+
+**Black keys.** In Keys mode the instrument pads A–H are the keys between the pads 1–8, a
+semitone above the pad below them, like the black keys of a piano. Where the next note is only a
+semitone away (E–F, B–C on a piano) the pad has no key and stays silent; each pad shows its note.
+To select another track in Keys mode, hold *Shift* and press its pad, or right click it. The
+default scale, **Chromatic**, is the piano: pads 1–8 are the white keys C D E F G A B C and
+A–H the black ones. With the other scales, the black keys sit a semitone above each degree.
 
 **Keys settings**: root, scale (major, minor, modes, harmonic minor, pentatonics, blues,
 chromatic) and octave, shared by the whole project. The *Keys* button shows a dedicated page

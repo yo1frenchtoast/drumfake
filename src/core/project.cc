@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "core/presets.h"
+#include "core/scales.h"
 
 namespace drumfreake {
 
@@ -193,7 +194,7 @@ void Project::Init() {
   }
   midi_trigger_note = 36;  // C2 (C4 = 60): white keys C2-C3 trigger A-H.
   key_root = 0;
-  key_scale = 0;
+  key_scale = kChromaticScale;
   key_octave = 0;
   for (int i = 0; i < C_LAST; ++i) {
     clouds[i] = clouds_param_info(i).default_value;

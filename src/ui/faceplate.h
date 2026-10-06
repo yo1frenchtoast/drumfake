@@ -90,6 +90,11 @@ class Faceplate {
   // Keys mode: offset of pad 1-8 from the track pitch, the track pitch as a
   // MIDI note, and changes to the root (0), scale (1) or octave (2).
   int KeyNote(int pad);
+  // The black key on instrument pad `pad` (A-H) in Keys mode, as an offset from the
+  // track pitch; false when this pad has none.
+  bool KeySharp(int pad, int* offset);
+  // Plays a key of the Keys mode on the selected track, and writes it into the held step.
+  void PlayKey(int offset);
   int TrackNote(int track);
   void ChangeKey(int field, int delta);
   Pattern& pattern();

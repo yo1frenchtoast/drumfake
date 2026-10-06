@@ -166,6 +166,15 @@ void Faceplate::TrackPadDown(int track) {
     solo_used_ = solo_used_ || solo_held_;
     return;
   }
+  if (pad_mode_ == PADS_KEYS && !shift_held_) {
+    // Keys mode: the pads A-H are the black keys. Shift + pad or a right click
+    // selects a track instead.
+    int offset;
+    if (KeySharp(track, &offset)) {
+      PlayKey(offset);
+    }
+    return;
+  }
   engine_->selected_track = track;
   if (shift_held_) {
     return;  // Shift + pad: select without playing.
@@ -215,13 +224,7 @@ void Faceplate::LowerPadDown(int pad) {
       }
       break;
     case PADS_KEYS:
-      if (held_step_ >= 0) {
-        PushUndo();
-        Step& step = pattern().tracks[track].steps[held_step_];
-        step.on = true;
-        step.note = KeyNote(pad);
-      }
-      engine_->LiveTrigger(track, 0.8f, KeyNote(pad));
+      PlayKey(KeyNote(pad));
       break;
   }
 }
@@ -392,6 +395,22 @@ void Faceplate::Save() {
   } else {
     Toast("Save failed: " + error);
   }
+}
+
+void Faceplate::PlayKey(int offset) {
+  int track = engine_->selected_track;
+  if (held_step_ >= 0) {
+    PushUndo();
+    Step& step = pattern().tracks[track].steps[held_step_];
+    step.on = true;
+    step.note = offset;
+  }
+  engine_->LiveTrigger(track, 0.8f, offset);
+}
+
+bool Faceplate::KeySharp(int pad, int* offset) {
+  const Project& project = engine_->project();
+  return KeySharpOffset(project.key_root, project.key_scale, project.key_octave, pad, offset);
 }
 
 int Faceplate::KeyNote(int pad) {
@@ -1827,6 +1846,13 @@ void Faceplate::DrawPads() {
                       colors::kAccent, c.S(2));
     char letter[2] = { static_cast<char>('A' + t), 0 };
     c.Text(min.x + 10, max.y - 26, 15, kPadInk, letter, false, true);
+    if (pad_mode_ == PADS_KEYS) {
+      // Black key of the piano, or nothing where the next note is a semitone up.
+      int offset;
+      std::string key = KeySharp(t, &offset)
+          ? NoteName(TrackNote(engine_->selected_track) + offset) : "-";
+      c.Text((min.x + max.x) * 0.5f, split + 24, 13, kPadInk, key.c_str(), true, true);
+    }
     if (soloed) {
       c.Text(max.x - 36, max.y - 22, 9, colors::kAmber, "SOLO", false, true);
     } else if (engine_->muted[t]) {
@@ -2094,6 +2120,8 @@ void Faceplate::DrawKeysView(ImVec2 min, ImVec2 max) {
   }
   c.Text(min.x + 6, min.y + 114, 8, colors::kScreenDim,
          "Encoder: change field   Arrows: octave / root   Tab: scale", false);
+  c.Text(min.x + 6, min.y + 126, 8, colors::kScreenDim,
+         "Pads A-H: black keys   Shift or right click: select a track", false);
 }
 
 void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
