@@ -165,12 +165,15 @@ class Faceplate {
   // Erase held (button or Delete key): touching a knob then clears that
   // parameter's locks on the track, instead of the usual Erase on release.
   bool shift_held_ = false;
+  bool shift_latched_ = false;  // Shift locked by a right click, until a combination.
+  bool shift_used_ = false;     // A Shift combination was used this frame.
   bool step_held_by_finger_ = false;  // held_step_ lasts while the finger does.
   bool erase_held_ = false;
   bool erase_used_ = false;
   // Last Step and Copy held, and whether a page button was used meanwhile.
   bool last_step_held_ = false;
   bool last_step_used_ = false;
+  bool last_step_latched_ = false;  // Last Step locked by a right click.
   bool copy_held_ = false;
   bool copy_used_ = false;
   int copy_source_page_ = -1;

@@ -167,6 +167,7 @@ void Faceplate::TrackPadDown(int track) {
     // track.
     Project& project = engine_->project();
     if (shift_held_) {
+      shift_used_ = true;
       project.key_scale = kKeyScaleShortcuts[track];
       Toast(std::string("Scale: ") + scale(project.key_scale).name);
     } else if (pad_mode_ == PADS_CHORDS) {
@@ -184,6 +185,7 @@ void Faceplate::TrackPadDown(int track) {
   }
   engine_->selected_track = track;
   if (shift_held_) {
+    shift_used_ = true;
     return;  // Shift + pad: select without playing.
   }
   track_pad_held_[track] = true;
@@ -225,6 +227,7 @@ void Faceplate::LowerPadDown(int pad) {
       break;
     case PADS_CHORDS:
       if (shift_held_) {
+        shift_used_ = true;
         // Shift + pad: this note becomes the root of the keyboard and of the chords.
         project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
         Toast(std::string("Root: ") + PitchClassName(project.key_root));
@@ -234,6 +237,7 @@ void Faceplate::LowerPadDown(int pad) {
       break;
     case PADS_KEYS:
       if (shift_held_) {
+        shift_used_ = true;
         // Shift + key: this key becomes the root (the keyboard is transposed).
         project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
         Toast(std::string("Root: ") + PitchClassName(project.key_root));
@@ -866,6 +870,7 @@ void Faceplate::DrawTopLeft() {
     if (in.pressed) {
       *used = false;
       if (shift_held_) {
+        shift_used_ = true;
         std::fill(tracks, tracks + kNumTracks, false);
         *used = true;
         Toast(cleared);
@@ -894,18 +899,30 @@ void Faceplate::DrawTopLeft() {
   }
 
   // Shift (or Alt on the keyboard): held, the steps become options and the
-  // pads select tracks without playing them.
+  // pads select tracks without playing them. A right click (or a long press) locks it
+  // until a combination is used or Shift is pressed again.
   Interaction shift = Button(c, "##shift", ImVec2(layout::kLeftX0, kShiftY0),
                              ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
                              ICON_NONE, shift_held_, colors::kAmber);
+  if (shift_latched_ && shift_used_) {
+    shift_latched_ = false;
+  }
+  shift_used_ = false;
+  if (shift.pressed) {
+    shift_latched_ = false;
+  }
+  if (shift.right_clicked || shift.long_pressed) {
+    shift_latched_ = !shift_latched_;
+  }
   ImGuiIO& io = ImGui::GetIO();
-  shift_held_ = shift.active ||
+  shift_held_ = shift.active || shift_latched_ ||
       (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
   if (shift_held_) {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
            colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End", false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, "15: follow   16: poly   pad: select", false);
+           colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   (locked)"
+                          : "15: follow   16: poly   pad: select", false);
   }
   UpdateRepeat();
 }
@@ -1530,7 +1547,18 @@ void Faceplate::DrawSequencer() {
   // track in Poly mode); a page button sets it to 16, 32, 48 or 64.
   Interaction last = function_button(8, "##last", "Last Step", last_step_held_,
                                      colors::kAccent);
-  bool last_now = last.active ||
+  // A right click (or a long press) locks it, until a step or a page is used or the
+  // button is pressed again.
+  if (last_step_latched_ && last_step_used_) {
+    last_step_latched_ = false;
+  }
+  if (last.pressed) {
+    last_step_latched_ = false;
+  }
+  if (last.right_clicked || last.long_pressed) {
+    last_step_latched_ = !last_step_latched_;
+  }
+  bool last_now = last.active || last_step_latched_ ||
       (!ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_L));
   if (last_now && !last_step_held_) {
     last_step_used_ = false;
@@ -1559,7 +1587,10 @@ void Faceplate::DrawSequencer() {
     // With a finger the plain press counts when it lifts, unless it was a long press.
     const bool plain = !shift_held_ && (panel.touch ? panel.clicked && !panel_long_fired_
                                                     : panel.pressed);
-    if (panel.right_clicked || panel.long_pressed || (panel.pressed && shift_held_)) {
+    if (panel.pressed && shift_held_) {
+    shift_used_ = true;
+  }
+  if (panel.right_clicked || panel.long_pressed || (panel.pressed && shift_held_)) {
       if (armed) {
         engine_->RestoreSnapshot();
         Toast("Snapshot restored");
@@ -1844,6 +1875,7 @@ void Faceplate::DrawShiftStep(int i, ImVec2 min, ImVec2 max) {
   if (!in.pressed || !*label) {
     return;
   }
+  shift_used_ = true;
   if (i < kNumDivisions) {
     p.division = i;
     Toast(std::string("Time division: ") + kDivisionNames[i]);

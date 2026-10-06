@@ -86,6 +86,9 @@ the pattern.
 ### Timing
 
 - **Swing**: *Edit* → *Swing*, per pattern.
+- **Locking Shift and Last Step**: a right click (or a long press) on *Shift* or *Last Step* keeps it
+  on without holding it. It releases after the next combination (for Shift a step, a pad, Mute, Solo
+  or Panel; for Last Step a step or a page), or when you press the button again.
 - **Time division**: *Shift* + step 1–5 sets the step length (1/8, 1/8T, 1/16, 1/16T, 1/32).
 - **Per-track length and polyrhythm.** Give a track its own length in *Edit*, or use *Last
   Step* with a track selected. With **Poly** on (per pattern), each track loops on its own

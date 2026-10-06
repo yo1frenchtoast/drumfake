@@ -16,7 +16,7 @@ the [user guide](user-guide.md).
 | Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`8` |
 | Step pages A–D | | `Z` / `X` |
-| Last Step (held) / Poly / Shift (held) | | `L` / `P` / `Alt` |
+| Last Step (held) / Poly / Shift (held) | right click or long press on Shift or Last Step locks it until a combination is used (or the button is pressed again) | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (acts on release) |
 | Back (↺) | closes Edit, Browse and other screens; releases the selected step | `Esc` |
 
