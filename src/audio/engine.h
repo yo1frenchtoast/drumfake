@@ -131,6 +131,7 @@ class Engine {
   // Incremented each time a track fires (for the pad lights).
   std::atomic<uint32_t> trigger_count[kNumTracks];
   std::atomic<float> track_peak[kNumTracks];
+  std::atomic<bool> track_gate[kNumTracks];  // Gate of the voice (for the tests).
   std::atomic<float> master_peak;
   std::atomic<int> pattern_step;  // Step within the pattern, -1 when stopped.
   // Master output, for the screen oscilloscope.
@@ -156,8 +157,10 @@ class Engine {
   void RunSequencer(double start, double end);
   void ProcessWindow(double start, double end, bool allow_pattern_change);
   void FireStep(int track, const Step& step, double step_duration);
+  // `gate_samples` overrides the Gate parameter; `slide_samples` glides the continuous
+  // parameters from where they were to this note's locks over that time.
   void FireTrack(int track, float velocity, int note, const float* locks,
-                 size_t max_gate);
+                 size_t max_gate, size_t gate_samples = 0, size_t slide_samples = 0);
   void ComputeParams(int track, float* params);
   float LfoValue(int track, int lfo) const;
   void RenderClick(float* out_l, float* out_r);
@@ -195,6 +198,12 @@ class Engine {
 
   // Parameter locks of the last note on each track (NAN = none).
   float active_locks_[kNumTracks][kNumLockable];
+  // Slide: the value of each parameter after the base and the locks (before the
+  // modulations) on the last block, where a slide starts from, and the slide itself.
+  float lock_layer_[kNumTracks][kNumLockable];
+  float slide_from_[kNumTracks][kNumLockable];
+  size_t slide_total_[kNumTracks];
+  size_t slide_left_[kNumTracks];
   // Step skipped once after a live-recorded note was rounded to it.
   int64_t skip_step_[kNumTracks];
 

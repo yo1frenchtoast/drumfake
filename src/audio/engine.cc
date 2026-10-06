@@ -59,12 +59,17 @@ void Engine::Init() {
     track_step[i] = -1;
     trigger_count[i] = 0;
     track_peak[i] = 0.0f;
+    track_gate[i] = false;
     last_trigger_sample[i] = -1;
     active_lock_mask[i] = 0;
     skip_step_[i] = -1;
     for (int p = 0; p < kNumLockable; ++p) {
       active_locks_[i][p] = NAN;
+      lock_layer_[i][p] = NAN;
+      slide_from_[i][p] = NAN;
     }
+    slide_total_[i] = 0;
+    slide_left_[i] = 0;
   }
   for (int i = 0; i < kNumTracks; ++i) {
     for (int p = 0; p < kNumLockable; ++p) {
@@ -423,7 +428,16 @@ void Engine::BakeMarbles(uint32_t seed) {
 }
 
 void Engine::FireTrack(int track, float velocity, int note, const float* locks,
-                       size_t max_gate) {
+                       size_t max_gate, size_t gate_samples, size_t slide_samples) {
+  if (slide_samples > 0) {
+    // Start from what the parameters were on the last block (a slide still running
+    // continues from where it is).
+    std::copy(&lock_layer_[track][0], &lock_layer_[track][0] + kNumLockable,
+              &slide_from_[track][0]);
+    slide_total_[track] = slide_left_[track] = slide_samples;
+  } else {
+    slide_left_[track] = 0;
+  }
   uint32_t mask = 0;
   for (int p = 0; p < kNumLockable; ++p) {
     active_locks_[track][p] = locks ? locks[p] : NAN;
@@ -445,7 +459,7 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
       }
     }
   }
-  voices_[track].Trigger(velocity, note, max_gate);
+  voices_[track].Trigger(velocity, note, max_gate, gate_samples);
   mods_[track].Trigger();
   trigger_count[track].fetch_add(1, std::memory_order_relaxed);
   last_trigger_sample[track] = sample_counter_;
@@ -453,11 +467,20 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
 
 void Engine::FireStep(int track, const Step& step, double step_duration) {
   size_t max_gate = SamplesPerStep() * 16;
+  const size_t sub = static_cast<size_t>(step_duration / step.ratchets);
   if (step.ratchets > 1) {
-    size_t sub = static_cast<size_t>(step_duration / step.ratchets);
     max_gate = sub > kBlockSize * 2 ? sub - kBlockSize : kBlockSize;
   }
-  FireTrack(track, step.velocity, step.note, step.locks, max_gate);
+  // A step's own gate length, in steps of a ratchet: it replaces the Gate parameter
+  // (and may tie over the next steps when there is no ratchet).
+  size_t gate_samples = 0;
+  if (step.gate > 0.0f) {
+    gate_samples = std::max(kBlockSize, static_cast<size_t>(step.gate * sub));
+    gate_samples = std::min(gate_samples, max_gate);
+  }
+  size_t slide_samples = step.slide ? static_cast<size_t>(step_duration) : 0;
+  FireTrack(track, step.velocity, step.note, step.locks, max_gate, gate_samples,
+            slide_samples);
 }
 
 void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) {
@@ -629,6 +652,20 @@ void Engine::ComputeParams(int track, float* params) {
       params[p] = active_locks_[track][p];
     }
   }
+  // Slide: move linearly from the previous values to the base and locks. The
+  // choices (engine, filter mode, choke group) jump.
+  if (slide_left_[track] > 0) {
+    float t = 1.0f - static_cast<float>(slide_left_[track]) /
+                         static_cast<float>(slide_total_[track]);
+    for (int p = 0; p < kNumLockable; ++p) {
+      float from = slide_from_[track][p];
+      if (p != P_ENGINE && p != P_FILTER_MODE && p != P_CHOKE && !std::isnan(from)) {
+        params[p] = from + (params[p] - from) * t;
+      }
+    }
+    slide_left_[track] -= std::min(slide_left_[track], kBlockSize);
+  }
+  std::copy(params, params + kNumLockable, &lock_layer_[track][0]);
   for (int lfo = 0; lfo < 2; ++lfo) {
     int base_param = lfo == 0 ? P_LFO1_RATE : P_LFO2_RATE;
     int destination = DestinationToParam(params[base_param + 3]);
@@ -752,6 +789,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     }
     voices_[t].Render(params, extra_delay_send, &buses_);
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);
+    track_gate[t].store(voices_[t].gate_high(), std::memory_order_relaxed);
   }
   master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);

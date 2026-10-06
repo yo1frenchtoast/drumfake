@@ -55,7 +55,8 @@ with the project.
 
 Hold a step for half a second (or right click it) to select it. While it is held:
 
-- the screen shows its **velocity**, **probability**, **ratchets**, **note** and **nudge**;
+- the screen shows its **velocity**, **probability**, **ratchets**, **note**, **nudge**,
+  **gate** and **slide**;
 - turning a knob sets a **parameter lock**: that step plays with its own value for that
   parameter (see below);
 - pads 1–4 set its repeats (1 to 4 hits);
@@ -65,6 +66,16 @@ Hold a step for half a second (or right click it) to select it. While it is held
 remove the lock. While a locked step plays, the knob has an orange halo. An orange dot shows
 that some step of the track locks that parameter. To remove the locks of a parameter on the
 whole track, hold *Erase* and touch the knob.
+
+**Gate.** By default a note lasts as long as the *Gate* knob of the Filter page says (1 ms to
+about half a second). A step can have its own gate instead, from a fraction of a step up to 4
+steps (with ratchets, a fraction of one hit). Past one step the note is tied over the next
+steps. The step shows a bar for it: white up to one step, amber beyond.
+
+**Slide.** With *Slide to locks* on, the parameters do not jump to the step's locks: they glide
+there linearly from their previous values during the step (a small line in the corner of the
+step shows it). A slide step without locks glides back to the knobs. The choices (engine,
+filter mode, choke group) always jump. Use it for filter sweeps and pitch glides between steps.
 
 **Motion recording.** Press **Rec** and **Play**, then turn a knob: the value is written as a
 lock on the step that is playing.

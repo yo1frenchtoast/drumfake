@@ -296,6 +296,96 @@ void TestLockFeedback() {
   CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.2, 1e-6);
 }
 
+// Number of samples the gate of `track` stays high, from the first block of a note.
+int64_t MeasureGate(Engine* engine, int track, size_t frames) {
+  std::vector<float> buffer(2 * kBlockSize);
+  int64_t high = 0;
+  for (size_t done = 0; done < frames; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    if (engine->track_gate[track].load()) {
+      high += kBlockSize;
+    }
+  }
+  return high;
+}
+
+// A step's own gate length replaces the Gate parameter, and can tie past a step.
+void TestStepGate() {
+  const int64_t kTolerance = 3 * kBlockSize;
+  for (float gate : { 0.25f, 0.5f, 2.0f }) {
+    auto engine = MakeEngine();
+    Project& project = engine->project();
+    project.sounds[0].params[P_GATE] = 0.0f;  // The knob alone gives about 1 ms.
+    project.patterns[0].tracks[0].steps[0].on = true;
+    project.patterns[0].tracks[0].steps[0].gate = gate;
+    engine->Play();
+    int64_t measured = MeasureGate(engine.get(), 0, 4 * kSamplesPerStep);
+    CHECK_NEAR(measured, gate * kSamplesPerStep, kTolerance);
+  }
+  // Without a step gate, the Gate knob decides.
+  auto engine = MakeEngine();
+  engine->project().sounds[0].params[P_GATE] = 0.0f;
+  engine->project().patterns[0].tracks[0].steps[0].on = true;
+  engine->Play();
+  CHECK(MeasureGate(engine.get(), 0, 4 * kSamplesPerStep) < kSamplesPerStep / 4);
+  // With ratchets, the gate is a fraction of one ratchet.
+  auto ratcheted = MakeEngine();
+  Step& step = ratcheted->project().patterns[0].tracks[0].steps[0];
+  step.on = true;
+  step.ratchets = 2;
+  step.gate = 0.5f;
+  ratcheted->Play();
+  int64_t measured = MeasureGate(ratcheted.get(), 0, kSamplesPerStep);
+  CHECK_NEAR(measured, 2 * (0.5 * kSamplesPerStep / 2), 2 * kTolerance);
+}
+
+// A slide step glides from the previous values to its locks over the step, and
+// the next step without slide jumps again.
+void TestStepSlide() {
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  project.sounds[0].params[P_TIMBRE] = 0.2f;
+  Pattern& pattern = project.patterns[0];
+  pattern.tracks[0].steps[0].on = true;           // Base value.
+  pattern.tracks[0].steps[2].on = true;
+  pattern.tracks[0].steps[2].locks[P_TIMBRE] = 0.8f;
+  pattern.tracks[0].steps[2].slide = true;
+  pattern.tracks[0].steps[4].on = true;           // Lock without slide.
+  pattern.tracks[0].steps[4].locks[P_TIMBRE] = 0.8f;
+  engine->Play();
+  RenderAndCollect(engine.get(), 0, 2 * kSamplesPerStep + kSamplesPerStep / 2);
+  float middle = engine->effective_param[0][P_TIMBRE].load();
+  CHECK(middle > 0.4f && middle < 0.6f);  // Halfway between 0.2 and 0.8.
+  RenderAndCollect(engine.get(), 0, kSamplesPerStep / 2 - 4 * kBlockSize);
+  CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.8, 0.05);
+  RenderAndCollect(engine.get(), 0, 4 * kBlockSize + kBlockSize);
+  // Step 5 locks the same value without sliding: no movement at all.
+  RenderAndCollect(engine.get(), 0, kSamplesPerStep);
+  CHECK_NEAR(engine->effective_param[0][P_TIMBRE].load(), 0.8, 1e-6);
+  // A slide step without locks glides back to the knob.
+  auto back = MakeEngine();
+  back->project().sounds[0].params[P_TIMBRE] = 0.2f;
+  Pattern& p = back->project().patterns[0];
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[0].locks[P_TIMBRE] = 0.8f;
+  p.tracks[0].steps[1].on = true;
+  p.tracks[0].steps[1].slide = true;
+  back->Play();
+  RenderAndCollect(back.get(), 0, kSamplesPerStep + kSamplesPerStep / 2);
+  float returning = back->effective_param[0][P_TIMBRE].load();
+  CHECK(returning > 0.4f && returning < 0.6f);
+  // The choices never glide: the engine jumps to its lock at once.
+  auto jump = MakeEngine();
+  jump->project().sounds[0].params[P_ENGINE] = DiscreteToNormalized(3, kNumEngines);
+  Step& s = jump->project().patterns[0].tracks[0].steps[0];
+  s.on = true;
+  s.slide = true;
+  s.locks[P_ENGINE] = DiscreteToNormalized(9, kNumEngines);
+  jump->Play();
+  RenderAndCollect(jump.get(), 0, kSamplesPerStep / 4);
+  CHECK(Discrete(jump->effective_param[0][P_ENGINE].load(), kNumEngines) == 9);
+}
+
 // Peaks envelope and bouncing ball, restarted by every note.
 void TestPeaksMods() {
   auto engine = MakeEngine();
@@ -990,6 +1080,8 @@ void TestProjectRoundTrip() {
   project.patterns[3].poly = true;
   project.patterns[3].division = 1;
   project.patterns[3].tracks[4].steps[17].micro = -0.2f;
+  project.patterns[3].tracks[4].steps[17].gate = 1.5f;
+  project.patterns[3].tracks[4].steps[17].slide = true;
   project.switch_at_end = false;
   project.midi_clock_sync = true;
   project.midi_channels[2] = 10;
@@ -1048,6 +1140,9 @@ void TestProjectRoundTrip() {
   CHECK(!loaded->patterns[0].poly);
   CHECK(loaded->patterns[3].tracks[4].length == 5);
   CHECK(loaded->patterns[0].tracks[7].steps[8].has_lock(P_TIMBRE));
+  CHECK_NEAR(loaded->patterns[3].tracks[4].steps[17].gate, 1.5, 1e-6);
+  CHECK(loaded->patterns[3].tracks[4].steps[17].slide);
+  CHECK(!loaded->patterns[3].tracks[4].steps[16].slide);
 }
 
 void TestGridsPlayback() {
@@ -1110,6 +1205,8 @@ int main() {
   TestTrackLengthAndPatternChain();
   TestPolyrhythm();
   TestLockFeedback();
+  TestStepGate();
+  TestStepSlide();
   TestPeaksMods();
   TestMarbles();
   TestClouds();

@@ -55,6 +55,7 @@ These work with the button held down, like on a DrumBrute.
 | Mute / Solo | pads | Mute or isolate tracks (tap instead of hold to latch the mode) |
 | A step (0.5 s, or right click) | knobs | Set parameter locks for that step |
 | A step | pads 1–4 | Set its repeats (1 to 4 hits) |
+| A step | Gate, Slide to locks (on the screen) | Give it its own gate length (up to 4 steps), or glide into its locks |
 | A step | encoder | Shift it early or late (±50 % of a step, in 5 % increments) |
 
 ## Copy and Paste

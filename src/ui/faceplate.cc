@@ -1693,6 +1693,16 @@ void Faceplate::DrawSequencer() {
     if (step.has_any_lock()) {
       dl->AddCircleFilled(c.P(max.x - 7, min.y + 7), c.S(2.5f), colors::kAccent);
     }
+    if (step.on && step.gate > 0.0f) {
+      // Gate length as a bar along the bottom (a tie past one step reaches the edge).
+      float bar = (max.x - min.x - 8.0f) * ImMin(step.gate, 1.0f);
+      dl->AddRectFilled(c.P(min.x + 4, max.y - 5), c.P(min.x + 4 + bar, max.y - 3),
+                        step.gate > 1.0f ? colors::kAmber : colors::kLabel, c.S(1));
+    }
+    if (step.on && step.slide) {
+      dl->AddLine(c.P(min.x + 5, min.y + 11), c.P(min.x + 14, min.y + 5), colors::kAccent,
+                  c.S(1.5f));
+    }
     if (step.ratchets > 1 && step.on) {
       for (int r = 0; r < step.ratchets; ++r) {
         dl->AddCircleFilled(c.P(min.x + 7 + r * 5.0f, max.y - 8), c.S(1.5f), colors::kLabel);
@@ -2116,6 +2126,18 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
   if (ImGui::SliderFloat("##micro", &nudge, -50.0f, 50.0f, "Nudge %+.0f%%")) {
     step.micro = nudge / 100.0f;
   }
+  ImGui::SetCursorScreenPos(c.P(min.x + 8, min.y + 114));
+  ImGui::SetNextItemWidth(half);
+  char gate_format[24];
+  if (step.gate > 0.0f) {
+    snprintf(gate_format, sizeof(gate_format), "Gate %%.2f");
+  } else {
+    snprintf(gate_format, sizeof(gate_format), "Gate: knob");
+  }
+  ImGui::SliderFloat("##gate", &step.gate, 0.0f, kMaxStepGate, gate_format);
+  ImGui::SetCursorScreenPos(ImVec2(c.P(min.x + 8, min.y + 114).x + half + c.S(4),
+                                   c.P(min.x + 8, min.y + 114).y));
+  ImGui::Checkbox("Slide to locks", &step.slide);
   ImGui::PopItemWidth();
 
   std::string locks;
@@ -2124,10 +2146,10 @@ void Faceplate::DrawStepView(ImVec2 min, ImVec2 max) {
       locks += std::string(locks.empty() ? "" : ", ") + track_param_info(p).short_name;
     }
   }
-  c.Text(min.x + 8, min.y + 116, 8.5f, colors::kScreenDim,
+  c.Text(min.x + 8, min.y + 136, 8.5f, colors::kScreenDim,
          locks.empty() ? "No locks: turn a knob to lock it" : ("Locks: " + locks).c_str(), false);
   if (!locks.empty()) {
-    ImGui::SetCursorScreenPos(c.P(max.x - 72, min.y + 128));
+    ImGui::SetCursorScreenPos(c.P(max.x - 72, min.y + 132));
     if (ImGui::SmallButton("Clear locks")) {
       step.ClearLocks();
     }

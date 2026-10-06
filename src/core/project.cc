@@ -20,6 +20,8 @@ void Step::Clear() {
   ratchets = 1;
   note = 0;
   micro = 0.0f;
+  gate = 0.0f;
+  slide = false;
   ClearLocks();
 }
 

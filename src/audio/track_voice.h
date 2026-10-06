@@ -23,7 +23,9 @@ class TrackVoice {
 
   // Starts a note. `gate_samples` is the maximum gate length allowed by the
   // sequencer (the gate is also limited by the Gate parameter).
-  void Trigger(float velocity, int note_offset, size_t max_gate_samples);
+  // A non-zero `gate_samples` replaces the Gate parameter (a step's own gate length).
+  void Trigger(float velocity, int note_offset, size_t max_gate_samples,
+               size_t gate_samples = 0);
   // Fast fade-out, used by choke groups.
   void Choke();
 
@@ -34,6 +36,7 @@ class TrackVoice {
 
   // Peak level of the last blocks, for the UI meters.
   float peak() const { return peak_; }
+  bool gate_high() const { return last_trigger_high_; }
   // Output of the last block (post-filter, pre-pan), for the scope.
   const float* last_block() const { return mono_; }
 
@@ -46,6 +49,7 @@ class TrackVoice {
 
   size_t gate_remaining_;
   size_t max_gate_;
+  size_t gate_override_;
   bool gate_pending_;
   bool last_trigger_high_;
   float velocity_;

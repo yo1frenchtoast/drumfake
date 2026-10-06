@@ -62,6 +62,12 @@ json StepToJson(int index, const Step& s) {
   if (s.micro != 0.0f) {
     j["micro"] = s.micro;
   }
+  if (s.gate != 0.0f) {
+    j["gate"] = s.gate;
+  }
+  if (s.slide) {
+    j["slide"] = true;
+  }
   json locks = json::object();
   for (int p = 0; p < kNumLockable; ++p) {
     if (s.has_lock(p)) {
@@ -82,6 +88,8 @@ void StepFromJson(const json& j, Step* s) {
   s->ratchets = std::max(1, std::min(kMaxRatchets, j.value("rat", 1)));
   s->note = std::max(-48, std::min(48, j.value("note", 0)));
   s->micro = std::max(-kMaxMicroTiming, std::min(kMaxMicroTiming, j.value("micro", 0.0f)));
+  s->gate = std::max(0.0f, std::min(kMaxStepGate, j.value("gate", 0.0f)));
+  s->slide = j.value("slide", false);
   if (j.contains("locks")) {
     for (auto& [key, value] : j["locks"].items()) {
       int p = std::atoi(key.c_str());

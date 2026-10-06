@@ -28,6 +28,7 @@ const int kDefaultDivision = 2;  // 1/16.
 extern const float kDivisionSteps[kNumDivisions];
 extern const char* const kDivisionNames[kNumDivisions];
 const float kMaxMicroTiming = 0.5f;  // Of a step, either way.
+const float kMaxStepGate = 4.0f;     // Longest step gate, in steps (ties over the next ones).
 
 struct Step {
   bool on;
@@ -36,6 +37,8 @@ struct Step {
   int ratchets;       // 1 to kMaxRatchets.
   int note;           // Semitones relative to the track pitch.
   float micro;        // Timing offset, in steps (-0.5 to 0.5).
+  float gate;         // Gate length, in steps (of a ratchet); 0 = the Gate parameter.
+  bool slide;         // Glide the parameters into this step's locks instead of jumping.
   float locks[kNumLockable];  // NAN when the parameter is not locked.
 
   void Clear();
