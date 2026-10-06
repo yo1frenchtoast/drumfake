@@ -15,6 +15,8 @@ struct Scale {
 
 const int kNumScales = 11;
 const int kChromaticScale = kNumScales - 1;  // The default: a piano.
+// MIDI note of the first pad with root C and octave 0: a standard keyboard starting on C3.
+const int kKeyBaseNote = 48;
 const int kMinKeyOctave = -3;
 const int kMaxKeyOctave = 3;
 

@@ -233,8 +233,9 @@ A–H the black ones. With the other scales, the black keys sit a semitone above
 **Keys settings**: root, scale (major, minor, modes, harmonic minor, pentatonics, blues,
 chromatic) and octave, shared by the whole project. The *Keys* button shows a dedicated page
 (knobs 1–3 set root, scale and octave; press *Keys* again to come back); the screen shows the
-pad notes. Notes are added to the Pitch of the track: a track set to C plays in the key you
-chose.
+pad notes. The keyboard has fixed pitches, whatever the Pitch knob of the track: with root C and
+octave 0, pad 1 is C3 and the pads follow a standard piano. Changing the root transposes all the
+keys together (root D: D E F♯ G A B C♯ D), the octave moves them by 12 semitones.
 
 ### Mute and Solo
 

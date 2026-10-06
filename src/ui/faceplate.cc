@@ -403,19 +403,26 @@ void Faceplate::PlayKey(int offset) {
     PushUndo();
     Step& step = pattern().tracks[track].steps[held_step_];
     step.on = true;
-    step.note = offset;
+    step.note = std::clamp(offset, -48, 48);
   }
   engine_->LiveTrigger(track, 0.8f, offset);
 }
 
 bool Faceplate::KeySharp(int pad, int* offset) {
   const Project& project = engine_->project();
-  return KeySharpOffset(project.key_root, project.key_scale, project.key_octave, pad, offset);
+  if (!KeySharpOffset(project.key_root, project.key_scale, project.key_octave, pad, offset)) {
+    return false;
+  }
+  *offset += kKeyBaseNote - TrackNote(engine_->selected_track);
+  return true;
 }
 
 int Faceplate::KeyNote(int pad) {
   const Project& project = engine_->project();
-  return KeyOffset(project.key_root, project.key_scale, project.key_octave, pad);
+  // The keyboard has fixed pitches (the root note starts it); notes are offsets from
+  // the pitch of the track.
+  return KeyOffset(project.key_root, project.key_scale, project.key_octave, pad) +
+         kKeyBaseNote - TrackNote(engine_->selected_track);
 }
 
 int Faceplate::TrackNote(int track) {
