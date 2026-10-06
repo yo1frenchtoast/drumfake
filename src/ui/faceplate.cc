@@ -871,6 +871,10 @@ void Faceplate::DrawTopLeft() {
         Toast(cleared);
       }
     }
+    if (in.right_clicked) {
+      std::fill(tracks, tracks + kNumTracks, false);
+      Toast(cleared);
+    }
     if (!in.active && *held && !*used) {
       *mode = !*mode;
       *other_mode = false;
@@ -1538,10 +1542,42 @@ void Faceplate::DrawSequencer() {
 
   // Editing.
   // Panel: keep the sound playing across pattern changes (MatrixBrute).
-  if (function_button(9, "##panel", "Panel", engine_->panel(), colors::kAccent).pressed) {
-    engine_->SetPanel(!engine_->panel());
-    Toast(engine_->panel() ? "Panel: sound kept across patterns"
-                           : "Panel off: pattern kit reloaded");
+  // Shift + Panel, a right click or a long press arms a snapshot of everything playable:
+  // edit freely (a drop), and a press of Panel puts it all back.
+  {
+    const bool armed = engine_->snapshot_armed();
+    // The button blinks while a snapshot is armed.
+    const bool blink = armed && std::fmod(ImGui::GetTime(), 1.0) < 0.5;
+    Interaction panel = function_button(9, "##panel", "Panel", engine_->panel() || blink,
+                                        armed ? colors::kAmber : colors::kAccent);
+    if (panel.pressed) {
+      panel_long_fired_ = false;
+    }
+    if (panel.long_pressed) {
+      panel_long_fired_ = true;
+    }
+    // With a finger the plain press counts when it lifts, unless it was a long press.
+    const bool plain = !shift_held_ && (panel.touch ? panel.clicked && !panel_long_fired_
+                                                    : panel.pressed);
+    if (panel.right_clicked || panel.long_pressed || (panel.pressed && shift_held_)) {
+      if (armed) {
+        engine_->RestoreSnapshot();
+        Toast("Snapshot restored");
+      } else {
+        engine_->ArmSnapshot();
+        Toast("Snapshot armed: press Panel to restore it");
+      }
+    } else if (plain) {
+      // While a snapshot is armed, Panel has no other use: a plain press restores it.
+      if (armed) {
+        engine_->RestoreSnapshot();
+        Toast("Snapshot restored");
+      } else {
+        engine_->SetPanel(!engine_->panel());
+        Toast(engine_->panel() ? "Panel: sound kept across patterns"
+                               : "Panel off: pattern kit reloaded");
+      }
+    }
   }
 
   // Copy: held with two page buttons, repeats pages; pressed alone, copies to
@@ -2031,7 +2067,9 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
     seen_midi_activity_ = activity;
     midi_flash_time_ = ImGui::GetTime();
   }
-  if (engine_->panel()) {
+  if (engine_->snapshot_armed()) {
+    c.Text(max.x - 218, min.y + 5, 8, colors::kAmber, "SNAPSHOT", false, true);
+  } else if (engine_->panel()) {
     c.Text(max.x - 190, min.y + 5, 8, colors::kAmber, "PANEL", false, true);
   }
   bool midi_lit = ImGui::GetTime() - midi_flash_time_ < 0.08;
@@ -2319,6 +2357,7 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
   if (ImGui::Button("Reload saved")) {
     std::string error;
     if (LoadProject(project_path_, &project, &error)) {
+      engine_->DropSnapshot();
       engine_->ReloadKit();
       Toast("Project reloaded");
     } else {

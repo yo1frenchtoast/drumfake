@@ -73,6 +73,16 @@ class Engine {
   // the current pattern's kit.
   void SetPanel(bool panel);
   bool panel() const { return panel_; }
+  // Snapshot (Shift + Panel): arming saves everything that can be played with (the sounds
+  // playing, master, Clouds and Assign settings, tempo and volume, mute and solo, the Grids
+  // position, the Keys and Chords settings) and behaves like Panel mode, so that no edit
+  // reaches the patterns. Restoring puts it all back as it was and leaves Panel mode if it
+  // was off before; the patterns' steps are never touched.
+  void ArmSnapshot();
+  void RestoreSnapshot();
+  // Forgets the snapshot without restoring it (the project was replaced).
+  void DropSnapshot() { snapshot_armed_ = false; }
+  bool snapshot_armed() const { return snapshot_armed_; }
   // Writes the kit playing into the current pattern.
   void StoreKit();
   // Replaces the kit playing with the current pattern's (after the pattern
@@ -200,6 +210,27 @@ class Engine {
   bool playing_;
   bool song_mode_;
   bool panel_;
+  struct Snapshot {
+    TrackSound sounds[kNumTracks];
+    float master[M_LAST];
+    float assign[A_LAST];
+    float clouds[C_LAST];
+    float bpm;
+    float volume;
+    bool muted[kNumTracks];
+    bool soloed[kNumTracks];
+    bool grids_enabled;
+    float grids_x;
+    float grids_y;
+    bool clouds_freeze;
+    int key_root;
+    int key_scale;
+    int key_octave;
+    int chord_type;
+    bool panel;  // Panel mode before arming.
+  };
+  Snapshot snapshot_;
+  bool snapshot_armed_ = false;
   int song_position_;
   int current_pattern_;
   int queued_pattern_;

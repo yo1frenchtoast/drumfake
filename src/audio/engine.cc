@@ -99,6 +99,7 @@ void Engine::Init() {
 
   playing_ = false;
   panel_ = false;
+  snapshot_armed_ = false;
   song_mode_ = false;
   song_position_ = 0;
   current_pattern_ = 0;
@@ -291,6 +292,63 @@ void Engine::ReloadKit() {
   if (!panel_) {
     const TrackSound* kit = project_->patterns[current_pattern_].kit;
     std::copy(kit, kit + kNumTracks, project_->sounds);
+  }
+}
+
+void Engine::ArmSnapshot() {
+  if (snapshot_armed_) {
+    return;
+  }
+  Snapshot& s = snapshot_;
+  std::copy(project_->sounds, project_->sounds + kNumTracks, s.sounds);
+  std::copy(project_->master, project_->master + M_LAST, s.master);
+  std::copy(project_->assign, project_->assign + A_LAST, s.assign);
+  std::copy(project_->clouds, project_->clouds + C_LAST, s.clouds);
+  s.bpm = project_->bpm;
+  s.volume = project_->volume;
+  std::copy(muted, muted + kNumTracks, s.muted);
+  std::copy(soloed, soloed + kNumTracks, s.soloed);
+  s.grids_enabled = grids_enabled;
+  s.grids_x = grids_x;
+  s.grids_y = grids_y;
+  s.clouds_freeze = clouds_freeze;
+  s.key_root = project_->key_root;
+  s.key_scale = project_->key_scale;
+  s.key_octave = project_->key_octave;
+  s.chord_type = project_->chord_type;
+  s.panel = panel_;
+  SetPanel(true);  // Stores the kit, then edits stay out of the patterns.
+  snapshot_armed_ = true;
+}
+
+void Engine::RestoreSnapshot() {
+  if (!snapshot_armed_) {
+    return;
+  }
+  const Snapshot& s = snapshot_;
+  snapshot_armed_ = false;
+  std::copy(s.master, s.master + M_LAST, project_->master);
+  std::copy(s.assign, s.assign + A_LAST, project_->assign);
+  std::copy(s.clouds, s.clouds + C_LAST, project_->clouds);
+  project_->bpm = s.bpm;
+  project_->volume = s.volume;
+  std::copy(s.muted, s.muted + kNumTracks, muted);
+  std::copy(s.soloed, s.soloed + kNumTracks, soloed);
+  grids_enabled = s.grids_enabled;
+  grids_x = s.grids_x;
+  grids_y = s.grids_y;
+  clouds_freeze = s.clouds_freeze;
+  project_->key_root = s.key_root;
+  project_->key_scale = s.key_scale;
+  project_->key_octave = s.key_octave;
+  project_->chord_type = s.chord_type;
+  if (s.panel) {
+    // Panel mode was on: the sound playing before arming comes back.
+    std::copy(s.sounds, s.sounds + kNumTracks, project_->sounds);
+  } else {
+    // Back to the kit of the current pattern (the one of the snapshot, unless the pattern
+    // changed meanwhile).
+    SetPanel(false);
   }
 }
 

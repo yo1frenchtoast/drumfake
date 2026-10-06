@@ -144,6 +144,15 @@ A **kit** is the 8 sounds of a pattern (engine, all parameters, modulation setti
   pattern. Your edits are stored nowhere until you use *Edit* → *Store kit*, which writes them
   to the current pattern. Turning Panel off reloads the kit of the current pattern. The screen
   shows `PANEL` when active.
+- **Snapshot** (for a drop): **Shift + Panel**, a right click or a long press on *Panel* arms a
+  snapshot of everything you can play with: the sounds of the 8 tracks, the Master, Clouds and
+  Assign settings, tempo and volume, **mute and solo**, the Grids position and the Keys and
+  Chords settings. Turn knobs, mute, change pattern, change tempo, as much as you like (as in
+  Panel mode, none of it reaches the patterns), then press *Panel*: everything comes back to
+  what it was when you armed it (the shortcut gestures work too). The button blinks and the
+  screen shows `SNAPSHOT` while it is armed. The steps of the patterns are
+  not part of it. If you changed pattern in the meantime, the sound of the pattern you are on
+  comes back (its own kit), the rest returns to the snapshot.
 - **Kit library**: *Edit* → *Kit library...*. Kits saved as files, shared by all projects
   (`kits/` beside `project.json`):
   - *Save new* stores the current 8 sounds as the next "Kit N";
@@ -257,7 +266,7 @@ keys together (root D: D E F♯ G A B C♯ D), the octave moves them by 12 semit
 ### Mute and Solo
 
 Hold **Mute** or **Solo** and touch pads to mute or isolate tracks, or tap the button to latch
-the mode. *Shift* + Mute or Solo clears them all.
+the mode. *Shift* + Mute or Solo, or a right click on the button, clears them all.
 
 ## 7. MIDI
 
