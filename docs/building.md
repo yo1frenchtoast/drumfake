@@ -74,9 +74,40 @@ adb -s 192.168.10.23:<port> install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s 192.168.10.23:<port> exec-out screencap -p > screen.png
 ```
 
+## Web
+
+Requirements: the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html)
+(tested with 6.0.13). SDL3 is built from the `third_party/SDL` submodule, as on Android.
+
+```sh
+source ~/emsdk/emsdk_env.sh
+emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+cmake --build build-web -j
+node build-web/drumfreake_tests.js        # the test suite, compiled to WebAssembly
+python3 -m http.server -d build-web 8000  # then open http://localhost:8000/drumfreake.html
+```
+
+Use the `node` of the SDK (`$EMSDK_NODE`) if the system one is too old. The build writes
+`drumfreake.html`, `.js`, `.wasm` and `.data` (the fonts): serve the four files together, over
+HTTPS or from `localhost` (Web MIDI needs a secure context). `.github/workflows/web.yml` builds
+them on every push to `main` and publishes them on GitHub Pages (repository settings: Pages,
+source *GitHub Actions*).
+
+In the browser:
+
+- The sound starts at the first click, touch or key press (browsers block audio until then).
+- The project and the kits are saved in the browser's storage (IndexedDB) for this site: they
+  survive a reload, not clearing the site data.
+- MIDI inputs work in browsers that have Web MIDI (Chrome, Edge, Firefox), after the permission
+  prompt.
+- The command-line flags do not apply.
+
 ## Troubleshooting
 
 - **`Submodules missing`**: run `git submodule update --init --recursive`.
 - **No sound on Linux**: SDL3 picks the default audio device; check that it is the one you
   expect (for example with `pavucontrol`).
 - **No MIDI port listed**: make sure ALSA sequencer devices exist (`aconnect -l`).
+- **Web: no sound**: click the page once; check that the tab is not muted.
+- **Web: no MIDI**: allow MIDI for the site in the browser's permissions, and use HTTPS or
+  `localhost`.

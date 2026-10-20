@@ -6,7 +6,7 @@ and chorus. Independent project: no Arturia branding in the UI (factual comments
 
 ## Layout
 
-- `third_party/eurorack` (unmodified submodule; never edit it), `third_party/SDL` (Android).
+- `third_party/eurorack` (unmodified submodule; never edit it), `third_party/SDL` (Android, web).
 - `shims/`: minimal AVR headers so `grids/resources.cc` compiles on the desktop.
 - `src/core/`: model (params, steps, patterns, per-pattern kits, song, scales), JSON I/O,
   Grids port, MIDI parser. No UI or audio device code.
@@ -19,8 +19,11 @@ and chorus. Independent project: no Arturia branding in the UI (factual comments
 - `patches/`: header overrides that shadow the submodule (it is never edited), see its README.
 - `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, and the
   multitouch layer (fingers captured by pads/knobs/buttons, one free finger drives ImGui).
-- `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android).
+- `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android, Web MIDI
+  in the browser).
 - `android/`: Gradle project building the same CMakeLists.txt into `libmain.so`.
+- `web/`: HTML shell and IndexedDB storage of the Emscripten build (published by
+  `.github/workflows/web.yml` on GitHub Pages).
 
 ## Build, test, run
 
@@ -35,6 +38,15 @@ cmake -B build && cmake --build build -j
 ```
 
 GCC prints messages in French: filter build output with `LANG=C`.
+
+Web (Emscripten SDK in `~/emsdk`; the system `node` is too old, use `$EMSDK_NODE`):
+
+```sh
+source ~/emsdk/emsdk_env.sh
+emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release && cmake --build build-web -j
+$EMSDK_NODE build-web/drumfreake_tests.js
+python3 -m http.server -d build-web 8000   # http://localhost:8000/drumfreake.html
+```
 
 Android (tablet over Wi-Fi adb, e.g. `adb -s 192.168.10.23:<port>`; the port changes):
 
