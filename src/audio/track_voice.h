@@ -38,7 +38,7 @@ class TrackVoice {
   // to the delay send (XY "FX" mode). `sample` is what the Sample and grain
   // engines play (null for an empty slot).
   void Render(const float* params, float extra_delay_send, Buses* buses,
-              const SampleData* sample = nullptr);
+              const SampleData* sample = nullptr, const SampleSlices* slices = nullptr);
 
   // Peak level of the last blocks, for the UI meters.
   float peak() const { return peak_; }

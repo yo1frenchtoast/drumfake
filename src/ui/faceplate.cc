@@ -205,7 +205,8 @@ void Faceplate::TrackPadUp(int track) {
 void Faceplate::LowerPadDown(int pad) {
   Project& project = engine_->project();
   int track = engine_->selected_track;
-  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS) {
+  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS &&
+      pad_mode_ != PADS_SLICES) {
     // Held step: pads 1-4 set its repeats.
     if (pad < kMaxRatchets) {
       PushUndo();
@@ -217,6 +218,9 @@ void Faceplate::LowerPadDown(int pad) {
     return;
   }
   switch (pad_mode_) {
+    case PADS_SLICES:
+      PlaySlice(pad);
+      break;
     case PADS_SOUNDS: {
       int preset = preset_bank_ * 8 + pad;
       ApplyPreset(preset, &project.sounds[track]);
@@ -249,6 +253,43 @@ void Faceplate::LowerPadDown(int pad) {
       }
       break;
   }
+}
+
+const SampleSlices* Faceplate::TrackSlices() const {
+  const TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+  if (Discrete(sound.params[P_ENGINE], kNumEngines) != kSampleEngine) {
+    return nullptr;
+  }
+  return &engine_->project().slices[SampleSlot(sound.params[P_AUX])];
+}
+
+void Faceplate::PlaySlice(int pad) {
+  const int track = engine_->selected_track;
+  const SampleSlices* slices = TrackSlices();
+  if (!slices || slices->count == 0) {
+    Toast("No slices: Browse > Samples, then Slices 4/8/16/32 or Auto");
+    return;
+  }
+  const int slice = slice_bank_ * 8 + pad;
+  if (slice >= slices->count) {
+    Toast("Slice " + std::to_string(slice + 1) + ": the sample has " +
+          std::to_string(slices->count));
+    return;
+  }
+  const float colour = ColourOfSlice(slice, slices->count);
+  if (held_step_ >= 0) {
+    // Held step: it plays this slice.
+    PushUndo();
+    Step& step = pattern().tracks[track].steps[held_step_];
+    step.on = true;
+    step.locks[P_COLOUR] = colour;
+    Toast("Step " + std::to_string(held_step_ + 1) + ": slice " + std::to_string(slice + 1));
+    return;
+  }
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = colour;
+  engine_->LiveTriggerLocked(track, shift_held_ ? 1.0f : 0.8f, locks);
 }
 
 void Faceplate::LowerPadUp(int pad) {
@@ -934,11 +975,25 @@ void Faceplate::DrawTopLeft() {
   hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
               "Mutes cleared");
   cell(5, &min, &max);
-  if (Button(c, "##keys", min, max, "Keys", "", ICON_NONE, pad_mode_ == PADS_KEYS,
-             colors::kAccent).pressed) {
-    // First press: Keys mode and its page; next presses show or hide the page.
-    keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
-    pad_mode_ = PADS_KEYS;
+  // Shift + Keys: Slices mode (pads play the slices of the track's sample);
+  // Shift + Slices: the next 8 slices; Keys alone goes back to the keyboard.
+  const bool slices_mode = pad_mode_ == PADS_SLICES;
+  if (Button(c, "##keys", min, max, slices_mode ? "Slices" : "Keys", "", ICON_NONE,
+             pad_mode_ == PADS_KEYS || slices_mode, colors::kAccent).pressed) {
+    if (shift_held_) {
+      shift_used_ = true;
+      const SampleSlices* slices = TrackSlices();
+      const int banks = slices && slices->count > 0 ? (slices->count + 7) / 8 : 1;
+      slice_bank_ = slices_mode ? (slice_bank_ + 1) % banks : 0;
+      pad_mode_ = PADS_SLICES;
+      keys_page_ = false;
+      Toast("Slices " + std::to_string(slice_bank_ * 8 + 1) + "-" +
+            std::to_string(slice_bank_ * 8 + 8));
+    } else {
+      // First press: Keys mode and its page; next presses show or hide the page.
+      keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
+      pad_mode_ = PADS_KEYS;
+    }
   }
 
   // Shift (or Alt on the keyboard): held, the steps become options and the
@@ -966,8 +1021,8 @@ void Faceplate::DrawTopLeft() {
            colors::kLabelDim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
            false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, shift_latched_ ? "pad: select   A-D: extend   Spice: vary   Steps: live   (locked)"
-                          : "pad: select   A-D: extend   Spice: vary   Steps: live", false);
+           colors::kLabelDim, shift_latched_ ? "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices  (locked)"
+                          : "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices", false);
   }
   UpdateRepeat();
 }
@@ -2207,6 +2262,12 @@ void Faceplate::DrawPads() {
     switch (pad_mode_) {
       case PADS_SOUNDS: function = preset_name(preset_bank_ * 8 + i); break;
       case PADS_REPEATS: function = kRepeatNames[i]; break;
+      case PADS_SLICES: {
+        const SampleSlices* slices = TrackSlices();
+        int slice = slice_bank_ * 8 + i;
+        function = slices && slice < slices->count ? "Slice " + std::to_string(slice + 1) : "-";
+        break;
+      }
       case PADS_CHORDS: {
         if (shift_held_) {
           function = std::string("Root ") +
@@ -2961,6 +3022,22 @@ void Faceplate::KnobLabel(int k, float value, const char** short_name, const cha
       *name = "Release";
       *text = value >= 0.98f ? "Full" : FormatValue(FORMAT_FILTER_DECAY, value);
       break;
+    case P_COLOUR: {
+      *short_name = "Slce";
+      *name = "Slice";
+      const SampleSlices* slices = TrackSlices();
+      int count = slices ? slices->count : 0;
+      int slice = SliceOfColour(value, count);
+      if (count == 0) {
+        *text = "-";
+      } else if (slice < 0) {
+        *text = "Whole";
+      } else {
+        snprintf(buffer, sizeof(buffer), "%d/%d", slice + 1, count);
+        *text = buffer;
+      }
+      break;
+    }
     case P_AUX: {
       *short_name = "Smpl";
       *name = "Sample";
@@ -3034,6 +3111,39 @@ void Faceplate::DrawSampleBrowser(ImVec2 min, ImVec2 max) {
       PlaceSample(track, slot);
     }
   }
+  // Slicing the selected track's sample.
+  const SampleSlices* track_slices = TrackSlices();
+  if (track_slices && engine_->sample(current)) {
+    const int slot = current;
+    SampleSlices& slices = engine_->project().slices[slot];
+    ImGui::SetCursorScreenPos(c.P(min.x + 6, max.y - 14));
+    snprintf(text, sizeof(text), "Slices %d:", slices.count);
+    ImGui::TextUnformatted(text);
+    int made = -1;
+    for (int count : { 4, 8, 16, 32 }) {
+      ImGui::SameLine();
+      char label[24];
+      snprintf(label, sizeof(label), "%d##slice%d", count, count);
+      if (ImGui::SmallButton(label)) {
+        EqualSlices(count, &slices);
+        made = count;
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Auto")) {
+      made = DetectSlices(*engine_->sample(slot), &slices);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear")) {
+      slices.Clear();
+      Toast("Slices cleared");
+    }
+    if (made >= 0) {
+      // The track plays the whole sample until a slice is picked.
+      engine_->project().sounds[track].params[P_COLOUR] = 0.0f;
+      Toast(std::to_string(made) + " slices: Shift + Keys plays them, Col picks one");
+    }
+  }
   if (pages > 1) {
     snprintf(text, sizeof(text), "page %d/%d", browse_sample_page_ + 1, pages);
     ImGui::SetCursorScreenPos(c.P(max.x - 120, max.y - 14));
@@ -3086,8 +3196,15 @@ void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
   }
   const float mid = (min.y + max.y) * 0.5f;
   const float half = (max.y - min.y) * 0.5f - 1.0f;
-  const float start = params[P_HARMONICS];
-  const float end = std::clamp(start + (params[P_TIMBRE] * 2.0f - 1.0f), 0.0f, 1.0f);
+  // The part played: the whole sample, or the slice Colour picks.
+  const SampleSlices& slices = engine_->project().slices[SampleSlot(params[P_AUX])];
+  const int slice = Discrete(params[P_ENGINE], kNumEngines) == kSampleEngine
+      ? SliceOfColour(params[P_COLOUR], slices.count) : -1;
+  const float region_start = slice >= 0 ? slices.start(slice) : 0.0f;
+  const float region_length = slice >= 0 ? slices.end(slice) - region_start : 1.0f;
+  const float start = region_start + params[P_HARMONICS] * region_length;
+  const float end = std::clamp(start + (params[P_TIMBRE] * 2.0f - 1.0f) * region_length,
+                               region_start, region_start + region_length);
   const int engine = Discrete(params[P_ENGINE], kNumEngines);
   const float lo = std::min(start, end);
   const float hi = std::max(start, end);
@@ -3103,6 +3220,10 @@ void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
     float x = min.x + position * (max.x - min.x);
     dl->AddLine(c.P(x, min.y), c.P(x, max.y), color, c.S(1.5f));
   };
+  for (int k = 1; k < slices.count; ++k) {
+    float x = min.x + slices.start(k) * (max.x - min.x);
+    dl->AddLine(c.P(x, min.y + 2), c.P(x, max.y - 2), WithAlpha(colors::kScreenText, 70), c.S(1));
+  }
   if (engine == kSampleEngine) {
     marker(start, IM_COL32(120, 230, 120, 255));
     marker(end, colors::kRed);

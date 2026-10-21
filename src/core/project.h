@@ -13,6 +13,7 @@
 #include "core/marbles_gen.h"
 #include "core/params.h"
 #include "core/scales.h"
+#include "core/slicing.h"
 
 namespace drumfake {
 
@@ -139,8 +140,10 @@ struct Project {
   // Song: chain of pattern indices, played in order (a pattern may repeat).
   int song[kMaxSongLength];
   int song_length;
-  // Sample pool: file names in the samples directory ("" = empty slot).
+  // Sample pool: file names in the samples directory ("" = empty slot), and
+  // the slices of each sample.
   std::string samples[kNumSampleSlots];
+  SampleSlices slices[kNumSampleSlots];
 
   // Default kit and demo pattern.
   void Init();

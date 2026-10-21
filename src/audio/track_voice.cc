@@ -45,7 +45,7 @@ void TrackVoice::Choke() {
 }
 
 void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buses,
-                        const SampleData* sample) {
+                        const SampleData* sample, const SampleSlices* slices) {
   const int engine = Discrete(params[P_ENGINE], kNumEngines);
   // Gate. Plaits detects a trigger on a rising edge, so when a note is
   // retriggered while its gate is still high, the gate goes low for one block.
@@ -90,8 +90,8 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   modulations.level_patched = true;
 
   if (engine == kSampleEngine) {
-    sample_player_.Render(sample, params, PitchToNote(params[P_PITCH]) + note_offset_, gate_high,
-                          mono_);
+    sample_player_.Render(sample, slices, params, PitchToNote(params[P_PITCH]) + note_offset_,
+                          gate_high, mono_);
   } else if (IsGrainEngine(engine)) {
     grain_player_.Render(sample, engine, params, PitchToNote(params[P_PITCH]) + note_offset_,
                          gate_high, mono_);

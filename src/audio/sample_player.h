@@ -8,6 +8,8 @@
 //   and the end of Length) to the end loops, with a crossfade;
 // - Decay: release after the gate closes; fully up, the sample plays to its end;
 // - Aux: the slot of the pool (see core/sample_pool.h);
+// - Colour: the slice, when the sample is sliced (fully down: the whole
+//   sample); Start, Length and Loop then apply within the slice;
 // - Pitch and the note: C4 plays the sample at its own speed.
 
 #ifndef DRUMFAKE_AUDIO_SAMPLE_PLAYER_H_
@@ -15,6 +17,7 @@
 
 #include "audio/buses.h"
 #include "core/sample_file.h"
+#include "core/slicing.h"
 
 namespace drumfake {
 
@@ -31,8 +34,8 @@ class SamplePlayer {
   // Renders kBlockSize frames. `params` are the track's effective parameters,
   // `note` the MIDI note (Pitch knob and note offset). `sample` may change
   // between blocks (or be null): the position carries over, clamped.
-  void Render(const SampleData* sample, const float* params, float note, bool gate,
-              float* out);
+  void Render(const SampleData* sample, const SampleSlices* slices, const float* params,
+              float note, bool gate, float* out);
   // Playing, or about to start.
   bool active() const { return playing_ || pending_; }
 

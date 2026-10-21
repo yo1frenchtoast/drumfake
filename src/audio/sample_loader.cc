@@ -16,6 +16,7 @@ void ApplySampleDefaults(TrackSound* sound, int slot, const std::string& file) {
   sound->params[P_TIMBRE] = 1.0f;     // Length: all of it, forwards.
   sound->params[P_MORPH] = 0.0f;      // No loop.
   sound->params[P_DECAY] = 1.0f;      // Plays to the end.
+  sound->params[P_COLOUR] = 0.0f;     // The whole sample, not a slice.
   sound->params[P_PITCH] = NoteToNormalizedPitch(kSampleRootNote);
 }
 
@@ -59,6 +60,9 @@ bool ImportSample(Engine* engine, const std::string& project_path, const std::st
     slot = FindSampleSlot(project, file);
     if (slot < 0) {
       slot = FirstFreeSampleSlot(project);
+      if (slot >= 0) {
+        project.slices[slot].Clear();  // A new sample: no slices yet.
+      }
     }
     if (slot < 0) {
       *message = "The sample pool is full (" + std::to_string(kNumSampleSlots) + " slots)";

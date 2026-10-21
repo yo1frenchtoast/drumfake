@@ -166,7 +166,12 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
   j["samples"] = json::array();
   for (int i = 0; i < kNumSampleSlots; ++i) {
     if (!project.samples[i].empty()) {
-      j["samples"].push_back({ { "slot", i }, { "file", project.samples[i] } });
+      json entry = { { "slot", i }, { "file", project.samples[i] } };
+      const SampleSlices& slices = project.slices[i];
+      if (slices.count > 0) {
+        entry["slices"] = std::vector<float>(slices.starts, slices.starts + slices.count);
+      }
+      j["samples"].push_back(entry);
     }
   }
   j["sounds"] = KitToJson(project.sounds);
@@ -273,6 +278,15 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         std::string file = entry.value("file", "");
         if (slot >= 0 && slot < kNumSampleSlots && ValidSampleName(file)) {
           loaded.samples[slot] = file;
+          if (entry.contains("slices") && entry["slices"].is_array()) {
+            SampleSlices& slices = loaded.slices[slot];
+            for (const json& start : entry["slices"]) {
+              if (slices.count < kMaxSlices && start.is_number()) {
+                slices.starts[slices.count++] = start.get<float>();
+              }
+            }
+            TidySlices(&slices);
+          }
         }
       }
     }

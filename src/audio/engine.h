@@ -107,9 +107,13 @@ class Engine {
   // above it. The extra notes use voices from a shared pool (kChordVoices), with the
   // sound and the effects of the track.
   void LiveChord(int track, float velocity, int note_offset, const int8_t* extras, int count);
-  // When recording, writes a hit on the step nearest to the playhead.
+  // Plays a track now with parameter locks (NAN = not locked; Slices pads lock
+  // the slice). When recording, writes the step with them.
+  void LiveTriggerLocked(int track, float velocity, const float* locks);
+  // When recording, writes a hit on the step nearest to the playhead (with
+  // `locks`, when given).
   void RecordHit(int track, float velocity, int note_offset, int ratchets,
-                 const int8_t* extras = nullptr, int count = 0);
+                 const int8_t* extras = nullptr, int count = 0, const float* locks = nullptr);
   // For the tests: voices of the pool that are sounding.
   int chord_voices_active() const;
 

@@ -502,8 +502,13 @@ void Engine::LiveChord(int track, float velocity, int note_offset, const int8_t*
   RecordHit(track, velocity, note_offset, 1, extras, count);
 }
 
+void Engine::LiveTriggerLocked(int track, float velocity, const float* locks) {
+  FireTrack(track, velocity, 0, locks, SamplesPerStep() * 16);
+  RecordHit(track, velocity, 0, 1, nullptr, 0, locks);
+}
+
 void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
-                       const int8_t* extras, int count) {
+                       const int8_t* extras, int count, const float* locks) {
   if (!recording || !playing_ || looping_) {
     return;
   }
@@ -518,6 +523,13 @@ void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
   step.chord_size = static_cast<uint8_t>(std::min(count, kMaxChordNotes - 1));
   for (int i = 0; i < step.chord_size; ++i) {
     step.chord[i] = extras[i];
+  }
+  if (locks) {
+    for (int p = 0; p < kNumLockable; ++p) {
+      if (!std::isnan(locks[p])) {
+        step.locks[p] = locks[p];
+      }
+    }
   }
   if (static_cast<double>(n) > position_) {
     // Rounded to an upcoming step: don't play it twice.
@@ -988,10 +1000,11 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);
     }
     const SampleData* sample = VoiceSample(params);
-    voices_[t].Render(params, extra_delay_send, &buses_, sample);
+    const SampleSlices* slices = sample ? &project_->slices[SampleSlot(params[P_AUX])] : nullptr;
+    voices_[t].Render(params, extra_delay_send, &buses_, sample, slices);
     for (int k = 0; k < kChordVoices; ++k) {
       if (chord_owner_[k] == t && chord_voices_[k].busy()) {
-        chord_voices_[k].Render(params, extra_delay_send, &buses_, sample);
+        chord_voices_[k].Render(params, extra_delay_send, &buses_, sample, slices);
       }
     }
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);

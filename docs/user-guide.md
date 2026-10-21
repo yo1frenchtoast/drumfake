@@ -160,9 +160,20 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
   | Loop (Mrph) | *Off* plays once. Above, the part from this point to the end of Len loops while the note lasts (with a short crossfade): the higher, the shorter the loop. |
   | Rel (Dcy) | Release after the gate closes (Gate on the Filter page). *Full* plays the sample to its end. |
   | Smpl (Aux) | The slot of the pool. |
+  | Slce (Col) | The slice, once the sample is sliced: *Whole* (fully down) plays the whole sample; above, Start, Len and Loop apply within the slice. |
 
   The screen shows the sample (in place of the scope) with **Start** (green), the end of **Len**
   (red) and the **Loop** point (amber); while playing, they follow locks and modulations.
+- **Slices.** In *Browse → Samples*, the buttons at the bottom slice the sample of the selected
+  track: into **4, 8, 16 or 32** equal parts, **Auto** (a slice at each attack, up to 48: for a
+  drum loop, one per hit), or **Clear**. Slices belong to the sample (all tracks using it share
+  them) and are saved with the project. Then:
+  - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (Shift held: full
+    velocity). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With
+    *Rec* on, a pad writes its hit on the step under the playhead, with the slice as a lock.
+  - With a step held, a Slices pad sets the slice that step plays.
+  - **Col (Slce)** picks a slice for the whole track, and can be locked per step: chop a break
+    and play its slices in another order.
 - **Granular engines.** Turn the encoder past *Sample* to play the same sample as a stream of
   short grains (up to 16 at once). They use the same slot (Smpl) and Pitch, and their sound lasts
   as long as the gate (*Gate* on the Filter page, or the step's own gate), then fades over **Rel**

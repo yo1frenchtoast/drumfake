@@ -36,7 +36,7 @@ class Faceplate {
   void DropFile(const std::string& path, ImVec2 position);
 
  private:
-  enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
+  enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS, PADS_SLICES };
   enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
@@ -168,6 +168,10 @@ class Faceplate {
   bool solo_mode_ = false;
   int held_step_ = -1;
   int preset_bank_ = 0;
+  int slice_bank_ = 0;  // Slices mode: pads 1-8 play slices 8 * bank + 1 to 8.
+  // The slices of the selected track's sample, or null (not on the Sample engine).
+  const SampleSlices* TrackSlices() const;
+  void PlaySlice(int pad);
   float encoder_ = 0.5f;
   float encoder_accumulator_ = 0.0f;
   int browse_index_ = 0;

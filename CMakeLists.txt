@@ -83,6 +83,7 @@ add_library(drumfake_core STATIC
   src/core/midi_parser.cc
   src/core/sample_file.cc
   src/core/sample_pool.cc
+  src/core/slicing.cc
   src/audio/clouds_fx.cc
   src/audio/mod_sources.cc
   src/audio/grain_player.cc

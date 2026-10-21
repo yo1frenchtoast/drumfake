@@ -921,6 +921,154 @@ void TestGrainEngines() {
   }
 }
 
+void TestSlices() {
+  SampleSlices slices;
+  EqualSlices(8, &slices);
+  CHECK(slices.count == 8);
+  CHECK_NEAR(slices.start(3), 0.375, 1e-6);
+  CHECK_NEAR(slices.end(7), 1.0, 1e-6);
+  EqualSlices(0, &slices);
+  CHECK(slices.count == 1);
+  EqualSlices(100, &slices);
+  CHECK(slices.count == kMaxSlices);
+
+  // Tidying: sorted, in [0, 1), no duplicates, the first at 0.
+  slices.count = 6;
+  const float kMessy[6] = { 0.5f, 0.25f, 0.5f, -0.1f, NAN, 1.0f };
+  std::copy(kMessy, kMessy + 6, slices.starts);
+  TidySlices(&slices);
+  CHECK(slices.count == 3);
+  CHECK(slices.starts[0] == 0.0f && slices.starts[1] == 0.25f && slices.starts[2] == 0.5f);
+
+  for (int count = 1; count <= kMaxSlices; ++count) {
+    CHECK(SliceOfColour(0.0f, count) == -1);
+    for (int k = 0; k < count; ++k) {
+      CHECK(SliceOfColour(ColourOfSlice(k, count), count) == k);
+    }
+  }
+  CHECK(SliceOfColour(0.7f, 0) == -1);
+
+  // Attacks: decaying noise bursts at known times over a quiet floor.
+  const double kHits[5] = { 0.0, 0.25, 0.5, 0.8, 1.3 };
+  SampleData hits;
+  hits.frames.assign(96000, 0);
+  uint32_t seed = 7;
+  for (size_t i = 0; i < hits.frames.size(); ++i) {
+    seed = seed * 1664525u + 1013904223u;
+    float noise = static_cast<float>(seed >> 9) / 4194304.0f - 1.0f;
+    float level = 0.002f;
+    for (double t : kHits) {
+      double age = static_cast<double>(i) / 48000.0 - t;
+      if (age >= 0.0 && age < 0.15) {
+        level += 0.8f * static_cast<float>(std::exp(-age / 0.03));
+      }
+    }
+    hits.frames[i] = static_cast<int16_t>(std::clamp(noise * level, -1.0f, 1.0f) * 32767.0f);
+  }
+  CHECK(DetectSlices(hits, &slices) == 5);
+  for (int k = 0; k < 5 && k < slices.count; ++k) {
+    double seconds = slices.start(k) * 2.0;
+    CHECK(seconds <= kHits[k] + 1e-6 && seconds >= kHits[k] - 0.011);
+  }
+  SampleData quiet;
+  quiet.frames.assign(48000, 0);
+  CHECK(DetectSlices(quiet, &slices) == 1 && slices.starts[0] == 0.0f);
+  SampleData steady;
+  steady.frames.resize(48000);
+  for (size_t i = 0; i < steady.frames.size(); ++i) {
+    steady.frames[i] = static_cast<int16_t>(16000.0f * sinf(0.05f * static_cast<float>(i)));
+  }
+  CHECK(DetectSlices(steady, &slices) == 1);
+
+  // The Sample engine plays the slice Colour picks, Start and Length within it.
+  auto sample = NumberedSample(4800);
+  auto frame = [&](int i) { return sample->frames[static_cast<size_t>(i)] / 32768.0f; };
+  SampleSlices quarters;
+  EqualSlices(4, &quarters);
+  TrackSound sound = SampleSound();
+  sound.params[P_COLOUR] = ColourOfSlice(2, 4);
+  auto play = [&](const TrackSound& s, size_t frames) {
+    auto voice = std::make_unique<TrackVoice>();
+    voice->Init();
+    voice->Trigger(1.0f, 0, 1 << 30, 1 << 30);
+    std::vector<float> out;
+    Buses buses;
+    while (out.size() < frames) {
+      buses.Clear();
+      voice->Render(s.params, 0.0f, &buses, sample.get(), &quarters);
+      out.insert(out.end(), voice->last_block(), voice->last_block() + kBlockSize);
+    }
+    return out;
+  };
+  auto out = play(sound, 2000);
+  int mismatches = 0;
+  for (int i = 24; i < 1100; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2400 + i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(out[1300] == 0.0f && out[1900] == 0.0f);  // The slice is 1200 frames long.
+  TrackSound backwards = sound;
+  backwards.params[P_HARMONICS] = 1.0f;
+  backwards.params[P_TIMBRE] = 0.0f;
+  out = play(backwards, 1000);
+  mismatches = 0;
+  for (int i = 24; i < 1000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(3599 - i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  TrackSound whole = sound;
+  whole.params[P_COLOUR] = 0.0f;  // Fully down: the whole sample.
+  out = play(whole, 4000);
+  CHECK(std::fabs(out[3000] - frame(3000)) < 1e-6f);
+
+  // A Slices pad while recording writes the slice as a lock on the step.
+  auto engine = MakeEngine();
+  engine->recording = true;
+  engine->Play();
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = ColourOfSlice(5, 8);
+  engine->LiveTriggerLocked(1, 0.9f, locks);
+  const Step& written = engine->project().patterns[0].tracks[1].steps[0];
+  CHECK(written.on && written.has_lock(P_COLOUR));
+  CHECK(SliceOfColour(written.locks[P_COLOUR], 8) == 5);
+  CHECK(!written.has_lock(P_CUTOFF));
+
+  // Slices are saved with the pool.
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_slices";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  auto project = std::make_unique<Project>();
+  project->Init();
+  project->samples[4] = "break.wav";
+  EqualSlices(16, &project->slices[4]);
+  std::string error;
+  CHECK(SaveProject(*project, (dir / "p.json").string(), &error));
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject((dir / "p.json").string(), loaded.get(), &error));
+  CHECK(loaded->slices[4].count == 16);
+  CHECK_NEAR(loaded->slices[4].start(9), 9.0 / 16.0, 1e-6);
+  CHECK(loaded->slices[3].count == 0);
+
+  // A new sample in a slot starts without slices; the same file keeps them.
+  auto wav = MakeWav(1, 1, 48000, 16, std::vector<float>(4800, 0.2f));
+  std::ofstream(dir / "a.wav", std::ios::binary)
+      .write(reinterpret_cast<const char*>(wav.data()), static_cast<std::streamsize>(wav.size()));
+  auto importer = MakeEngine();
+  importer->project().slices[0].count = 5;  // Left over in the slot.
+  std::string message;
+  CHECK(ImportSample(importer.get(), (dir / "p.json").string(), (dir / "a.wav").string(), 0,
+                     &message));
+  CHECK(importer->project().slices[0].count == 0);
+  CHECK(importer->project().sounds[0].params[P_COLOUR] == 0.0f);
+  EqualSlices(4, &importer->project().slices[0]);
+  CHECK(ImportSample(importer.get(), (dir / "p.json").string(), (dir / "a.wav").string(), 1,
+                     &message));
+  CHECK(importer->project().slices[0].count == 4);
+  fs::remove_all(dir);
+}
+
 void TestSampleTracks() {
   namespace fs = std::filesystem;
   // A step plays the sample of its slot through the engine.
@@ -2317,6 +2465,7 @@ int main() {
   TestSamplePlayer();
   TestSampleTracks();
   TestGrainEngines();
+  TestSlices();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

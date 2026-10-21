@@ -29,15 +29,17 @@ void SamplePlayer::Start() {
   pending_ = true;
 }
 
-void SamplePlayer::Render(const SampleData* sample, const float* params, float note, bool gate,
-                          float* out) {
+void SamplePlayer::Render(const SampleData* sample, const SampleSlices* slices,
+                          const float* params, float note, bool gate, float* out) {
   const int n = sample ? static_cast<int>(sample->frames.size()) : 0;
   if (pending_) {
     pending_ = false;
     playing_ = true;
     played_ = 0.0;
     envelope_ = 1.0f;
-    fade_in_ = params[P_HARMONICS] > 0.001f ? kFadeIn : 0;
+    const bool from_beginning = params[P_HARMONICS] <= 0.001f &&
+        (!slices || SliceOfColour(params[P_COLOUR], slices->count) <= 0);
+    fade_in_ = from_beginning ? 0 : kFadeIn;
   }
   if (!playing_ || n < 4) {
     playing_ = false;  // No sample (an empty slot, or it was removed): nothing to resume.
@@ -45,10 +47,18 @@ void SamplePlayer::Render(const SampleData* sample, const float* params, float n
     return;
   }
 
-  const double last = n - 1;
-  const double start = params[P_HARMONICS] * last;
-  const double span = (params[P_TIMBRE] * 2.0 - 1.0) * n;
-  const double end = std::clamp(start + span, 0.0, last);
+  // The part played: the whole sample, or the slice picked by Colour.
+  double region_start = 0.0;
+  double region_length = n;
+  const int slice = slices ? SliceOfColour(params[P_COLOUR], slices->count) : -1;
+  if (slice >= 0) {
+    region_start = std::floor(slices->start(slice) * n);
+    region_length = std::max(2.0, std::floor(slices->end(slice) * n) - region_start);
+  }
+  const double last = std::min(region_start + region_length, static_cast<double>(n)) - 1.0;
+  const double start = region_start + params[P_HARMONICS] * (last - region_start);
+  const double span = (params[P_TIMBRE] * 2.0 - 1.0) * region_length;
+  const double end = std::clamp(start + span, region_start, last);
   const double direction = end >= start ? 1.0 : -1.0;
   const double length = std::fabs(end - start);
   if (length < 1.0) {
