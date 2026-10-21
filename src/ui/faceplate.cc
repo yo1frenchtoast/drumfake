@@ -903,7 +903,8 @@ void Faceplate::DrawTopLeft() {
   // until a combination is used or Shift is pressed again.
   Interaction shift = Button(c, "##shift", ImVec2(layout::kLeftX0, kShiftY0),
                              ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
-                             ICON_NONE, shift_held_, colors::kAmber);
+                             ICON_NONE, shift_held_, colors::kShift, false,
+                             colors::kShiftFace);
   if (shift_latched_ && shift_used_) {
     shift_latched_ = false;
   }

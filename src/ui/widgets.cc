@@ -391,7 +391,7 @@ void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color
 
 Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
                    const char* face_text, const char* label, Icon icon,
-                   bool lit, ImU32 lit_color, bool led) {
+                   bool lit, ImU32 lit_color, bool led, ImU32 face_color) {
   Interaction in = HitBox(c, id, min, max);
   ImDrawList* dl = c.draw_list;
   ImVec2 a = c.P(min);
@@ -403,7 +403,8 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
                     IM_COL32(0, 0, 0, 120), rounding);
   ImVec2 fa(a.x, a.y + press);
   ImVec2 fb(b.x, b.y + press);
-  ImU32 face = in.hovered ? Shade(colors::kButtonTop, 1.15f) : colors::kButtonTop;
+  const ImU32 rubber = face_color ? face_color : colors::kButtonTop;
+  ImU32 face = in.hovered ? Shade(rubber, 1.15f) : rubber;
   if (lit && !led) {
     // Backlit: tint the rubber with the light color.
     ImVec4 tint = ImGui::ColorConvertU32ToFloat4(lit_color);

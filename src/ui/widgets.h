@@ -32,6 +32,8 @@ const ImU32 kLedOff = IM_COL32(58, 67, 76, 255);
 const ImU32 kLedWhite = IM_COL32(238, 242, 240, 255);
 const ImU32 kAccent = IM_COL32(79, 209, 181, 255);
 const ImU32 kAmber = IM_COL32(242, 184, 75, 255);
+const ImU32 kShift = IM_COL32(240, 158, 72, 255);  // A warmer amber, apart from Vary and Hold.
+const ImU32 kShiftFace = IM_COL32(56, 50, 45, 255);  // Shift's rubber: lighter, warm grey.
 const ImU32 kRed = IM_COL32(229, 72, 77, 255);
 const ImU32 kLockMod = IM_COL32(108, 166, 255, 255);  // LFO/macro modulation.
 const ImU32 kPadFace = IM_COL32(233, 236, 230, 255);
@@ -169,10 +171,11 @@ enum Icon {
 
 // A rubber button. `face_text` is printed on the button (under the icon when
 // there is one), `label` below it.
-// `led` draws a small LED in the top-left corner.
+// `led` draws a small LED in the top-left corner. `face_color` (0 = the usual
+// one) sets the rubber's color when it is not lit.
 Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
                    const char* face_text, const char* label, Icon icon,
-                   bool lit, ImU32 lit_color, bool led = false);
+                   bool lit, ImU32 lit_color, bool led = false, ImU32 face_color = 0);
 
 void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color);
 
