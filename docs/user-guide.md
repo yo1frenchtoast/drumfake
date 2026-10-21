@@ -19,9 +19,17 @@ and a scope. The round encoder changes the Plaits engine of the track (or the so
 **First groove.** Press **Play**. Select a track, then press steps 1–16 to turn them on or
 off. The demo pattern is a good start: *Edit* → *Demo pattern*.
 
-**Themes.** *Edit* → *Theme* switches the look of the faceplate: **Cream** (the default: a cream
-panel, terracotta accents and a colour per track, on its pads and steps) or **Classic** (the
-original slate panel with its mint accent). The choice belongs to the machine, not to the
+**Themes.** *Edit* → *Theme* switches the look of the faceplate, in turn:
+
+| Theme | Look |
+|---|---|
+| **Cream** (default) | Cream panel, warm brown print, terracotta accents, bakelite knobs |
+| **Midnight** | Navy panel, coral accents, pastel track colours |
+| **Sage** | Sage-green panel, ivory pads, rust accents, cream knob caps |
+| **Plum** | Deep plum panel, gold accents and knob caps |
+| **Classic** | The original slate panel with its mint accent, one accent for every track |
+
+All but Classic give each track its own colour, on its pad, its meter and its steps. The choice belongs to the machine, not to the
 project: it is saved at once in `settings.json` beside the project and kept when another
 project is opened.
 

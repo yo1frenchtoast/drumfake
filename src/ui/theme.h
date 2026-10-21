@@ -50,6 +50,7 @@ struct Theme {
   // Pads.
   ImU32 pad_face;
   ImU32 pad_dark;
+  ImU32 pad_dark_dim;  // Quiet words on the dark top of the track pads (the engine).
   ImU32 pad_ink;
   ImU32 pad_muted;
   ImU32 pad_label;   // What a lower pad does (chord, sound, slice...).
@@ -83,7 +84,7 @@ struct Theme {
   ImVec4 widget_accent_light;  // A slider's grab while dragged.
 };
 
-enum ThemeId { THEME_CREAM, THEME_CLASSIC, THEME_LAST };
+enum ThemeId { THEME_CREAM, THEME_MIDNIGHT, THEME_SAGE, THEME_PLUM, THEME_CLASSIC, THEME_LAST };
 
 // The theme the panel is drawn with.
 const Theme& theme();

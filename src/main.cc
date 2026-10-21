@@ -26,7 +26,7 @@ using namespace drumfake;
 namespace {
 
 void PrintUsage() {
-  printf("usage: drumfake [--project FILE] [--midi-monitor] [--theme cream|classic]\n"
+  printf("usage: drumfake [--project FILE] [--midi-monitor] [--theme NAME]\n"
          "       drumfake --render OUT.wav [--bars N] [--project FILE]"
          " [--pattern N] [--grids]\n");
 }

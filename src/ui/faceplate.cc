@@ -2238,7 +2238,7 @@ void Faceplate::DrawPads() {
     // Name, engine and level meter in the dark upper part.
     const TrackSound& sound = project.sounds[t];
     c.Text(min.x + 10, min.y + 10, 10.5f, theme().led_white, sound.name.c_str(), false, true);
-    c.Text(min.x + 10, min.y + 27, 8.5f, theme().label_dim,
+    c.Text(min.x + 10, min.y + 27, 8.5f, theme().pad_dark_dim,
            kEngineNames[Discrete(sound.params[P_ENGINE], kNumEngines)], false);
     float level = std::min(1.0f, engine_->track_peak[t].load() * 1.6f);
     dl->AddRectFilled(c.P(min.x + 10, split - 14), c.P(max.x - 10, split - 10),

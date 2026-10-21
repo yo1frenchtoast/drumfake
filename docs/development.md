@@ -177,6 +177,9 @@ with alpha) and the green Start marker. A theme also sets the knobs' colours per
 and whether each track has its own colour (`TrackColour(track)`, the accent otherwise).
 
 - Adding a colour: a field in `Theme`, a value in **every** theme of `theme.cc`.
+- Adding a theme: a `Theme` in `theme.cc`, its `ThemeId` before `THEME_CLASSIC`, and check the
+  contrast of its text (label on panel and buttons, pad ink on every tinted pad, screen text)
+  against WCAG: 4.5 for words, 3 for quiet words and marks.
 - **Classic must stay pixel-identical** to the original look: compare `--theme classic
   --screenshot` before and after a change touching colours.
 - The screen stays dark in every theme; its accent and widgets follow the theme
