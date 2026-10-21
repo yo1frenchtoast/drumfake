@@ -33,6 +33,13 @@ hand freezes the display until the next Play.
 
 - **Length.** *Edit* → *Length* sets the pattern length. *Last Step* held, then a step or a
   page, sets it without opening Edit.
+- **Extending.** *Shift* + a page sets the length to 16, 32, 48 or 64 steps and, when it grows,
+  repeats what is already there (locks included), as on the DrumBrute: a 16-step pattern and
+  *Shift* + `B|32` gives the same 16 steps twice. A length that is not a whole page repeats on its
+  own period (12 steps to 48 gives four times the 12). A shorter length just shortens.
+  With **Poly** on, the *Steps* view extends the selected track alone (it gets its own length),
+  and the *Patterns* view the whole pattern: tracks with their own length keep it. Undo restores
+  the pattern.
 - **Copying pages.** *Copy* held, then a source page, then a destination page. `A|16` then
   `D|64` repeats the first 16 steps (locks included, all tracks) up to step 64 and extends the
   pattern. A destination before the source copies the page.

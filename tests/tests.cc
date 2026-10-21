@@ -296,6 +296,62 @@ void TestVary() {
   CHECK(ghosts > 0);
 }
 
+void TestPatternExtend() {
+  Pattern p;
+  p.Clear();
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[0].locks[P_CUTOFF] = 0.3f;
+  p.tracks[0].steps[10].on = true;
+  p.tracks[2].steps[3].on = true;
+  // Stale steps past the length are overwritten by the repetition.
+  p.tracks[0].steps[20].on = true;
+
+  // 16 > 32: the whole pattern repeats.
+  p.Extend(-1, 32);
+  CHECK(p.length == 32);
+  CHECK(p.tracks[0].steps[16].on && p.tracks[0].steps[26].on);
+  CHECK_NEAR(p.tracks[0].steps[16].locks[P_CUTOFF], 0.3, 1e-6);
+  CHECK(!p.tracks[0].steps[20].on);
+  CHECK(p.tracks[2].steps[19].on);
+
+  // A length that is not a whole page repeats on its own period: 12 > 48.
+  p.Clear();
+  p.length = 12;
+  p.tracks[1].steps[5].on = true;
+  p.Extend(-1, 48);
+  CHECK(p.length == 48);
+  for (int s = 0; s < 48; ++s) {
+    CHECK(p.tracks[1].steps[s].on == (s % 12 == 5));
+  }
+
+  // Shorter: only the length changes.
+  p.Extend(-1, 16);
+  CHECK(p.length == 16);
+  CHECK(p.tracks[1].steps[41].on);
+
+  // One track (Poly, Steps view): only that track grows, to its own length.
+  p.Clear();
+  p.poly = true;
+  p.tracks[0].steps[2].on = true;
+  p.tracks[3].steps[2].on = true;
+  p.Extend(3, 64);
+  CHECK(p.length == 16);
+  CHECK(p.tracks[3].length == 64);
+  CHECK(p.tracks[3].steps[50].on && p.tracks[3].steps[34].on);
+  CHECK(!p.tracks[0].steps[18].on);
+  CHECK(p.tracks[0].length == 0);
+
+  // The whole pattern (Poly, Patterns view): tracks with their own length keep it.
+  p.tracks[5].length = 6;
+  p.tracks[5].steps[1].on = true;
+  p.Extend(-1, 32);
+  CHECK(p.length == 32);
+  CHECK(p.tracks[0].steps[18].on);
+  CHECK(p.tracks[3].length == 64);
+  CHECK(p.tracks[5].length == 6);
+  CHECK(!p.tracks[5].steps[7].on);
+}
+
 void TestTrackLengthAndPatternChain() {
   auto engine = MakeEngine();
   Project& project = engine->project();
@@ -1535,6 +1591,7 @@ int main() {
   TestLiveRecording();
   TestChoke();
   TestVary();
+  TestPatternExtend();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

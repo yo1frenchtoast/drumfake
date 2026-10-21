@@ -920,7 +920,8 @@ void Faceplate::DrawTopLeft() {
       (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
   if (shift_held_) {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
-           colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End", false);
+           colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End   A-D: extend",
+           false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
            colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   Spice: vary   (locked)"
                           : "15: follow   16: poly   pad: select   Spice: vary", false);
@@ -1605,15 +1606,16 @@ void Faceplate::DrawSequencer() {
   }
 
   // The page buttons also name lengths: with Last Step held they set the
-  // pattern length; with Copy held, the first one pressed is the source and
-  // the second the destination.
+  // pattern length; with Shift held they extend the pattern to that length by
+  // repeating it (in Poly mode and Steps view, the selected track alone); with
+  // Copy held, the first one pressed is the source and the second the destination.
   int play_page = track_step >= 0 ? track_step / kStepsPerPage : -1;
   const char* const kPageLabels[kNumPages] = { "A|16", "B|32", "C|48", "D|64" };
   for (int i = 0; i < kNumPages; ++i) {
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
-        last_step_held_ || copy_held_;
+        last_step_held_ || copy_held_ || shift_held_;
     ImU32 color = i == view_page_ ? colors::kAccent
         : (i == play_page ? colors::kAmber : colors::kLabelDim);
     bool lit = in_pattern && (i == view_page_ || i == play_page);
@@ -1627,6 +1629,21 @@ void Faceplate::DrawSequencer() {
         p.length = (i + 1) * kStepsPerPage;
         last_step_used_ = true;
         Toast("Pattern length: " + std::to_string(p.length) + " steps");
+      } else if (shift_held_) {
+        shift_used_ = true;
+        PushUndo();
+        const int new_length = (i + 1) * kStepsPerPage;
+        if (p.poly && !patterns_mode_) {
+          const int old_length = p.track_length(track);
+          p.Extend(track, new_length);
+          Toast(std::string("Track ") + static_cast<char>('A' + track) + ": " +
+                std::to_string(old_length) + " > " + std::to_string(new_length) + " steps");
+        } else {
+          const int old_length = p.length;
+          p.Extend(-1, new_length);
+          Toast("Pattern: " + std::to_string(old_length) + " > " +
+                std::to_string(new_length) + " steps");
+        }
       } else if (copy_held_) {
         copy_used_ = true;
         if (copy_source_page_ < 0) {

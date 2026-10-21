@@ -92,6 +92,12 @@ struct Pattern {
   // tracks, locks included) up to the end of page `destination`, and extends
   // the pattern to it. Otherwise copies page `source` onto page `destination`.
   void CopyPages(int source, int destination);
+  // Shift + page (as on the DrumBrute): sets the length to `new_length` steps,
+  // repeating the current steps (locks included) when it grows. With `track`
+  // < 0 it is the pattern's length, and the tracks that follow it are repeated
+  // (tracks with their own length keep it); otherwise it is the length of that
+  // track alone.
+  void Extend(int track, int new_length);
   int track_length(int track) const {
     int l = tracks[track].length;
     return l > 0 ? l : length;
