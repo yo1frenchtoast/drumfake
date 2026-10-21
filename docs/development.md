@@ -7,16 +7,18 @@ To build and run, see [building](building.md).
 
 ```
 third_party/eurorack   Mutable Instruments code (submodule, never edited)
-third_party/SDL        SDL3 (submodule, used by the Android build)
+third_party/SDL        SDL3 (submodule, used by the Android and web builds)
 shims/                 minimal AVR headers so grids/resources.cc compiles on a desktop
 patches/               header overrides that shadow the submodule (see patches/README.md)
 src/core/              model and logic with no UI or audio device: params, steps, patterns,
                        kits, song, scales, JSON I/O, Grids and Marbles ports, MIDI parser
 src/audio/             TrackVoice, MasterFx, CloudsFx, ModSources, Engine, WAV renderer
 src/ui/                ImGui faceplate, widgets, multitouch layer
-src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android)
+src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android),
+                       Web MIDI (browser)
 src/app.cc, main.cc    window and audio device setup, command line
 android/               Gradle project building the same CMakeLists.txt into libmain.so
+web/                   HTML shell and storage setup of the Emscripten build
 tests/tests.cc         the test suite (one executable, no framework)
 docs/                  this documentation
 ```
@@ -186,3 +188,16 @@ versions (same pattern, same seed), or to measure the CPU load in a script.
 - Fingers are captured by pads, knobs and buttons; one free finger drives ImGui
   (`src/ui/faceplate.cc`, `FingerDown` and friends). Touch targets matter: test on the tablet.
 - Fonts (Noto Sans, OFL) are bundled in `android/app/src/main/assets/fonts`.
+
+## Web notes
+
+- `emcmake cmake` builds the same targets with Emscripten: `drumfreake.html` and a
+  `drumfreake_tests.js` that runs under Node.js. SDL3 comes from the submodule, statically.
+- There are no threads: the browser drives the main loop (`emscripten_set_main_loop_arg` in
+  `src/app.cc`, one `Frame()` per animation frame) and SDL renders audio on the main thread,
+  between frames, with 1024-frame buffers. The engine lock is still taken, it just never waits.
+- WebAssembly cannot flush denormals: the FTZ/DAZ setup in `Engine::Render()` does not apply.
+- `web/pre.js` mounts `/persist` (IndexedDB) before `main()` runs and writes it back every three
+  seconds and when the page is hidden. The project is `/persist/project.json`.
+- MIDI: `src/io/midi_web.cc` asks for Web MIDI access and hands each message to `DeliverMidi`.
+- The fonts are the Android ones, preloaded into `/fonts`.

@@ -2,7 +2,7 @@
 
 Open-source groovebox inspired by the Arturia DrumFreak prototype (not commercially released to
 date) and the DrumBrute Impact workflow. Independent project, not affiliated with Arturia.
-It runs on Linux and on Android tablets, and is built on the open-source
+It runs on Linux, on Android tablets and in the browser, and is built on the open-source
 [Mutable Instruments](https://github.com/pichenettes/eurorack) DSP:
 
 - **Plaits**: one voice per track (8 tracks, 24 engines: analog and synthetic drums, modal,
@@ -36,7 +36,7 @@ Press **Play**, select a track with its pad and press the steps. The project is 
 |---|---|
 | [User guide](docs/user-guide.md) | What the features do and how to use them |
 | [Controls reference](docs/controls.md) | Every shortcut, gesture and hold combination |
-| [Building](docs/building.md) | Desktop and Android builds, command line, troubleshooting |
+| [Building](docs/building.md) | Desktop, Android and web builds, command line, troubleshooting |
 | [Development guide](docs/development.md) | Code layout, threading rules, tests, how to extend |
 
 ## Limitations
@@ -53,4 +53,4 @@ Third-party code used:
 - Plaits, Rings, Peaks, Marbles, Clouds and stmlib (Émilie Gillet): MIT license;
 - the Grids tables (`grids/resources.cc`): GPLv3;
 - SDL3, Dear ImGui, RtMidi and nlohmann-json: their own permissive licenses;
-- Noto Sans (Android fonts): SIL OFL.
+- Noto Sans (Android and web fonts): SIL OFL.

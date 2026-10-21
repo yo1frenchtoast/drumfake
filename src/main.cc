@@ -38,6 +38,9 @@ int main(int argc, char** argv) {
   // The app's private storage.
   std::string project_path = std::string(SDL_GetPrefPath("drumfreake", "drumfreake")) +
       "project.json";
+#elif defined(__EMSCRIPTEN__)
+  // IndexedDB storage, mounted by web/pre.js.
+  std::string project_path = "/persist/project.json";
 #else
   std::string project_path = DefaultProjectPath();
 #endif
@@ -81,7 +84,12 @@ int main(int argc, char** argv) {
     return 1;
 #else
     app_options.project_path = project_path;
+#ifdef __EMSCRIPTEN__
+    // RunApp returns to the browser, which keeps running the app's frames.
+    return RunApp(engine.release(), app_options);
+#else
     return RunApp(engine.get(), app_options);
+#endif
 #endif
   }
 

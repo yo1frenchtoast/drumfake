@@ -1,5 +1,5 @@
 // MIDI input from the platform (RtMidi on the desktop, the Android MIDI API
-// on Android), delivered to the engine.
+// on Android, Web MIDI in the browser), delivered to the engine.
 
 #ifndef DRUMFREAKE_IO_MIDI_INPUT_H_
 #define DRUMFREAKE_IO_MIDI_INPUT_H_

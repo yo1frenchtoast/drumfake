@@ -1,0 +1,52 @@
+# Builds the web version and publishes it on GitHub Pages.
+# Repository settings: Pages > Source: GitHub Actions.
+name: Web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.13
+      - name: Build
+        run: |
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web -j
+      - name: Test
+        run: node build-web/drumfreake_tests.js
+      - name: Assemble the site
+        run: |
+          mkdir site
+          cp build-web/drumfreake.html site/index.html
+          cp build-web/drumfreake.js build-web/drumfreake.wasm build-web/drumfreake.data site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

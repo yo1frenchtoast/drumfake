@@ -9,6 +9,12 @@ endif()
 
 option(DRUMFREAKE_GUI "Build the SDL3/ImGui front-end" ON)
 
+if(EMSCRIPTEN)
+  # nlohmann-json reports parse errors with exceptions: catch them in wasm too.
+  add_compile_options(-fexceptions)
+  add_link_options(-fexceptions)
+endif()
+
 # Homebrew (linuxbrew) provides SDL3, OpenGL and nlohmann-json on this system.
 if(EXISTS /home/linuxbrew/.linuxbrew)
   list(APPEND CMAKE_PREFIX_PATH /home/linuxbrew/.linuxbrew)
@@ -90,6 +96,10 @@ target_compile_options(drumfreake_core PRIVATE -Wall -Wextra -O2)
 if(NOT ANDROID)
   add_executable(drumfreake_tests tests/tests.cc)
   target_link_libraries(drumfreake_tests PRIVATE drumfreake_core)
+  if(EMSCRIPTEN)
+    # Runs under Node.js: node build-web/drumfreake_tests.js
+    target_link_options(drumfreake_tests PRIVATE -sALLOW_MEMORY_GROWTH -sSTACK_SIZE=4MB)
+  endif()
   enable_testing()
   add_test(NAME drumfreake_tests COMMAND drumfreake_tests)
 endif()
@@ -103,11 +113,17 @@ if(ANDROID)
   set(SDL_STATIC OFF CACHE BOOL "" FORCE)
   set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
   add_subdirectory(third_party/SDL EXCLUDE_FROM_ALL)
+elseif(EMSCRIPTEN)
+  # Web (emcmake): SDL3 from the submodule, linked statically.
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_STATIC ON CACHE BOOL "" FORCE)
+  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/SDL EXCLUDE_FROM_ALL)
 elseif(DRUMFREAKE_GUI)
   find_package(SDL3 REQUIRED CONFIG)
 endif()
 
-if(ANDROID OR DRUMFREAKE_GUI)
+if(ANDROID OR EMSCRIPTEN OR DRUMFREAKE_GUI)
 
   FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -126,6 +142,9 @@ if(ANDROID OR DRUMFREAKE_GUI)
   if(ANDROID)
     target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
     target_link_libraries(imgui PUBLIC SDL3::SDL3 GLESv3)
+  elseif(EMSCRIPTEN)
+    target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
+    target_link_libraries(imgui PUBLIC SDL3::SDL3)
   else()
     # No OpenGL link: the ImGui backend loads GL at run time (see app.cc).
     target_link_libraries(imgui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
@@ -139,6 +158,8 @@ if(ANDROID OR DRUMFREAKE_GUI)
     src/ui/faceplate.cc)
   if(ANDROID)
     list(APPEND APP_SOURCES src/io/midi_android.cc)
+  elseif(EMSCRIPTEN)
+    list(APPEND APP_SOURCES src/io/midi_web.cc)
   else()
     # RtMidi (ALSA) for the desktop MIDI inputs.
     set(RTMIDI_API_JACK OFF CACHE BOOL "" FORCE)
@@ -160,7 +181,20 @@ if(ANDROID OR DRUMFREAKE_GUI)
     set(APP_TARGET drumfreake)
   endif()
   target_link_libraries(${APP_TARGET} PRIVATE drumfreake_core imgui SDL3::SDL3)
-  if(NOT ANDROID)
+  if(EMSCRIPTEN)
+    # drumfreake.html + .js + .wasm + .data (the fonts), see docs/building.md.
+    set_target_properties(drumfreake PROPERTIES SUFFIX ".html")
+    set(WEB_DIR ${CMAKE_SOURCE_DIR}/web)
+    target_link_options(drumfreake PRIVATE
+      -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sGL_ENABLE_GET_PROC_ADDRESS
+      -sALLOW_MEMORY_GROWTH -sSTACK_SIZE=4MB
+      -sFORCE_FILESYSTEM -lidbfs.js
+      --pre-js ${WEB_DIR}/pre.js
+      --shell-file ${WEB_DIR}/shell.html
+      --preload-file ${CMAKE_SOURCE_DIR}/android/app/src/main/assets/fonts@/fonts)
+    set_property(TARGET drumfreake APPEND PROPERTY LINK_DEPENDS
+      ${WEB_DIR}/pre.js ${WEB_DIR}/shell.html)
+  elseif(NOT ANDROID)
     target_link_libraries(${APP_TARGET} PRIVATE rtmidi)
   endif()
   target_compile_options(${APP_TARGET} PRIVATE -Wall -Wextra)
