@@ -32,6 +32,23 @@ int DetectSlices(const SampleData& sample, SampleSlices* slices, float sensitivi
 // Sorts, keeps the starts in [0, 1), drops duplicates and makes the first 0.
 void TidySlices(SampleSlices* slices);
 
+// Manual editing. Positions are fractions of the sample; slice 0 always starts
+// at 0, and two starts are at least kMinSliceGap apart.
+const float kMinSliceGap = 0.001f;
+// The slice playing `position`.
+int SliceAt(const SampleSlices& slices, float position);
+// Adds a slice starting at `position`; returns its index, or -1 (full, or too
+// close to another start). An unsliced sample gets its first slice at 0 too.
+int AddSlice(SampleSlices* slices, float position);
+// Removes slice `k` (not the first): the previous one runs on to the next.
+bool RemoveSlice(SampleSlices* slices, int k);
+// Moves the start of slice `k` (not the first), kept between its neighbours.
+// Returns where it went.
+float MoveSlice(SampleSlices* slices, int k, float position);
+// The zero crossing of `sample` nearest to `frame`, within `radius` frames (or
+// `frame` when there is none): a slice starting there does not click.
+int NearestZeroCrossing(const SampleData& sample, int frame, int radius);
+
 // The Colour knob of the Sample engine: fully down plays the whole sample
 // (-1), then one zone per slice.
 inline int SliceOfColour(float colour, int count) {

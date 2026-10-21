@@ -37,7 +37,8 @@ class Faceplate {
 
  private:
   enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS, PADS_SLICES };
-  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS };
+  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS,
+                    VIEW_SLICES };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
   void DrawChrome();
@@ -144,6 +145,22 @@ class Faceplate {
   bool browse_samples_ = false;  // Browse shows the sample pool.
   float auto_sensitivity_ = 0.5f;  // Share of the attacks Auto slicing keeps.
   int auto_sliced_slot_ = -1;      // Sliced by Auto: the sensitivity slider redoes it.
+  // Slice editor (Browse > Samples > Edit): the slot edited, the selected slice,
+  // the zoom (1 = the whole sample) around a centre, the marker being dragged.
+  void DrawSliceEditor(ImVec2 min, ImVec2 max);
+  // Moves the selected slice's start by `delta` (fraction of the sample),
+  // snapped to a zero crossing.
+  void NudgeSlice(float delta);
+  void PreviewSlice(int slice);
+  int slice_edit_slot_ = -1;
+  int selected_slice_ = 0;
+  float slice_zoom_ = 1.0f;
+  float slice_center_ = 0.5f;
+  int dragging_slice_ = -1;
+  // Peaks of 64-frame blocks of the edited sample, for drawing it zoomed.
+  const SampleData* slice_peaks_sample_ = nullptr;
+  size_t slice_peaks_frames_ = 0;
+  std::vector<float> slice_peaks_;
   int browse_sample_page_ = 0;   // 16 slots per page.
   // Overview of the last sample drawn: peak per column, rebuilt when it changes.
   const SampleData* overview_sample_ = nullptr;

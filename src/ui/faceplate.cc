@@ -277,6 +277,9 @@ void Faceplate::PlaySlice(int pad) {
     return;
   }
   const float colour = ColourOfSlice(slice, slices->count);
+  if (view_ == VIEW_SLICES && slices == &engine_->project().slices[slice_edit_slot_]) {
+    selected_slice_ = slice;  // The editor follows the pads.
+  }
   if (held_step_ >= 0) {
     // Held step: it plays this slice.
     PushUndo();
@@ -1419,6 +1422,8 @@ void Faceplate::DrawScreenSection() {
                               -kMaxMicroTiming, kMaxMicroTiming);
     } else if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
       ChangeKey(keys_field_, steps);
+    } else if (view_ == VIEW_SLICES) {
+      NudgeSlice(steps / (400.0f * slice_zoom_));
     } else if (view_ == VIEW_BROWSE && browse_samples_) {
       // Next or previous filled slot of the pool.
       const Project& project = engine_->project();
@@ -2345,6 +2350,8 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawKeysView(min, max);
   } else if (view_ == VIEW_BROWSE) {
     DrawBrowseView(min, max);
+  } else if (view_ == VIEW_SLICES) {
+    DrawSliceEditor(min, max);
   } else {
     DrawMainView(min, max);
   }
@@ -3192,6 +3199,15 @@ void Faceplate::DrawSampleBrowser(ImVec2 min, ImVec2 max) {
       auto_sliced_slot_ = -1;
       Toast("Slices cleared");
     }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Edit")) {
+      view_ = VIEW_SLICES;
+      slice_edit_slot_ = slot;
+      selected_slice_ = 0;
+      slice_zoom_ = 1.0f;
+      slice_center_ = 0.5f;
+      dragging_slice_ = -1;
+    }
     if (made >= 0) {
       // The track plays the whole sample until a slice is picked.
       engine_->project().sounds[track].params[P_COLOUR] = 0.0f;
@@ -3291,6 +3307,241 @@ void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
   snprintf(text, sizeof(text), "%.2fs%s", sample->seconds(),
            engine == kSampleEngine && end < start ? "  rev" : "");
   c.Text(min.x + 3, min.y + 2, 8, colors::kScreenText, text, false);
+}
+
+void Faceplate::PreviewSlice(int slice) {
+  const int track = engine_->selected_track;
+  const TrackSound& sound = engine_->project().sounds[track];
+  const SampleSlices& slices = engine_->project().slices[slice_edit_slot_];
+  // Heard when the selected track plays this sample on the Sample engine.
+  if (Discrete(sound.params[P_ENGINE], kNumEngines) != kSampleEngine ||
+      SampleSlot(sound.params[P_AUX]) != slice_edit_slot_ || slice >= slices.count) {
+    return;
+  }
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = ColourOfSlice(slice, slices.count);
+  // Heard, not recorded.
+  bool recording = engine_->recording;
+  engine_->recording = false;
+  engine_->LiveTriggerLocked(track, 0.8f, locks);
+  engine_->recording = recording;
+}
+
+void Faceplate::NudgeSlice(float delta) {
+  const SampleData* sample = engine_->sample(slice_edit_slot_);
+  if (!sample || selected_slice_ <= 0) {
+    return;
+  }
+  SampleSlices& slices = engine_->project().slices[slice_edit_slot_];
+  const float n = static_cast<float>(sample->frames.size());
+  float target = slices.start(selected_slice_) + delta;
+  int frame = NearestZeroCrossing(*sample, static_cast<int>(target * n), 24);
+  // A nudge always moves, even when the crossing found is behind.
+  float snapped = frame / n;
+  if ((delta > 0.0f && snapped <= slices.start(selected_slice_)) ||
+      (delta < 0.0f && snapped >= slices.start(selected_slice_))) {
+    snapped = target;
+  }
+  float moved = MoveSlice(&slices, selected_slice_, snapped);
+  // Keep the moved start in view.
+  float span = 1.0f / slice_zoom_;
+  if (moved < slice_center_ - span * 0.45f || moved > slice_center_ + span * 0.45f) {
+    slice_center_ = moved;
+  }
+}
+
+void Faceplate::DrawSliceEditor(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  Project& project = engine_->project();
+  const int slot = slice_edit_slot_;
+  const SampleData* sample = slot >= 0 ? engine_->sample(slot) : nullptr;
+  if (!sample || sample->frames.size() < 64) {
+    view_ = VIEW_BROWSE;
+    return;
+  }
+  SampleSlices& slices = project.slices[slot];
+  if (slices.count == 0) {
+    slices.count = 1;  // Editing an unsliced sample: one slice, the whole of it.
+    slices.starts[0] = 0.0f;
+  }
+  selected_slice_ = std::clamp(selected_slice_, 0, slices.count - 1);
+  const size_t n = sample->frames.size();
+
+  char text[96];
+  snprintf(text, sizeof(text), "SLICES  %s   %d/%d",
+           std::filesystem::path(project.samples[slot]).stem().string().c_str(),
+           selected_slice_ + 1, slices.count);
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+  c.Text(max.x - 6 - 170, min.y + 5, 8, colors::kScreenDim,
+         "drag: move  double-click: add  right-click: remove", false);
+
+  // The visible part of the sample.
+  const ImVec2 a(min.x + 6, min.y + 20);
+  const ImVec2 b(max.x - 6, max.y - 20);
+  slice_zoom_ = std::clamp(slice_zoom_, 1.0f, 256.0f);
+  const float span = 1.0f / slice_zoom_;
+  slice_center_ = std::clamp(slice_center_, span * 0.5f, 1.0f - span * 0.5f);
+  const float v0 = slice_center_ - span * 0.5f;
+  auto x_of = [&](float position) { return a.x + (position - v0) / span * (b.x - a.x); };
+  auto position_of = [&](float x) {
+    return std::clamp(v0 + (x - a.x) / (b.x - a.x) * span, 0.0f, 1.0f);
+  };
+
+  // Peaks of 64-frame blocks, once per sample.
+  const size_t kBlock = 64;
+  if (sample != slice_peaks_sample_ || n != slice_peaks_frames_) {
+    slice_peaks_sample_ = sample;
+    slice_peaks_frames_ = n;
+    slice_peaks_.assign((n + kBlock - 1) / kBlock, 0.0f);
+    for (size_t i = 0; i < n; ++i) {
+      float v = std::abs(static_cast<int>(sample->frames[i])) / 32768.0f;
+      slice_peaks_[i / kBlock] = std::max(slice_peaks_[i / kBlock], v);
+    }
+  }
+  dl->AddRectFilled(c.P(a), c.P(b), IM_COL32(16, 24, 27, 255));
+  // The selected slice.
+  dl->AddRectFilled(c.P(std::max(a.x, x_of(slices.start(selected_slice_))), a.y),
+                    c.P(std::min(b.x, x_of(slices.end(selected_slice_))), b.y),
+                    WithAlpha(colors::kAccent, 40));
+  const float mid = (a.y + b.y) * 0.5f;
+  const float half = (b.y - a.y) * 0.5f - 1.0f;
+  const int columns = std::max(1, static_cast<int>(b.x - a.x));
+  for (int x = 0; x < columns; ++x) {
+    size_t f0 = static_cast<size_t>((v0 + span * x / columns) * n);
+    size_t f1 = std::max(f0 + 1, static_cast<size_t>((v0 + span * (x + 1) / columns) * n));
+    float peak = 0.0f;
+    if (f1 - f0 >= kBlock) {
+      for (size_t k = f0 / kBlock; k < std::min(slice_peaks_.size(), f1 / kBlock + 1); ++k) {
+        peak = std::max(peak, slice_peaks_[k]);
+      }
+    } else {
+      for (size_t i = f0; i < f1 && i < n; ++i) {
+        peak = std::max(peak, std::abs(static_cast<int>(sample->frames[i])) / 32768.0f);
+      }
+    }
+    float h = std::max(0.5f, peak * half);
+    dl->AddLine(c.P(a.x + x, mid - h), c.P(a.x + x, mid + h), colors::kScreenAccent, c.S(1));
+  }
+  // Markers, numbered.
+  for (int k = 0; k < slices.count; ++k) {
+    float x = x_of(slices.start(k));
+    if (x < a.x - 1 || x > b.x + 1) {
+      continue;
+    }
+    bool selected = k == selected_slice_;
+    dl->AddLine(c.P(x, a.y), c.P(x, b.y), selected ? colors::kAmber : WithAlpha(colors::kScreenText, 150),
+                c.S(selected ? 2.0f : 1.0f));
+    snprintf(text, sizeof(text), "%d", k + 1);
+    c.Text(x + 2, a.y + 1, 7.5f, selected ? colors::kAmber : colors::kScreenDim, text, false);
+  }
+
+  // Mouse or finger on the waveform.
+  Interaction in = HitBox(c, "##slicewave", a, b);
+  ImGuiIO& io = ImGui::GetIO();
+  const float mouse_x = (io.MousePos.x - canvas_.origin.x) / canvas_.scale;
+  const float grab = 4.0f;  // Panel units around a marker.
+  auto marker_near = [&]() {
+    int best = -1;
+    float best_distance = grab;
+    for (int k = 1; k < slices.count; ++k) {
+      float d = std::fabs(x_of(slices.start(k)) - mouse_x);
+      if (d <= best_distance) {
+        best = k;
+        best_distance = d;
+      }
+    }
+    return best;
+  };
+  auto snapped = [&](float position) {
+    return NearestZeroCrossing(*sample, static_cast<int>(position * n), 48) / static_cast<float>(n);
+  };
+  if (in.right_clicked || in.long_pressed) {
+    int k = marker_near();
+    if (k > 0 && RemoveSlice(&slices, k)) {
+      selected_slice_ = k - 1;
+      dragging_slice_ = -1;
+      Toast("Slice " + std::to_string(k + 1) + " removed");
+    }
+  } else if (in.double_clicked) {
+    int k = AddSlice(&slices, snapped(position_of(mouse_x)));
+    if (k >= 0) {
+      selected_slice_ = k;
+      Toast("Slice added: " + std::to_string(slices.count) + " slices");
+      PreviewSlice(k);
+    }
+  } else if (in.pressed) {
+    int k = marker_near();
+    if (k > 0) {
+      dragging_slice_ = k;
+      selected_slice_ = k;
+    } else {
+      selected_slice_ = SliceAt(slices, position_of(mouse_x));
+      PreviewSlice(selected_slice_);
+    }
+  }
+  if (in.active && dragging_slice_ > 0 && dragging_slice_ < slices.count) {
+    MoveSlice(&slices, dragging_slice_, snapped(position_of(mouse_x)));
+  }
+  if (!in.active && dragging_slice_ > 0) {
+    PreviewSlice(dragging_slice_);
+    dragging_slice_ = -1;
+  }
+  if (in.hovered && io.MouseWheel != 0.0f) {
+    // Zoom around the pointer.
+    float anchor = position_of(mouse_x);
+    slice_zoom_ = std::clamp(slice_zoom_ * (io.MouseWheel > 0.0f ? 1.5f : 1.0f / 1.5f), 1.0f, 256.0f);
+    slice_center_ = anchor;
+  }
+
+  // Buttons.
+  ImGui::SetCursorScreenPos(c.P(min.x + 6, max.y - 15));
+  if (ImGui::SmallButton("<")) {
+    selected_slice_ = std::max(0, selected_slice_ - 1);
+    slice_center_ = slices.start(selected_slice_) + span * 0.25f;
+    PreviewSlice(selected_slice_);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton(">")) {
+    selected_slice_ = std::min(slices.count - 1, selected_slice_ + 1);
+    slice_center_ = slices.start(selected_slice_) + span * 0.25f;
+    PreviewSlice(selected_slice_);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Add")) {
+    // Splits the selected slice in the middle.
+    float middle = (slices.start(selected_slice_) + slices.end(selected_slice_)) * 0.5f;
+    int k = AddSlice(&slices, snapped(middle));
+    if (k >= 0) {
+      selected_slice_ = k;
+      PreviewSlice(k);
+    } else {
+      Toast(slices.count >= kMaxSlices ? "48 slices at most" : "Slice too short to split");
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Remove") && selected_slice_ > 0) {
+    RemoveSlice(&slices, selected_slice_);
+    --selected_slice_;
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("-")) {
+    slice_zoom_ = std::max(1.0f, slice_zoom_ / 2.0f);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("+")) {
+    slice_zoom_ = std::min(256.0f, slice_zoom_ * 2.0f);
+    slice_center_ = slices.start(selected_slice_) + 0.25f / slice_zoom_;
+  }
+  ImGui::SameLine();
+  snprintf(text, sizeof(text), "x%.0f  %.3fs", slice_zoom_,
+           slices.start(selected_slice_) * static_cast<float>(n) / kSampleFileRate);
+  ImGui::TextUnformatted(text);
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Done")) {
+    view_ = VIEW_BROWSE;
+  }
 }
 
 // --- Keyboard ----------------------------------------------------------------------

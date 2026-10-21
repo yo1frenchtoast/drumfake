@@ -1230,6 +1230,49 @@ void TestResampling() {
   fs::remove_all(dir);
 }
 
+void TestSliceEditing() {
+  SampleSlices slices;
+  CHECK(AddSlice(&slices, 0.5f) == 1);  // Unsliced: the start, then this one.
+  CHECK(slices.count == 2 && slices.starts[0] == 0.0f && slices.starts[1] == 0.5f);
+  CHECK(AddSlice(&slices, 0.25f) == 1);  // Kept in order.
+  CHECK(AddSlice(&slices, 0.75f) == 3);
+  CHECK(slices.count == 4 && slices.starts[1] == 0.25f && slices.starts[2] == 0.5f);
+  CHECK(AddSlice(&slices, 0.5f + kMinSliceGap * 0.5f) == -1);  // Too close.
+  CHECK(AddSlice(&slices, 0.0f) == -1 && AddSlice(&slices, 1.0f) == -1);
+  CHECK(SliceAt(slices, 0.1f) == 0 && SliceAt(slices, 0.25f) == 1 && SliceAt(slices, 0.6f) == 2);
+  CHECK(SliceAt(slices, 0.99f) == 3);
+
+  // Moving stays between the neighbours; the first slice stays at 0.
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.4f), 0.4, 1e-6);
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.1f), 0.25 + kMinSliceGap, 1e-6);
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.9f), 0.75 - kMinSliceGap, 1e-6);
+  CHECK(MoveSlice(&slices, 0, 0.3f) == 0.0f && slices.starts[0] == 0.0f);
+  for (int k = 1; k < slices.count; ++k) {
+    CHECK(slices.starts[k] > slices.starts[k - 1]);
+  }
+
+  // Removing merges into the previous slice; the first cannot go.
+  CHECK(RemoveSlice(&slices, 1));
+  CHECK(slices.count == 3 && SliceAt(slices, 0.3f) == 0);
+  CHECK(!RemoveSlice(&slices, 0) && !RemoveSlice(&slices, 3));
+
+  // Full: no more slices.
+  EqualSlices(kMaxSlices, &slices);
+  CHECK(AddSlice(&slices, 0.5f + 0.5f / kMaxSlices) == -1);
+
+  // Zero crossings: the nearest one within the radius, or the frame itself.
+  SampleData wave;
+  wave.frames.resize(4800);
+  for (size_t i = 0; i < wave.frames.size(); ++i) {
+    wave.frames[i] = static_cast<int16_t>(10000.0f * sinf(2.0f * 3.14159265f * 100.0f * i / 48000.0f));
+  }
+  // A 100 Hz sine crosses zero every 240 frames.
+  CHECK(std::abs(NearestZeroCrossing(wave, 250, 48) - 240) <= 1);
+  CHECK(std::abs(NearestZeroCrossing(wave, 470, 48) - 480) <= 1);
+  CHECK(NearestZeroCrossing(wave, 120, 48) == 120);  // None within reach.
+  CHECK(NearestZeroCrossing(wave, 0, 48) >= 0);
+}
+
 void TestSampleTracks() {
   namespace fs = std::filesystem;
   // A step plays the sample of its slot through the engine.
@@ -2627,6 +2670,7 @@ int main() {
   TestSampleTracks();
   TestGrainEngines();
   TestSlices();
+  TestSliceEditing();
   TestResampling();
   TestGridsPlayback();
   TestProjectRoundTrip();

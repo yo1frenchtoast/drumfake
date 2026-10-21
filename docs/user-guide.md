@@ -171,7 +171,23 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
   the strongest first: 100% slices every hit, ghost notes and cymbals included; 50% (the
   default) about half; lower keeps only the main hits. Moving it after Auto slices again, so you
   can set it by ear. At most 48 slices. Slices belong to the sample (all tracks using it share
-  them) and are saved with the project. Then:
+  them) and are saved with the project.
+- **Editing slices by hand.** *Edit* (same row) opens the slice editor on the screen: the
+  sample with its numbered slice starts, the selected slice shaded.
+  - Click in the waveform to select a slice (it plays, when the selected track is on that
+    sample); **drag a start** to move it, or turn the **encoder** to nudge the selected one.
+  - **Double-click** adds a start there; a **right click** (or a long press) on a start removes
+    it (the slice before runs on). *Add* splits the selected slice in two, *Remove* merges it
+    into the previous one.
+  - Starts snap to the nearest zero crossing, so slices do not click. The first slice always
+    starts at the beginning (use Start to skip silence).
+  - *−* / *+* and the mouse wheel zoom (up to 256 times) around the selection; `<` / `>`
+    select the previous or next slice; *Done* goes back to the browser. In *Slices* pad mode,
+    a pad selects its slice in the editor.
+  - Adding or removing a slice renumbers the ones after it: steps locked to a slice number
+    then play its new neighbour.
+
+  Then:
   - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (Shift held: full
     velocity). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With
     *Rec* on, a pad writes its hit on the step under the playhead, with the slice as a lock.

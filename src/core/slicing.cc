@@ -72,6 +72,77 @@ void Fft(std::vector<float>* re, std::vector<float>* im) {
 
 }  // namespace
 
+int SliceAt(const SampleSlices& slices, float position) {
+  int k = 0;
+  while (k + 1 < slices.count && slices.starts[k + 1] <= position) {
+    ++k;
+  }
+  return k;
+}
+
+int AddSlice(SampleSlices* slices, float position) {
+  if (!(position > 0.0f && position < 1.0f)) {
+    return -1;
+  }
+  if (slices->count == 0) {
+    slices->count = 1;
+    slices->starts[0] = 0.0f;
+  }
+  if (slices->count >= kMaxSlices) {
+    return -1;
+  }
+  int k = SliceAt(*slices, position) + 1;  // The new slice's index.
+  float before = slices->starts[k - 1];
+  float after = k < slices->count ? slices->starts[k] : 1.0f;
+  if (position - before < kMinSliceGap || after - position < kMinSliceGap) {
+    return -1;
+  }
+  for (int i = slices->count; i > k; --i) {
+    slices->starts[i] = slices->starts[i - 1];
+  }
+  slices->starts[k] = position;
+  ++slices->count;
+  return k;
+}
+
+bool RemoveSlice(SampleSlices* slices, int k) {
+  if (k <= 0 || k >= slices->count) {
+    return false;
+  }
+  for (int i = k; i + 1 < slices->count; ++i) {
+    slices->starts[i] = slices->starts[i + 1];
+  }
+  --slices->count;
+  return true;
+}
+
+float MoveSlice(SampleSlices* slices, int k, float position) {
+  if (k <= 0 || k >= slices->count) {
+    return k == 0 ? 0.0f : position;
+  }
+  float lo = slices->starts[k - 1] + kMinSliceGap;
+  float hi = (k + 1 < slices->count ? slices->starts[k + 1] : 1.0f) - kMinSliceGap;
+  slices->starts[k] = std::clamp(position, lo, std::max(lo, hi));
+  return slices->starts[k];
+}
+
+int NearestZeroCrossing(const SampleData& sample, int frame, int radius) {
+  const int n = static_cast<int>(sample.frames.size());
+  auto crossing = [&](int i) {
+    return i > 0 && i < n && (sample.frames[static_cast<size_t>(i - 1)] < 0) !=
+        (sample.frames[static_cast<size_t>(i)] < 0);
+  };
+  for (int d = 0; d <= radius; ++d) {
+    if (crossing(frame - d)) {
+      return frame - d;
+    }
+    if (crossing(frame + d)) {
+      return frame + d;
+    }
+  }
+  return frame;
+}
+
 int DetectSlices(const SampleData& sample, SampleSlices* slices, float sensitivity) {
   // Spectral flux: how much new energy each 256-frame hop brings, summed over
   // the spectrum (log magnitudes). A hit stands out in its own band even over
