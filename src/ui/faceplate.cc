@@ -3165,15 +3165,31 @@ void Faceplate::DrawSampleBrowser(ImVec2 min, ImVec2 max) {
       if (ImGui::SmallButton(label)) {
         EqualSlices(count, &slices);
         made = count;
+        auto_sliced_slot_ = -1;
       }
     }
     ImGui::SameLine();
+    // Auto: a slice at each attack; the sensitivity keeps the strongest share
+    // (moving it slices again, to choose by ear).
+    bool redo = false;
     if (ImGui::SmallButton("Auto")) {
-      made = DetectSlices(*engine_->sample(slot), &slices);
+      redo = true;
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(c.S(52));
+    float percent = auto_sensitivity_ * 100.0f;
+    if (ImGui::SliderFloat("##sens", &percent, 5.0f, 100.0f, "Sens %.0f%%")) {
+      auto_sensitivity_ = percent / 100.0f;
+      redo = auto_sliced_slot_ == slot;
+    }
+    if (redo) {
+      made = DetectSlices(*engine_->sample(slot), &slices, auto_sensitivity_);
+      auto_sliced_slot_ = slot;
     }
     ImGui::SameLine();
     if (ImGui::SmallButton("Clear")) {
       slices.Clear();
+      auto_sliced_slot_ = -1;
       Toast("Slices cleared");
     }
     if (made >= 0) {

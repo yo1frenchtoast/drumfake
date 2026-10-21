@@ -1022,6 +1022,17 @@ void TestSlices() {
     loud += static_cast<int>(std::lround(hit)) % 4 == 0;
   }
   CHECK(loud == 19);  // All the loud hits after the first are among them.
+  // A lower sensitivity keeps the strongest share: here the loud hits first.
+  CHECK(DetectSlices(busy, &slices, 0.25f) == 21);  // The start and 20 of the 79 attacks.
+  loud = 0;
+  for (int k = 1; k < slices.count; ++k) {
+    loud += static_cast<int>(std::lround(slices.start(k) * 80.0)) % 4 == 0;
+  }
+  CHECK(loud == 19);
+  for (int k = 1; k < slices.count; ++k) {
+    CHECK(slices.start(k) > slices.start(k - 1));
+  }
+  CHECK(DetectSlices(busy, &slices, 0.0f) == 1);
   SampleData quiet;
   quiet.frames.assign(48000, 0);
   CHECK(DetectSlices(quiet, &slices) == 1 && slices.starts[0] == 0.0f);

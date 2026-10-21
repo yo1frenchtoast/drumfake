@@ -25,8 +25,10 @@ struct SampleSlices {
 // `count` slices of the same length.
 void EqualSlices(int count, SampleSlices* slices);
 // A slice at each attack (transient) of `sample`, and one at the start.
-// Returns the number of slices.
-int DetectSlices(const SampleData& sample, SampleSlices* slices);
+// `sensitivity` (0 to 1) is the share of the attacks kept, the strongest
+// first: 1 keeps them all (ghost notes and cymbals too), lower keeps the main
+// hits. Returns the number of slices.
+int DetectSlices(const SampleData& sample, SampleSlices* slices, float sensitivity = 1.0f);
 // Sorts, keeps the starts in [0, 1), drops duplicates and makes the first 0.
 void TidySlices(SampleSlices* slices);
 

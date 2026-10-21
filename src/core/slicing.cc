@@ -72,12 +72,13 @@ void Fft(std::vector<float>* re, std::vector<float>* im) {
 
 }  // namespace
 
-int DetectSlices(const SampleData& sample, SampleSlices* slices) {
+int DetectSlices(const SampleData& sample, SampleSlices* slices, float sensitivity) {
   // Spectral flux: how much new energy each 256-frame hop brings, summed over
   // the spectrum (log magnitudes). A hit stands out in its own band even over
   // a sustained cymbal, where the overall level hardly moves. An attack is a
   // local peak of the flux above a running median, at least 50 ms after the
-  // previous one. With more attacks than slices, the strongest are kept.
+  // previous one (the stronger of two closer ones). Then the strongest share
+  // set by `sensitivity` is kept, at most kMaxSlices.
   const size_t kSize = 1024;
   const size_t kHop = 256;
   const size_t n = sample.frames.size();
@@ -122,8 +123,6 @@ int DetectSlices(const SampleData& sample, SampleSlices* slices) {
   // Below this, the flux is the rounding noise of a steady sound (a real hit
   // brings hundreds to thousands).
   const float kFloor = 20.0f;
-  size_t last = 0;
-  bool any = false;
   std::vector<float> around;
   std::vector<std::pair<float, size_t>> attacks;  // Strength, start frame.
   for (size_t f = 1; f + 1 < frames; ++f) {
@@ -144,19 +143,25 @@ int DetectSlices(const SampleData& sample, SampleSlices* slices) {
     // the steepest part of the Hann window, three quarters into it.
     size_t onset = f * kHop + 3 * kSize / 4 - kHop / 2;
     onset = onset > kEarly ? onset - kEarly : 0;
-    if (any && onset - last < kMinGap) {
+    const float strength = flux[f] - threshold;
+    if (!attacks.empty() && onset - attacks.back().second < kMinGap) {
+      if (strength > attacks.back().first) {
+        attacks.back() = { strength, onset };  // The stronger of two close attacks.
+      }
       continue;
     }
-    if (onset >= kMinGap) {  // An attack at the very start is the first slice.
-      attacks.push_back({ flux[f] - threshold, onset });
-    }
-    last = onset;
-    any = true;
+    attacks.push_back({ strength, onset });
   }
-  if (attacks.size() > static_cast<size_t>(kMaxSlices - 1)) {
+  if (!attacks.empty() && attacks.front().second < kMinGap) {
+    attacks.erase(attacks.begin());  // An attack at the very start is the first slice.
+  }
+  const size_t keep = std::min(
+      static_cast<size_t>(kMaxSlices - 1),
+      static_cast<size_t>(std::ceil(std::clamp(sensitivity, 0.0f, 1.0f) * attacks.size())));
+  if (attacks.size() > keep) {
     std::sort(attacks.begin(), attacks.end(),
               [](const auto& a, const auto& b) { return a.first > b.first; });
-    attacks.resize(kMaxSlices - 1);
+    attacks.resize(keep);
     std::sort(attacks.begin(), attacks.end(),
               [](const auto& a, const auto& b) { return a.second < b.second; });
   }

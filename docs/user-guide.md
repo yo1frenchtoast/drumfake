@@ -167,8 +167,10 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
   (red) and the **Loop** point (amber); while playing, they follow locks and modulations.
 - **Slices.** In *Browse → Samples*, the buttons at the bottom slice the sample of the selected
   track: into **4, 8, 16 or 32** equal parts, **Auto** (a slice at each attack, found in each frequency
-  band, so a kick under a ride or a ghost note counts; up to 48, the strongest when there are
-  more), or **Clear**. Slices belong to the sample (all tracks using it share
+  band, so a kick under a ride counts), or **Clear**. **Sens** sets how many attacks Auto keeps,
+  the strongest first: 100% slices every hit, ghost notes and cymbals included; 50% (the
+  default) about half; lower keeps only the main hits. Moving it after Auto slices again, so you
+  can set it by ear. At most 48 slices. Slices belong to the sample (all tracks using it share
   them) and are saved with the project. Then:
   - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (Shift held: full
     velocity). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With

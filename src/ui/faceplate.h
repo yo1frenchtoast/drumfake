@@ -142,6 +142,8 @@ class Faceplate {
   // The sample of the selected track, with Start, end of Length and Loop.
   void DrawSampleOverview(ImVec2 min, ImVec2 max);
   bool browse_samples_ = false;  // Browse shows the sample pool.
+  float auto_sensitivity_ = 0.5f;  // Share of the attacks Auto slicing keeps.
+  int auto_sliced_slot_ = -1;      // Sliced by Auto: the sensitivity slider redoes it.
   int browse_sample_page_ = 0;   // 16 slots per page.
   // Overview of the last sample drawn: peak per column, rebuilt when it changes.
   const SampleData* overview_sample_ = nullptr;
