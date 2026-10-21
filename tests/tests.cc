@@ -1,5 +1,5 @@
-// Tests for the Drumf(re)ake core: sequencer timing, Grids port, persistence and
-// a full render. Run: ./build/drumfreake_tests
+// Tests for the Drumfake core: sequencer timing, Grids port, persistence and
+// a full render. Run: ./build/drumfake_tests
 
 #include <cmath>
 #include <cstdio>
@@ -19,7 +19,7 @@
 #include "grids/resources.h"
 #include <nlohmann/json.hpp>
 
-using namespace drumfreake;
+using namespace drumfake;
 
 namespace {
 
@@ -907,10 +907,29 @@ void TestClouds() {
   CHECK(frozen > 0.005f);
 }
 
+// Data of the old project name: moved once, never over a newer directory.
+void TestLegacyDataMigration() {
+  namespace fs = std::filesystem;
+  fs::path base = fs::temp_directory_path() / "drumfake_migration_test";
+  fs::remove_all(base);
+  fs::create_directories(base / "drumfreake" / "kits");
+  std::ofstream(base / "drumfreake" / "project.json") << "{}";
+  std::string project_path = (base / "drumfake" / "project.json").string();
+  CHECK(MigrateLegacyDataDirectory(project_path));
+  CHECK(fs::exists(project_path));
+  CHECK(fs::is_directory(base / "drumfake" / "kits"));
+  CHECK(!fs::exists(base / "drumfreake"));
+
+  fs::create_directories(base / "drumfreake");
+  CHECK(!MigrateLegacyDataDirectory(project_path));  // The new one exists.
+  CHECK(fs::exists(base / "drumfreake"));
+  fs::remove_all(base);
+}
+
 // Kit library: files, listing order, apply to the pattern or to all patterns.
 void TestKitLibrary() {
   namespace fs = std::filesystem;
-  fs::path dir = fs::temp_directory_path() / "drumfreake_kit_test";
+  fs::path dir = fs::temp_directory_path() / "drumfake_kit_test";
   fs::remove_all(dir);
   CHECK(ListKits(dir.string()).empty());  // No directory yet.
 
@@ -1214,7 +1233,7 @@ void TestLegacyProjectKits() {
   auto project = std::make_unique<Project>();
   project->Init();
   ApplyPreset(PRESET_CLAP, &project->sounds[3]);
-  std::string path = (std::filesystem::temp_directory_path() / "drumfreake_v1.json").string();
+  std::string path = (std::filesystem::temp_directory_path() / "drumfake_v1.json").string();
   std::string error;
   CHECK(SaveProject(*project, path, &error));
   nlohmann::json j;
@@ -1457,7 +1476,7 @@ void TestProjectRoundTrip() {
   project.patterns[3].vary = 0.4f;
   project.patterns[3].vary_seed = 0xdeadbeef;
 
-  std::string path = (std::filesystem::temp_directory_path() / "drumfreake_test.json").string();
+  std::string path = (std::filesystem::temp_directory_path() / "drumfake_test.json").string();
   std::string error;
   CHECK(SaveProject(project, path, &error));
   auto loaded = std::make_unique<Project>();
@@ -1576,6 +1595,7 @@ int main() {
   TestPeaksMods();
   TestMarbles();
   TestClouds();
+  TestLegacyDataMigration();
   TestKitLibrary();
   TestSong();
   TestMidiParser();

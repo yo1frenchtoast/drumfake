@@ -1,6 +1,6 @@
 # Controls reference
 
-Drumf(re)ake is built around a faceplate that you drive with a mouse and keyboard on a desktop,
+Drumfake is built around a faceplate that you drive with a mouse and keyboard on a desktop,
 or with your fingers on a tablet. This page lists every gesture. For what the features do, see
 the [user guide](user-guide.md).
 
@@ -44,7 +44,7 @@ on-screen menus.
 
 ## Hold combinations
 
-These work with the button held down, like on a DrumBrute.
+These work with the button held down.
 
 | Hold | Then | Result |
 |---|---|---|

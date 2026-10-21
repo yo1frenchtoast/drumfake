@@ -1,6 +1,6 @@
 #include "core/midi_parser.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 int MidiParser::DataBytes(uint8_t status) {
   switch (status & 0xf0) {
@@ -71,4 +71,4 @@ bool MidiParser::Feed(uint8_t byte, MidiMessage* message) {
   return true;
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

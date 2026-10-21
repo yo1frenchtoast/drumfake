@@ -1,14 +1,14 @@
 // Project save/load, as JSON.
 
-#ifndef DRUMFREAKE_CORE_PROJECT_IO_H_
-#define DRUMFREAKE_CORE_PROJECT_IO_H_
+#ifndef DRUMFAKE_CORE_PROJECT_IO_H_
+#define DRUMFAKE_CORE_PROJECT_IO_H_
 
 #include <string>
 #include <vector>
 
 #include "core/project.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 bool SaveProject(const Project& project, const std::string& path, std::string* error);
 bool LoadProject(const std::string& path, Project* project, std::string* error);
@@ -31,9 +31,14 @@ bool SaveKitFile(const std::string& directory, const TrackSound* kit,
 bool LoadKitFile(const std::string& path, TrackSound* kit, std::string* error);
 bool DeleteKitFile(const std::string& path, std::string* error);
 
-// ~/.local/share/drumfreake/project.json (or $XDG_DATA_HOME/drumfreake/...).
+// ~/.local/share/drumfake/project.json (or $XDG_DATA_HOME/drumfake/...).
 std::string DefaultProjectPath();
 
-}  // namespace drumfreake
+// The project was named "drumfreake" before: if the directory of `project_path`
+// does not exist yet, renames the old "drumfreake" directory beside it (project
+// and kit library). Returns true if it moved something.
+bool MigrateLegacyDataDirectory(const std::string& project_path);
 
-#endif  // DRUMFREAKE_CORE_PROJECT_IO_H_
+}  // namespace drumfake
+
+#endif  // DRUMFAKE_CORE_PROJECT_IO_H_

@@ -1,8 +1,8 @@
 // MIDI input from the platform (RtMidi on the desktop, the Android MIDI API
 // on Android, Web MIDI in the browser), delivered to the engine.
 
-#ifndef DRUMFREAKE_IO_MIDI_INPUT_H_
-#define DRUMFREAKE_IO_MIDI_INPUT_H_
+#ifndef DRUMFAKE_IO_MIDI_INPUT_H_
+#define DRUMFAKE_IO_MIDI_INPUT_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -11,14 +11,14 @@
 #include "audio/engine.h"
 #include "core/midi_parser.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 class MidiInput {
  public:
   explicit MidiInput(Engine* engine);
   ~MidiInput();
 
-  // Opens every input (and, on the desktop, a virtual "Drumf(re)ake" port).
+  // Opens every input (and, on the desktop, a virtual "Drumfake" port).
   void Start();
   // Opens inputs connected since the last call. Call it every few seconds.
   void Poll();
@@ -32,6 +32,6 @@ class MidiInput {
 // its lock. `parser` keeps the source's running status.
 void DeliverMidi(Engine* engine, MidiParser* parser, const uint8_t* bytes, size_t size);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_IO_MIDI_INPUT_H_
+#endif  // DRUMFAKE_IO_MIDI_INPUT_H_

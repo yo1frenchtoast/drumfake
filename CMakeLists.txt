@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(drumfreake CXX C)
+project(drumfake CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-option(DRUMFREAKE_GUI "Build the SDL3/ImGui front-end" ON)
+option(DRUMFAKE_GUI "Build the SDL3/ImGui front-end" ON)
 
 if(EMSCRIPTEN)
   # nlohmann-json reports parse errors with exceptions: catch them in wasm too.
@@ -72,7 +72,7 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
-add_library(drumfreake_core STATIC
+add_library(drumfake_core STATIC
   src/core/params.cc
   src/core/presets.cc
   src/core/scales.cc
@@ -87,21 +87,21 @@ add_library(drumfreake_core STATIC
   src/audio/master_fx.cc
   src/audio/engine.cc
   src/audio/wav_render.cc)
-target_include_directories(drumfreake_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(drumfreake_core PUBLIC mutable_dsp nlohmann_json::nlohmann_json)
-target_compile_options(drumfreake_core PRIVATE -Wall -Wextra -O2)
+target_include_directories(drumfake_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(drumfake_core PUBLIC mutable_dsp nlohmann_json::nlohmann_json)
+target_compile_options(drumfake_core PRIVATE -Wall -Wextra -O2)
 
 # --- Tests -------------------------------------------------------------------
 
 if(NOT ANDROID)
-  add_executable(drumfreake_tests tests/tests.cc)
-  target_link_libraries(drumfreake_tests PRIVATE drumfreake_core)
+  add_executable(drumfake_tests tests/tests.cc)
+  target_link_libraries(drumfake_tests PRIVATE drumfake_core)
   if(EMSCRIPTEN)
-    # Runs under Node.js: node build-web/drumfreake_tests.js
-    target_link_options(drumfreake_tests PRIVATE -sALLOW_MEMORY_GROWTH -sSTACK_SIZE=4MB)
+    # Runs under Node.js: node build-web/drumfake_tests.js
+    target_link_options(drumfake_tests PRIVATE -sALLOW_MEMORY_GROWTH -sSTACK_SIZE=4MB)
   endif()
   enable_testing()
-  add_test(NAME drumfreake_tests COMMAND drumfreake_tests)
+  add_test(NAME drumfake_tests COMMAND drumfake_tests)
 endif()
 
 # --- GUI application ---------------------------------------------------------
@@ -119,11 +119,11 @@ elseif(EMSCRIPTEN)
   set(SDL_STATIC ON CACHE BOOL "" FORCE)
   set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
   add_subdirectory(third_party/SDL EXCLUDE_FROM_ALL)
-elseif(DRUMFREAKE_GUI)
+elseif(DRUMFAKE_GUI)
   find_package(SDL3 REQUIRED CONFIG)
 endif()
 
-if(ANDROID OR EMSCRIPTEN OR DRUMFREAKE_GUI)
+if(ANDROID OR EMSCRIPTEN OR DRUMFAKE_GUI)
 
   FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -177,29 +177,29 @@ if(ANDROID OR EMSCRIPTEN OR DRUMFREAKE_GUI)
     set(APP_TARGET main)
     target_link_libraries(main PRIVATE android log)
   else()
-    add_executable(drumfreake ${APP_SOURCES})
-    set(APP_TARGET drumfreake)
+    add_executable(drumfake ${APP_SOURCES})
+    set(APP_TARGET drumfake)
   endif()
-  target_link_libraries(${APP_TARGET} PRIVATE drumfreake_core imgui SDL3::SDL3)
+  target_link_libraries(${APP_TARGET} PRIVATE drumfake_core imgui SDL3::SDL3)
   if(EMSCRIPTEN)
-    # drumfreake.html + .js + .wasm + .data (the fonts), see docs/building.md.
-    set_target_properties(drumfreake PROPERTIES SUFFIX ".html")
+    # drumfake.html + .js + .wasm + .data (the fonts), see docs/building.md.
+    set_target_properties(drumfake PROPERTIES SUFFIX ".html")
     set(WEB_DIR ${CMAKE_SOURCE_DIR}/web)
-    target_link_options(drumfreake PRIVATE
+    target_link_options(drumfake PRIVATE
       -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sGL_ENABLE_GET_PROC_ADDRESS
       -sALLOW_MEMORY_GROWTH -sSTACK_SIZE=4MB
       -sFORCE_FILESYSTEM -lidbfs.js
       --pre-js ${WEB_DIR}/pre.js
       --shell-file ${WEB_DIR}/shell.html
       --preload-file ${CMAKE_SOURCE_DIR}/android/app/src/main/assets/fonts@/fonts)
-    set_property(TARGET drumfreake APPEND PROPERTY LINK_DEPENDS
+    set_property(TARGET drumfake APPEND PROPERTY LINK_DEPENDS
       ${WEB_DIR}/pre.js ${WEB_DIR}/shell.html)
   elseif(NOT ANDROID)
     target_link_libraries(${APP_TARGET} PRIVATE rtmidi)
   endif()
   target_compile_options(${APP_TARGET} PRIVATE -Wall -Wextra)
 else()
-  add_executable(drumfreake src/main.cc)
-  target_compile_definitions(drumfreake PRIVATE DRUMFREAKE_HEADLESS)
-  target_link_libraries(drumfreake PRIVATE drumfreake_core)
+  add_executable(drumfake src/main.cc)
+  target_compile_definitions(drumfake PRIVATE DRUMFAKE_HEADLESS)
+  target_link_libraries(drumfake PRIVATE drumfake_core)
 endif()

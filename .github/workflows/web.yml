@@ -31,12 +31,12 @@ jobs:
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
           cmake --build build-web -j
       - name: Test
-        run: node build-web/drumfreake_tests.js
+        run: node build-web/drumfake_tests.js
       - name: Assemble the site
         run: |
           mkdir site
-          cp build-web/drumfreake.html site/index.html
-          cp build-web/drumfreake.js build-web/drumfreake.wasm build-web/drumfreake.data site/
+          cp build-web/drumfake.html site/index.html
+          cp build-web/drumfake.js build-web/drumfake.wasm build-web/drumfake.data site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

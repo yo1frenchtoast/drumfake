@@ -4,7 +4,7 @@
 
 #include "imgui_internal.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -461,4 +461,4 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
   return in;
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

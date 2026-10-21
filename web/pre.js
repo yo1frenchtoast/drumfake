@@ -10,7 +10,7 @@ Module.preRun.push(function() {
   addRunDependency("persist");
   FS.syncfs(true, function(error) {
     if (error) {
-      console.warn("Drumf(re)ake: cannot load the saved files", error);
+      console.warn("Drumfake: cannot load the saved files", error);
     }
     syncing = false;
     removeRunDependency("persist");
@@ -24,7 +24,7 @@ Module.preRun.push(function() {
     FS.syncfs(false, function(error) {
       syncing = false;
       if (error) {
-        console.warn("Drumf(re)ake: cannot store the saved files", error);
+        console.warn("Drumfake: cannot store the saved files", error);
       }
     });
   };

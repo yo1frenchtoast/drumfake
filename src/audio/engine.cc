@@ -12,7 +12,7 @@
 #include <xmmintrin.h>
 #endif
 
-namespace drumfreake {
+namespace drumfake {
 
 const float kRepeatPeriods[kNumRepeatRates] = {
   4.0f, 2.0f, 1.0f, 0.5f, 8.0f / 3.0f, 4.0f / 3.0f, 2.0f / 3.0f, 1.0f / 3.0f
@@ -929,7 +929,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     if (next < clock + sixteenths) {
       size_t gate = static_cast<size_t>(period * SamplesPerSixteenth());
       gate = gate > kBlockSize * 2 ? gate - kBlockSize : kBlockSize;
-      // When recording, repeats are written like the DrumBrute's Roller: one
+      // When recording, repeats are written into the pattern: one
       // hit per step, or ratchets when they are faster than the steps.
       int ratchets = std::clamp(static_cast<int>(std::lround(step_length / period)), 1,
                                 kMaxRatchets);
@@ -1022,4 +1022,4 @@ void Engine::Render(float* out, size_t frames) {
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

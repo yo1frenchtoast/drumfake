@@ -1,13 +1,13 @@
 // Turns a MIDI byte stream into messages: running status, real-time bytes
 // interleaved with other messages, System Exclusive skipped.
 
-#ifndef DRUMFREAKE_CORE_MIDI_PARSER_H_
-#define DRUMFREAKE_CORE_MIDI_PARSER_H_
+#ifndef DRUMFAKE_CORE_MIDI_PARSER_H_
+#define DRUMFAKE_CORE_MIDI_PARSER_H_
 
 #include <cstddef>
 #include <cstdint>
 
-namespace drumfreake {
+namespace drumfake {
 
 struct MidiMessage {
   uint8_t status;  // With the channel in the low nibble for channel messages.
@@ -53,6 +53,6 @@ class MidiParser {
   bool in_sysex_ = false;
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_MIDI_PARSER_H_
+#endif  // DRUMFAKE_CORE_MIDI_PARSER_H_

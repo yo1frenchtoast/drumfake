@@ -8,7 +8,7 @@
 #include "rings/dsp/fx/chorus.h"
 #include "rings/dsp/fx/reverb.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 void Buses::Clear() {
   memset(this, 0, sizeof(*this));
@@ -126,4 +126,4 @@ void MasterFx::Process(const float* params, float bpm, float volume,
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

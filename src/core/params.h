@@ -3,12 +3,12 @@
 // Every parameter is stored normalized in [0, 1]. The audio engine maps the
 // normalized value to real units; the UI uses ParamInfo to print it.
 
-#ifndef DRUMFREAKE_CORE_PARAMS_H_
-#define DRUMFREAKE_CORE_PARAMS_H_
+#ifndef DRUMFAKE_CORE_PARAMS_H_
+#define DRUMFAKE_CORE_PARAMS_H_
 
 #include <string>
 
-namespace drumfreake {
+namespace drumfake {
 
 const int kNumTracks = 8;
 const int kKnobsPerPage = 8;
@@ -212,6 +212,6 @@ float NoteToNormalizedPitch(float note);
 float CloudsPitchToSemitones(float value);  // -24 to +24, 0 at the centre.
 float EnvTimeToSeconds(float value);     // 0.5 ms to 8 s (Peaks envelope times).
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_PARAMS_H_
+#endif  // DRUMFAKE_CORE_PARAMS_H_

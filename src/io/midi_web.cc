@@ -7,7 +7,7 @@
 
 #include "io/midi_input.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -17,20 +17,20 @@ std::map<int, MidiParser> g_parsers;  // One per input (running status).
 
 }  // namespace
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE void drumfreake_web_midi(int source, const uint8_t* data, int size) {
-  using namespace drumfreake;
+EMSCRIPTEN_KEEPALIVE void drumfake_web_midi(int source, const uint8_t* data, int size) {
+  using namespace drumfake;
   if (!g_engine || size <= 0) {
     return;
   }
   DeliverMidi(g_engine, &g_parsers[source], data, static_cast<size_t>(size));
 }
 
-EMSCRIPTEN_KEEPALIVE void drumfreake_web_midi_ports(int count) {
-  drumfreake::g_ports = count;
+EMSCRIPTEN_KEEPALIVE void drumfake_web_midi_ports(int count) {
+  drumfake::g_ports = count;
 }
 
 }  // extern "C"
@@ -41,7 +41,7 @@ EM_JS_DEPS(web_midi, "$stackAlloc,$stackSave,$stackRestore");
 // to the ones connected later.
 EM_JS(void, StartWebMidi, (), {
   if (!navigator.requestMIDIAccess) {
-    console.log("Drumf(re)ake: Web MIDI is not available in this browser");
+    console.log("Drumfake: Web MIDI is not available in this browser");
     return;
   }
   navigator.requestMIDIAccess().then(function(access) {
@@ -62,20 +62,20 @@ EM_JS(void, StartWebMidi, (), {
           var top = stackSave();
           var pointer = stackAlloc(size);
           HEAPU8.set(event.data, pointer);
-          _drumfreake_web_midi(source, pointer, size);
+          _drumfake_web_midi(source, pointer, size);
           stackRestore(top);
         };
       });
-      _drumfreake_web_midi_ports(count);
+      _drumfake_web_midi_ports(count);
     };
     access.onstatechange = update;
     update();
   }, function(error) {
-    console.log("Drumf(re)ake: no MIDI access (" + error + ")");
+    console.log("Drumfake: no MIDI access (" + error + ")");
   });
 });
 
-namespace drumfreake {
+namespace drumfake {
 
 struct MidiInput::Backend {
   Engine* engine;
@@ -100,4 +100,4 @@ void MidiInput::Poll() {
   backend_->engine->midi_input_ports.store(g_ports);
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

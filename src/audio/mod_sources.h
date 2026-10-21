@@ -5,14 +5,14 @@
 // clash with plaits/resources.h, so the Peaks code lives in mod_sources.cc
 // behind a pointer to an opaque implementation.
 
-#ifndef DRUMFREAKE_AUDIO_MOD_SOURCES_H_
-#define DRUMFREAKE_AUDIO_MOD_SOURCES_H_
+#ifndef DRUMFAKE_AUDIO_MOD_SOURCES_H_
+#define DRUMFAKE_AUDIO_MOD_SOURCES_H_
 
 #include <memory>
 
 #include "audio/buses.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 class ModSources {
  public:
@@ -37,6 +37,6 @@ class ModSources {
   float ball_;
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_MOD_SOURCES_H_
+#endif  // DRUMFAKE_AUDIO_MOD_SOURCES_H_

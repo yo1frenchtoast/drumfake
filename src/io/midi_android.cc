@@ -1,4 +1,4 @@
-// Android MIDI input: DrumfreakeActivity.java opens the devices with the
+// Android MIDI input: DrumfakeActivity.java opens the devices with the
 // Java MIDI API and forwards their bytes here through JNI.
 
 #include <jni.h>
@@ -10,7 +10,7 @@
 
 #include "io/midi_input.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -43,12 +43,12 @@ void MidiInput::Poll() {
   backend_->engine->midi_input_ports.store(g_ports.load());
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
 extern "C" JNIEXPORT void JNICALL
-Java_org_drumfreake_app_DrumfreakeActivity_nativeMidi(
+Java_org_drumfake_app_DrumfakeActivity_nativeMidi(
     JNIEnv* env, jclass, jint source, jbyteArray data, jint offset, jint count) {
-  using namespace drumfreake;
+  using namespace drumfake;
   Engine* engine = g_engine.load();
   if (!engine || count <= 0) {
     return;
@@ -64,6 +64,6 @@ Java_org_drumfreake_app_DrumfreakeActivity_nativeMidi(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_org_drumfreake_app_DrumfreakeActivity_nativeMidiPorts(JNIEnv*, jclass, jint count) {
-  drumfreake::g_ports.store(count);
+Java_org_drumfake_app_DrumfakeActivity_nativeMidiPorts(JNIEnv*, jclass, jint count) {
+  drumfake::g_ports.store(count);
 }

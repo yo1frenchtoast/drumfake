@@ -4,12 +4,12 @@
 // interpolation and the density/perturbation logic reproduce
 // grids::PatternGenerator::EvaluateDrums() without the AVR dependencies.
 
-#ifndef DRUMFREAKE_CORE_GRIDS_GEN_H_
-#define DRUMFREAKE_CORE_GRIDS_GEN_H_
+#ifndef DRUMFAKE_CORE_GRIDS_GEN_H_
+#define DRUMFAKE_CORE_GRIDS_GEN_H_
 
 #include <cstdint>
 
-namespace drumfreake {
+namespace drumfake {
 
 const int kGridsParts = 3;         // BD, SD, HH.
 const int kGridsStepsPerBar = 32;  // Grids works with 32 steps per pattern.
@@ -39,6 +39,6 @@ class GridsGenerator {
   uint8_t perturbation_[kGridsParts];
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_GRIDS_GEN_H_
+#endif  // DRUMFAKE_CORE_GRIDS_GEN_H_

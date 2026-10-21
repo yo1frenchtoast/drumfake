@@ -1,8 +1,8 @@
-// Drumf(re)ake simulator: a groovebox built on Mutable Instruments Plaits.
+// Drumfake simulator: a groovebox built on Mutable Instruments Plaits.
 //
 // Usage:
-//   drumfreake [--project FILE]
-//   drumfreake --render OUT.wav [--bars N] [--project FILE] [--pattern N] [--grids]
+//   drumfake [--project FILE]
+//   drumfake --render OUT.wav [--bars N] [--project FILE] [--pattern N] [--grids]
 
 #include <cstdio>
 #include <cstdlib>
@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 
-#ifndef DRUMFREAKE_HEADLESS
+#ifndef DRUMFAKE_HEADLESS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>  // Renames main() to SDL_main() where needed (Android).
 #endif
@@ -20,13 +20,13 @@
 #include "audio/wav_render.h"
 #include "core/project_io.h"
 
-using namespace drumfreake;
+using namespace drumfake;
 
 namespace {
 
 void PrintUsage() {
-  printf("usage: drumfreake [--project FILE] [--midi-monitor]\n"
-         "       drumfreake --render OUT.wav [--bars N] [--project FILE]"
+  printf("usage: drumfake [--project FILE] [--midi-monitor]\n"
+         "       drumfake --render OUT.wav [--bars N] [--project FILE]"
          " [--pattern N] [--grids]\n");
 }
 
@@ -36,13 +36,14 @@ int main(int argc, char** argv) {
   std::string render_path;
 #ifdef __ANDROID__
   // The app's private storage.
-  std::string project_path = std::string(SDL_GetPrefPath("drumfreake", "drumfreake")) +
+  std::string project_path = std::string(SDL_GetPrefPath("drumfake", "drumfake")) +
       "project.json";
 #elif defined(__EMSCRIPTEN__)
   // IndexedDB storage, mounted by web/pre.js.
   std::string project_path = "/persist/project.json";
 #else
   std::string project_path = DefaultProjectPath();
+  MigrateLegacyDataDirectory(project_path);
 #endif
   bool explicit_project = false;
   int bars = 4;
@@ -79,7 +80,7 @@ int main(int argc, char** argv) {
   engine->midi_monitor = midi_monitor;
 
   if (render_path.empty()) {
-#ifdef DRUMFREAKE_HEADLESS
+#ifdef DRUMFAKE_HEADLESS
     fprintf(stderr, "Built without GUI: use --render.\n");
     return 1;
 #else

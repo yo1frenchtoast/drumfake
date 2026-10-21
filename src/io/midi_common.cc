@@ -3,7 +3,7 @@
 
 #include "io/midi_input.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 void DeliverMidi(Engine* engine, MidiParser* parser, const uint8_t* bytes, size_t size) {
   double time = std::chrono::duration<double>(
@@ -14,4 +14,4 @@ void DeliverMidi(Engine* engine, MidiParser* parser, const uint8_t* bytes, size_
   });
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

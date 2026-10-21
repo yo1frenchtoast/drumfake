@@ -3,12 +3,12 @@
 //
 // Kept free of Marbles headers: marbles/resources.h defines LUT_* macros.
 
-#ifndef DRUMFREAKE_CORE_MARBLES_GEN_H_
-#define DRUMFREAKE_CORE_MARBLES_GEN_H_
+#ifndef DRUMFAKE_CORE_MARBLES_GEN_H_
+#define DRUMFAKE_CORE_MARBLES_GEN_H_
 
 #include <cstdint>
 
-namespace drumfreake {
+namespace drumfake {
 
 const int kNumMarblesModels = 7;
 extern const char* const kMarblesModelNames[kNumMarblesModels];
@@ -28,6 +28,6 @@ struct MarblesSettings {
 void MarblesGenerate(const MarblesSettings& settings, uint32_t seed,
                      int num_steps, bool* t1, bool* t3);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_MARBLES_GEN_H_
+#endif  // DRUMFAKE_CORE_MARBLES_GEN_H_

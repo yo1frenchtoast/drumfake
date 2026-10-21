@@ -9,7 +9,7 @@
 #include "core/scales.h"
 #include "imgui_internal.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -113,7 +113,7 @@ const int kKeyScaleShortcuts[kNumTracks] = { 10, 0, 1, 2, 5, 6, 9, 8 };
 }  // namespace
 
 void Faceplate::TrackPadDown(int track) {
-  // Held buttons turn the pads into targets, as on the DrumBrute.
+  // Held buttons turn the pads into targets.
   if (erase_held_) {
     erase_used_ = true;
     if (!engine_->playing()) {
@@ -203,7 +203,7 @@ void Faceplate::LowerPadDown(int pad) {
   Project& project = engine_->project();
   int track = engine_->selected_track;
   if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS) {
-    // Held step: pads 1-4 set its repeats (the DrumBrute's Step Repeat).
+    // Held step: pads 1-4 set its repeats.
     if (pad < kMaxRatchets) {
       PushUndo();
       Step& step = pattern().tracks[track].steps[held_step_];
@@ -726,8 +726,7 @@ void Faceplate::DrawChrome() {
               c.P(layout::kPanelX1, layout::kPanelY1), colors::kPanelEdge, c.S(20), 0,
               c.S(1.5f));
 
-  // Logo: "DRUM" + bold "F(RE)AKE", like the Freak family logos, with the
-  // "(RE)" lit.
+  // Logo: "DRUM" + bold "FAKE".
   const float kLogoSize = 26.0f;
   float x = layout::kLeftX0;
   auto logo_part = [&](const char* text, ImU32 color, bool use_bold) {
@@ -736,9 +735,7 @@ void Faceplate::DrawChrome() {
     x += f->CalcTextSizeA(c.S(kLogoSize), FLT_MAX, 0, text).x / c.scale;
   };
   logo_part("DRUM", colors::kLedWhite, false);
-  logo_part("F", colors::kLedWhite, true);
-  logo_part("(RE)", colors::kAccent, true);
-  logo_part("AKE", colors::kLedWhite, true);
+  logo_part("FAKE", colors::kAccent, true);
   c.Text(layout::kLeftX0 + 1, layout::kTopY0 + 31, 8, colors::kLabel,
          "OPEN SOURCE ALGORITHMIC DRUM MACHINE", false, true);
   c.Text(layout::kLeftX0 + 1, layout::kTopY0 + 43, 7.5f, colors::kLabelDim,
@@ -1327,7 +1324,7 @@ void Faceplate::DrawScreenSection() {
   }
 
   // Buttons under the screen, with the 2x4 page LEDs between Sample and
-  // Browse, as on the prototype.
+  // Browse.
   const float kLedsWidth = 64.0f;
   float w = (layout::kScreenX1 - layout::kRightX0 - kLedsWidth - 5 * layout::kGap) / 5.0f;
   auto button_x = [&](int i) {
@@ -1832,7 +1829,7 @@ void Faceplate::DrawSequencer() {
       }
       if (in.pressed) {
         if (song_edit_fresh_) {
-          // Like holding Song on the Arturia machines: a new chain.
+          // The first pattern pressed while Song is held starts a new chain.
           project.song_length = 0;
           song_edit_fresh_ = false;
         }
@@ -1870,7 +1867,7 @@ void Faceplate::DrawSequencer() {
     bool in_range = index < track_length;
 
     if (last_step_held_) {
-      // DrumBrute-style: press the last step. In Poly mode it is the selected
+      // Press the last step. In Poly mode it is the selected
       // track's (pressing its current last step again follows the pattern).
       int length = p.poly ? track_length : p.length;
       snprintf(face, sizeof(face), "%d", index + 1);
@@ -1981,7 +1978,7 @@ void Faceplate::DrawSequencer() {
 }
 
 void Faceplate::DrawShiftStep(int i, ImVec2 min, ImVec2 max) {
-  // Shift + steps, as on the DrumBrute: 1-5 time division, 13 metronome,
+  // Shift + steps: 1-5 time division, 13 metronome,
   // 14 At End, 15 follow, 16 Poly.
   const Canvas& c = canvas_;
   Pattern& p = pattern();
@@ -2831,4 +2828,4 @@ void Faceplate::HandleKeyboard() {
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

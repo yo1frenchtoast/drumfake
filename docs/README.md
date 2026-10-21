@@ -1,4 +1,4 @@
-# Drumf(re)ake documentation
+# Drumfake documentation
 
 - [User guide](user-guide.md): the features, in the order you meet them.
 - [Controls reference](controls.md): shortcuts, touch gestures, hold combinations.

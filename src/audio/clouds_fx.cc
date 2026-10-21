@@ -9,7 +9,7 @@
 #include "clouds/dsp/granular_processor.h"
 #include "core/params.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -97,4 +97,4 @@ void CloudsFx::Process(float* left, float* right, size_t size, const float* para
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

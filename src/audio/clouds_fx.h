@@ -8,13 +8,13 @@
 // grain and buffer times are 2/3 of the module's, pitch is unaffected. The
 // recording buffers are enlarged to keep a couple of seconds of audio.
 
-#ifndef DRUMFREAKE_AUDIO_CLOUDS_FX_H_
-#define DRUMFREAKE_AUDIO_CLOUDS_FX_H_
+#ifndef DRUMFAKE_AUDIO_CLOUDS_FX_H_
+#define DRUMFAKE_AUDIO_CLOUDS_FX_H_
 
 #include <cstddef>
 #include <memory>
 
-namespace drumfreake {
+namespace drumfake {
 
 class CloudsFx {
  public:
@@ -34,6 +34,6 @@ class CloudsFx {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_CLOUDS_FX_H_
+#endif  // DRUMFAKE_AUDIO_CLOUDS_FX_H_
