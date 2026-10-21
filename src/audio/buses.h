@@ -11,7 +11,7 @@
 
 namespace drumfake {
 
-const float kSampleRate = 48000.0f;  // Same as plaits::kSampleRate.
+constexpr float kSampleRate = 48000.0f;  // Same as plaits::kSampleRate.
 const size_t kBlockSize = 12;        // Same as plaits::kBlockSize.
 
 struct Buses {

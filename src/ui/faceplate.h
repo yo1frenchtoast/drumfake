@@ -31,6 +31,9 @@ class Faceplate {
   void FingerDown(uint64_t finger, ImVec2 position);
   void FingerMove(uint64_t finger, ImVec2 position);
   void FingerUp(uint64_t finger);
+  // A file dropped on the window at `position` (display coordinates): a WAV is
+  // imported onto the pad under it, or onto the selected track. Takes the lock.
+  void DropFile(const std::string& path, ImVec2 position);
 
  private:
   enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
@@ -115,6 +118,16 @@ class Faceplate {
   Engine* engine_ = nullptr;
   Canvas canvas_;
   std::string project_path_;
+  // File work queued while drawing (under the engine lock) and done after it,
+  // since loading samples takes the lock itself.
+  struct PendingImport {
+    std::string path;
+    int track;
+  };
+  std::vector<PendingImport> pending_imports_;
+  bool reload_samples_ = false;
+  void DoFileWork();
+  void DrawPanel();
 
   Page page_ = PAGE_SOUND;
   PadMode pad_mode_ = PADS_SOUNDS;

@@ -1,7 +1,10 @@
 // Tests for the Drumfake core: sequencer timing, Grids port, persistence and
 // a full render. Run: ./build/drumfake_tests
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <new>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,9 +21,27 @@
 #include "core/project_io.h"
 #include "core/sample_file.h"
 #include "core/sample_pool.h"
+#include "audio/sample_loader.h"
+#include "audio/track_voice.h"
 #include "core/scales.h"
 #include "grids/resources.h"
 #include <nlohmann/json.hpp>
+
+// Counts heap allocations, to check that the audio rendering never allocates.
+std::atomic<long> g_allocations{ 0 };
+
+void* operator new(std::size_t size) {
+  g_allocations.fetch_add(1, std::memory_order_relaxed);
+  if (void* p = std::malloc(size ? size : 1)) {
+    return p;
+  }
+  throw std::bad_alloc();
+}
+void* operator new[](std::size_t size) { return operator new(size); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 using namespace drumfake;
 
@@ -620,6 +641,217 @@ void TestSamplePool() {
   for (int slot = 0; slot < kNumSampleSlots; ++slot) {
     CHECK(SampleSlot(SampleSlotToAux(slot)) == slot);
   }
+  fs::remove_all(dir);
+}
+
+// A sample whose frames are all different, to tell positions apart.
+std::shared_ptr<SampleData> NumberedSample(int frames) {
+  auto sample = std::make_shared<SampleData>();
+  sample->frames.resize(static_cast<size_t>(frames));
+  for (int i = 0; i < frames; ++i) {
+    sample->frames[static_cast<size_t>(i)] = static_cast<int16_t>((i * 13) % 32000 - 16000);
+  }
+  return sample;
+}
+
+// Plays `sample` on a lone voice and returns `frames` frames of its output
+// (post-filter, pre-pan; the defaults bypass the filter, drive and crusher).
+std::vector<float> PlaySample(const SampleData* sample, const TrackSound& sound, size_t frames,
+                              int note = 0, size_t gate = 0) {
+  auto voice = std::make_unique<TrackVoice>();
+  voice->Init();
+  voice->Trigger(1.0f, note, 1 << 30, gate ? gate : 1 << 30);
+  std::vector<float> out;
+  Buses buses;
+  while (out.size() < frames) {
+    buses.Clear();
+    voice->Render(sound.params, 0.0f, &buses, sample);
+    out.insert(out.end(), voice->last_block(), voice->last_block() + kBlockSize);
+  }
+  out.resize(frames);
+  return out;
+}
+
+TrackSound SampleSound() {
+  TrackSound s;
+  s.Reset();
+  s.params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
+  s.params[P_HARMONICS] = 0.0f;
+  s.params[P_TIMBRE] = 1.0f;
+  s.params[P_MORPH] = 0.0f;
+  s.params[P_DECAY] = 1.0f;
+  s.params[P_PITCH] = NoteToNormalizedPitch(kSampleRootNote);
+  return s;
+}
+
+void TestSamplePlayer() {
+  const int kFrames = 4801;
+  auto sample = NumberedSample(kFrames);
+  auto frame = [&](int i) { return sample->frames[static_cast<size_t>(i)] / 32768.0f; };
+  TrackSound sound = SampleSound();
+
+  // At C4, the sample at its own speed from the first frame, then silence.
+  auto out = PlaySample(sample.get(), sound, kFrames + 600);
+  int mismatches = 0;
+  for (int i = 0; i < kFrames - 100; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(std::fabs(out[kFrames - 1]) < 0.02f);  // Faded out at the end.
+  CHECK(out[kFrames + 100] == 0.0f && out[kFrames + 500] == 0.0f);
+
+  // An octave up plays every other frame.
+  out = PlaySample(sample.get(), sound, 2000, 12);
+  mismatches = 0;
+  for (int i = 0; i < 2000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2 * i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+
+  // Length fully down from Start at the end: backwards (after the 24-frame declick).
+  TrackSound reverse = sound;
+  reverse.params[P_HARMONICS] = 1.0f;
+  reverse.params[P_TIMBRE] = 0.0f;
+  out = PlaySample(sample.get(), reverse, 3000);
+  mismatches = 0;
+  for (int i = 24; i < 3000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(kFrames - 1 - i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(out[0] == 0.0f);
+
+  // Start in the middle.
+  TrackSound middle = sound;
+  middle.params[P_HARMONICS] = 0.5f;
+  out = PlaySample(sample.get(), middle, 2000);
+  mismatches = 0;
+  for (int i = 24; i < 2000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2400 + i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+
+  // The middle of Length plays nothing.
+  TrackSound empty = sound;
+  empty.params[P_TIMBRE] = 0.5f;
+  out = PlaySample(sample.get(), empty, 600);
+  CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+
+  // Loop from the middle: after the end, it plays the second half again.
+  TrackSound loop = sound;
+  loop.params[P_MORPH] = 0.5f;
+  out = PlaySample(sample.get(), loop, 3 * kFrames);
+  mismatches = 0;
+  for (int k = 10; k < 1500; ++k) {
+    mismatches += std::fabs(out[static_cast<size_t>(4800 + k)] - frame(2400 + k)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  float late = 0.0f;
+  for (size_t i = 3 * kFrames - 500; i < 3 * kFrames; ++i) {
+    late = std::max(late, std::fabs(out[i]));
+  }
+  CHECK(late > 0.1f);
+
+  // Decay below the top: the sample fades after the gate closes.
+  auto steady = std::make_shared<SampleData>();
+  steady->frames.assign(48000, 16384);
+  TrackSound release = sound;
+  release.params[P_DECAY] = 0.3f;  // About 30 ms.
+  out = PlaySample(steady.get(), release, 24000, 0, 480);
+  CHECK_NEAR(out[100], 0.5, 1e-3);
+  CHECK(std::fabs(out[12000]) < 0.005f);
+  out = PlaySample(steady.get(), sound, 24000, 0, 480);  // Decay up: holds.
+  CHECK_NEAR(out[20000], 0.5, 1e-3);
+
+  // No sample: silence. A sample replaced by a shorter one while playing: no crash.
+  out = PlaySample(nullptr, sound, 600);
+  CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+  {
+    auto voice = std::make_unique<TrackVoice>();
+    voice->Init();
+    voice->Trigger(1.0f, 0, 1 << 30, 1 << 30);
+    Buses buses;
+    auto tiny = NumberedSample(100);
+    for (int b = 0; b < 400; ++b) {
+      buses.Clear();
+      voice->Render(sound.params, 0.0f, &buses, b < 200 ? sample.get() : tiny.get());
+      for (size_t i = 0; i < kBlockSize; ++i) {
+        CHECK(std::isfinite(voice->last_block()[i]));
+      }
+    }
+  }
+}
+
+void TestSampleTracks() {
+  namespace fs = std::filesystem;
+  // A step plays the sample of its slot through the engine.
+  auto engine = MakeEngine();
+  auto sample = std::shared_ptr<const SampleData>(NumberedSample(24000));
+  engine->SwapSample(5, &sample);
+  CHECK(!sample);  // The slot was empty.
+  CHECK(engine->sample(5) && engine->sample(5)->frames.size() == 24000);
+  TrackSound& sound = engine->project().sounds[0];
+  sound = SampleSound();
+  sound.params[P_AUX] = SampleSlotToAux(5);
+  engine->project().patterns[0].tracks[0].steps[0].on = true;
+  engine->project().patterns[0].tracks[0].steps[8].on = true;
+  engine->Play();
+  auto triggers = RenderAndCollect(engine.get(), 0, 8 * kSamplesPerStep + 2000);
+  CHECK(triggers.size() == 2);
+  CHECK(engine->track_peak[0].load() > 0.1f);  // Measured while the second hit plays.
+
+  // An empty slot is silent.
+  auto silent = MakeEngine();
+  silent->project().sounds[0] = SampleSound();
+  silent->project().sounds[0].params[P_AUX] = SampleSlotToAux(9);
+  silent->project().patterns[0].tracks[0].steps[0].on = true;
+  silent->Play();
+  RenderAndCollect(silent.get(), 0, 4 * kSamplesPerStep);
+  CHECK(silent->track_peak[0].load() == 0.0f);
+
+  // Rendering never allocates, samples playing or not.
+  std::vector<float> buffer(2 * 256);
+  long before = g_allocations.load();
+  for (int i = 0; i < 2000; ++i) {
+    engine->Render(buffer.data(), 256);
+  }
+  CHECK(g_allocations.load() == before);
+  auto witness = std::make_unique<int>(1);  // The counter does count.
+  CHECK(g_allocations.load() > before);
+
+  // Importing a file onto a track, then reloading the project with its pool.
+  fs::path dir = fs::temp_directory_path() / "drumfake_sample_tracks";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  auto wav = MakeWav(1, 2, 44100, 24, Sine(4410, 2, 44100, 440.0f, 0.5f));
+  std::ofstream(dir / "Tone A.wav", std::ios::binary)
+      .write(reinterpret_cast<const char*>(wav.data()), static_cast<std::streamsize>(wav.size()));
+  const std::string project_path = (dir / "project.json").string();
+  auto importer = MakeEngine();
+  std::string message;
+  CHECK(ImportSample(importer.get(), project_path, (dir / "Tone A.wav").string(), 2, &message));
+  CHECK(message.find("Tone A on track C") == 0);
+  CHECK(fs::exists(dir / "samples" / "Tone A.wav"));
+  const TrackSound& imported = importer->project().sounds[2];
+  CHECK(imported.name == "Tone A");
+  CHECK(Discrete(imported.params[P_ENGINE], kNumEngines) == kSampleEngine);
+  const int slot = SampleSlot(imported.params[P_AUX]);
+  CHECK(importer->project().samples[slot] == "Tone A.wav");
+  CHECK(importer->sample(slot) && importer->sample(slot)->frames.size() == 4800);
+  // Importing the same file again reuses its slot.
+  CHECK(ImportSample(importer.get(), project_path, (dir / "Tone A.wav").string(), 3, &message));
+  CHECK(SampleSlot(importer->project().sounds[3].params[P_AUX]) == slot);
+  CHECK(!ImportSample(importer.get(), project_path, (dir / "none.wav").string(), 3, &message));
+
+  std::string error;
+  importer->project().samples[slot + 1] = "gone.wav";
+  CHECK(SaveProject(importer->project(), project_path, &error));
+  auto reloaded = MakeEngine();
+  CHECK(LoadProject(project_path, &reloaded->project(), &error));
+  std::vector<std::string> problems;
+  LoadProjectSamples(reloaded.get(), project_path, &problems);
+  CHECK(reloaded->sample(slot) && reloaded->sample(slot)->frames.size() == 4800);
+  CHECK(!reloaded->sample(slot + 1));
+  CHECK(problems.size() == 1);
   fs::remove_all(dir);
 }
 
@@ -1942,6 +2174,8 @@ int main() {
   TestWavDecoding();
   TestEngineCountMigration();
   TestSamplePool();
+  TestSamplePlayer();
+  TestSampleTracks();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

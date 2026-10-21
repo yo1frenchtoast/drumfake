@@ -1,5 +1,7 @@
 #include "ui/faceplate.h"
 
+#include "audio/sample_loader.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -532,8 +534,15 @@ void Faceplate::Draw() {
   // Fonts are rasterized at 28 px; ImGui widgets on the screen use ~11 px.
   ImGui::SetWindowFontScale(11.0f * scale / 28.0f);
 
-  std::lock_guard<std::mutex> lock(engine_->mutex());
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    DrawPanel();
+  }
+  DoFileWork();
+}
 
+// Everything drawn under the engine lock.
+void Faceplate::DrawPanel() {
   double now = ImGui::GetTime();
   for (int t = 0; t < kNumTracks; ++t) {
     uint32_t count = engine_->trigger_count[t].load(std::memory_order_relaxed);
@@ -566,6 +575,41 @@ void Faceplate::Draw() {
     // frame after its press); drop them if the button is no longer drawn.
     it = t.fingers <= 0 && (!pending || t.idle_frames > 3) ? button_touches_.erase(it) : ++it;
   }
+}
+
+void Faceplate::DoFileWork() {
+  if (reload_samples_) {
+    reload_samples_ = false;
+    std::vector<std::string> problems;
+    LoadProjectSamples(engine_, project_path_, &problems);
+    if (!problems.empty()) {
+      for (const std::string& problem : problems) {
+        fprintf(stderr, "%s\n", problem.c_str());
+      }
+      Toast(std::to_string(problems.size()) + " sample(s) missing: " + problems.front());
+    }
+  }
+  std::vector<PendingImport> imports;
+  imports.swap(pending_imports_);
+  for (const PendingImport& import : imports) {
+    std::string message;
+    ImportSample(engine_, project_path_, import.path, import.track, &message);
+    Toast(message);
+  }
+}
+
+void Faceplate::DropFile(const std::string& path, ImVec2 position) {
+  std::lock_guard<std::mutex> lock(engine_->mutex());
+  int track = engine_->selected_track;
+  ImVec2 panel = ToPanel(position);
+  for (const TouchTarget& t : touch_targets_) {
+    if (t.kind == TOUCH_TRACK_PAD && panel.x >= t.min.x && panel.x < t.max.x &&
+        panel.y >= t.min.y && panel.y < t.max.y) {
+      track = t.index;
+    }
+  }
+  engine_->selected_track = track;
+  pending_imports_.push_back({ path, track });
 }
 
 // --- Multitouch ------------------------------------------------------------------
@@ -2523,6 +2567,7 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
     if (LoadProject(project_path_, &project, &error)) {
       engine_->DropSnapshot();
       engine_->ReloadKit();
+      reload_samples_ = true;
       Toast("Project reloaded");
     } else {
       Toast(error);

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/sample_pool.h"
 #include "core/scales.h"
 
 #if defined(__SSE__) || defined(__x86_64__)
@@ -436,6 +437,29 @@ bool Engine::VaryStep(const Pattern& pattern, int track, int s, const Step& stor
                                          : project_->sounds[track].params[P_DECAY];
   out->locks[P_DECAY] = decay * (1.0f - 0.5f * amount * draw(4));
   return true;
+}
+
+void Engine::SwapSample(int slot, std::shared_ptr<const SampleData>* sample) {
+  if (slot >= 0 && slot < kNumSampleSlots) {
+    samples_[slot].swap(*sample);
+  }
+}
+
+void Engine::SwapSamples(std::shared_ptr<const SampleData>* samples) {
+  for (int i = 0; i < kNumSampleSlots; ++i) {
+    samples_[i].swap(samples[i]);
+  }
+}
+
+const SampleData* Engine::sample(int slot) const {
+  return slot >= 0 && slot < kNumSampleSlots ? samples_[slot].get() : nullptr;
+}
+
+const SampleData* Engine::VoiceSample(const float* params) const {
+  if (Discrete(params[P_ENGINE], kNumEngines) != kSampleEngine) {
+    return nullptr;
+  }
+  return samples_[SampleSlot(params[P_AUX])].get();
 }
 
 void Engine::DiceVary() {
@@ -963,10 +987,11 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     for (int p = 0; p < kNumLockable; ++p) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);
     }
-    voices_[t].Render(params, extra_delay_send, &buses_);
+    const SampleData* sample = VoiceSample(params);
+    voices_[t].Render(params, extra_delay_send, &buses_, sample);
     for (int k = 0; k < kChordVoices; ++k) {
       if (chord_owner_[k] == t && chord_voices_[k].busy()) {
-        chord_voices_[k].Render(params, extra_delay_send, &buses_);
+        chord_voices_[k].Render(params, extra_delay_send, &buses_, sample);
       }
     }
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);

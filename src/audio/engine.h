@@ -20,6 +20,7 @@
 #include "core/grids_gen.h"
 #include "core/midi_parser.h"
 #include "core/project.h"
+#include "core/sample_file.h"
 
 namespace drumfake {
 
@@ -133,6 +134,14 @@ class Engine {
   float xy_x = 0.5f;
   float xy_y = 0.5f;
 
+  // Sampler: the audio of each slot of the project's sample pool (null when
+  // empty). SwapSample exchanges one slot with `*sample`, SwapSamples all of
+  // them with `samples` (kNumSampleSlots); the previous ones come back there, to
+  // be released once the lock is let go (never on the audio thread).
+  void SwapSample(int slot, std::shared_ptr<const SampleData>* sample);
+  void SwapSamples(std::shared_ptr<const SampleData>* samples);
+  const SampleData* sample(int slot) const;
+
   // Vary: draws new variations for the current pattern (the "Dice").
   void DiceVary();
 
@@ -204,6 +213,9 @@ class Engine {
 
   std::mutex mutex_;
   std::unique_ptr<Project> project_;
+  std::shared_ptr<const SampleData> samples_[kNumSampleSlots];
+  // What a track's voice plays: its sample when it is on the Sample engine.
+  const SampleData* VoiceSample(const float* params) const;
   TrackVoice voices_[kNumTracks];
   static const int kChordVoices = 4;
   TrackVoice chord_voices_[kChordVoices];

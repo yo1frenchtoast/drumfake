@@ -15,6 +15,7 @@
 #include <memory>
 #include <vector>
 
+#include "audio/sample_loader.h"
 #include "core/project_io.h"
 #include "io/midi_input.h"
 #include "imgui.h"
@@ -198,6 +199,10 @@ bool Frame(AppState* s) {
       }
       continue;
     }
+    if (event.type == SDL_EVENT_DROP_FILE && event.drop.data) {
+      faceplate.DropFile(event.drop.data, ImVec2(event.drop.x, event.drop.y));
+      continue;
+    }
     ImGui_ImplSDL3_ProcessEvent(&event);
     if (event.type == SDL_EVENT_QUIT ||
         (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
@@ -278,6 +283,11 @@ int RunApp(Engine* engine, const AppOptions& options) {
       fprintf(stderr, "%s (starting with the default project)\n", error.c_str());
     }
     engine->ReloadKit();
+  }
+  std::vector<std::string> sample_problems;
+  LoadProjectSamples(engine, project_path, &sample_problems);
+  for (const std::string& problem : sample_problems) {
+    fprintf(stderr, "Sample not loaded: %s\n", problem.c_str());
   }
 
   PreferSystemGlLibraries();

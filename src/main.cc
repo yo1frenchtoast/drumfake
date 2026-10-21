@@ -17,6 +17,7 @@
 
 #include "app.h"
 #include "audio/engine.h"
+#include "audio/sample_loader.h"
 #include "audio/wav_render.h"
 #include "core/project_io.h"
 
@@ -101,6 +102,11 @@ int main(int argc, char** argv) {
       return 1;
     }
     engine->ReloadKit();
+    std::vector<std::string> problems;
+    LoadProjectSamples(engine.get(), project_path, &problems);
+    for (const std::string& problem : problems) {
+      fprintf(stderr, "Sample not loaded: %s\n", problem.c_str());
+    }
   }
   engine->SelectPattern(pattern);
   engine->grids_enabled = grids;
