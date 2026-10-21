@@ -594,7 +594,8 @@ void Faceplate::DoFileWork() {
   imports.swap(pending_imports_);
   for (const PendingImport& import : imports) {
     std::string message;
-    ImportSample(engine_, project_path_, import.path, import.track, &message);
+    bool imported = ImportSample(engine_, project_path_, import.path, import.track, &message);
+    fprintf(stderr, "Import %s: %s\n", imported ? "done" : "failed", message.c_str());
     Toast(message);
   }
 }
