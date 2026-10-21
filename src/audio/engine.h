@@ -27,7 +27,7 @@ namespace drumfake {
 
 // What the XY pad does (the four buttons above it).
 enum XyMode {
-  XY_GRIDS,   // "Spice": position in the Grids drum map.
+  XY_GRIDS,   // Position in the Grids drum map.
   XY_FX,      // X = DJ filter, Y = delay throw.
   XY_LOOPER,  // Y = loop length, while touched.
   XY_MACROS,  // X/Y = assigned parameters of the selected track.
@@ -69,10 +69,9 @@ class Engine {
 
   int current_pattern() const { return current_pattern_; }
   int queued_pattern() const { return queued_pattern_; }
-  // Kits: each pattern has its own, loaded with it. In Panel mode (like the
-  // MatrixBrute's Panel button) the kit playing stays across pattern changes
-  // and edits are stored nowhere until StoreKit(); leaving Panel mode reloads
-  // the current pattern's kit.
+  // Kits: each pattern has its own, loaded with it. In Panel mode the kit
+  // playing stays across pattern changes and edits are stored nowhere until
+  // StoreKit(); leaving Panel mode reloads the current pattern's kit.
   void SetPanel(bool panel);
   bool panel() const { return panel_; }
   // Snapshot (Shift + Panel): arming saves everything that can be played with (the sounds
@@ -160,8 +159,8 @@ class Engine {
   // is swapped out) and back to idle. False otherwise.
   bool TakeResample(std::vector<int16_t>* frames);
 
-  // Vary: draws new variations for the current pattern (the "Dice").
-  void DiceVary();
+  // Vary: draws new variations for the current pattern.
+  void RedrawVary();
 
   // Writes one bar of the current Grids output into tracks A-C.
   // Loads `kit` (the 8 sounds) as the sounds playing; with `all_patterns`,

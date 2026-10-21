@@ -12,8 +12,8 @@ the [user guide](user-guide.md).
 | Pads 1–8 | depends on the mode: Chords (chords of the scale), Sounds, Repeats, Keys | `A S D F G H J K` |
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
 | Perform: X/Y pad | drag = moves the point; right click = holds FX, Looper or Macros at that point, right click again to release | |
-| Perform: Shift + Spice | shows Vary on the pad (drag left/right = amount); Shift + Vary = new variations (Dice); Spice = back to Grids | `Alt` + click |
-| Perform: Matrix | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
+| Perform: Shift + Grids | shows Vary on the pad (drag left/right = amount); Shift + Vary = new variations; Grids = back to the drum map | `Alt` + click |
+| Perform: Route | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`8` |

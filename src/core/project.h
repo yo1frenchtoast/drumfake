@@ -86,7 +86,7 @@ struct Pattern {
   // Vary: variations applied while the pattern plays, never written into its
   // steps (velocity, dropped and ghost hits, timing, extra ratchets, decay).
   // `vary` is the amount (0 = none); each step's variation is drawn from
-  // `vary_seed`, so it is the same on every loop until the next Dice.
+  // `vary_seed`, so it is the same on every loop until the next redraw.
   float vary;
   uint32_t vary_seed;
 

@@ -453,7 +453,7 @@ void Faceplate::Erase() {
 void Faceplate::Save() {
   std::string error;
   // Outside Panel mode the kit playing belongs to the current pattern; in
-  // Panel mode it is only stored with Store kit, as on the MatrixBrute.
+  // Panel mode it is only stored with Store kit.
   if (!engine_->panel()) {
     engine_->StoreKit();
   }
@@ -1039,8 +1039,8 @@ void Faceplate::DrawTopLeft() {
            theme().label_dim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
            false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           theme().label_dim, shift_latched_ ? "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices  (locked)"
-                          : "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices", false);
+           theme().label_dim, shift_latched_ ? "pad: select  A-D: extend  Grids: vary  Steps: live  Keys: slices  (locked)"
+                          : "pad: select  A-D: extend  Grids: vary  Steps: live  Keys: slices", false);
   }
   UpdateRepeat();
 }
@@ -1056,7 +1056,7 @@ void Faceplate::DrawXySection() {
     XyMode mode;
   };
   const ModeButton kModes[4] = {
-    { "##spice", ICON_SPICE, "Spice", XY_GRIDS },
+    { "##grids", ICON_GRIDS, "Grids", XY_GRIDS },
     { "##fx", ICON_FX, "FX", XY_FX },
     { "##looper", ICON_LOOPER, "Looper", XY_LOOPER },
     { "##macros", ICON_XY, "Macros", XY_MACROS },
@@ -1081,13 +1081,13 @@ void Faceplate::DrawXySection() {
                             ImVec2(x0 + w, layout::kFunctionRowY1),
                             vary_button ? "Vary" : m.label, "", m.icon, lit, led, true);
     if (in.pressed && m.mode == XY_GRIDS && (shift_held_ || vary_open_)) {
-      // Shift + Spice shows Vary on the pad; Shift + Vary draws new variations (Dice);
-      // Spice alone goes back to Grids.
+      // Shift + Grids shows Vary on the pad; Shift + Vary draws new variations;
+      // Grids alone goes back to the drum map.
       if (!shift_held_) {
         vary_open_ = false;
       } else if (vary_open_) {
         shift_used_ = true;
-        engine_->DiceVary();
+        engine_->RedrawVary();
         Toast(pattern().vary > 0.0f ? "Vary: new variations"
                                     : "Vary: new variations (slide right to hear them)");
       } else {
@@ -1123,8 +1123,8 @@ void Faceplate::DrawXySection() {
   // After Macros: swaps the pad for the modulation matrix of the selected track.
   {
     float x0 = layout::kLeftX0 + 4 * (w + layout::kGap);
-    Interaction in = Button(c, "##matrix", ImVec2(x0, layout::kFunctionRowY0),
-                            ImVec2(x0 + w, layout::kFunctionRowY1), "Matrix", "", ICON_MODS,
+    Interaction in = Button(c, "##route", ImVec2(x0, layout::kFunctionRowY0),
+                            ImVec2(x0 + w, layout::kFunctionRowY1), "Route", "", ICON_MODS,
                             matrix_open_, theme().led_white, true);
     if (in.pressed) {
       matrix_open_ = !matrix_open_;
@@ -1244,8 +1244,8 @@ void Faceplate::DrawXySection() {
   c.Text(min.x + 10, max.y - 18, 9, theme().label_dim, text, false);
 }
 
-// Vary on the Perform pad (Shift + Spice): the horizontal position sets the amount of
-// the current pattern, like a slider; Shift + Vary draws new variations (Dice).
+// Vary on the Perform pad (Shift + Grids): the horizontal position sets the amount of
+// the current pattern, like a slider; Shift + Vary draws new variations.
 void Faceplate::DrawVaryPad(ImVec2 min, ImVec2 max) {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
@@ -1279,7 +1279,7 @@ void Faceplate::DrawVaryPad(ImVec2 min, ImVec2 max) {
   }
   c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, 16,
          p.vary > 0.0f ? theme().amber : theme().label_dim, text, true, true);
-  snprintf(text, sizeof(text), "P%02d  slide: amount   Shift + Vary: dice",
+  snprintf(text, sizeof(text), "P%02d  slide: amount   Shift + Vary: redraw",
            engine_->current_pattern() + 1);
   c.Text(min.x + 10, max.y - 18, 9, theme().label_dim, text, false);
 }
@@ -1457,7 +1457,7 @@ void Faceplate::DrawScreenSection() {
     song_edit_ = false;
   }
 
-  // Buttons under the screen, with the 2x4 page LEDs between Sample and
+  // Buttons under the screen, with the 2x4 page LEDs between Freeze and
   // Browse.
   const float kLedsWidth = 64.0f;
   float w = (layout::kScreenX1 - layout::kRightX0 - kLedsWidth - 5 * layout::kGap) / 5.0f;
@@ -1489,11 +1489,11 @@ void Faceplate::DrawScreenSection() {
       Toast(message);
     }
   }
-  // Sample freezes Clouds' recording buffer (effective when Clouds is wet).
+  // Freeze holds Clouds' recording buffer (effective when Clouds is wet).
   // Shift + Freeze: resample one loop of the pattern into a new sample (or cancel).
   const bool resampling = engine_->resample_state() == Engine::RESAMPLE_ARMED ||
       engine_->resample_state() == Engine::RESAMPLE_RECORDING;
-  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze || resampling,
+  if (screen_button(1, "##freeze", "Freeze", ICON_FREEZE, engine_->clouds_freeze || resampling,
                     resampling ? theme().red : theme().accent).pressed) {
     if (shift_held_) {
       shift_used_ = true;
@@ -1854,7 +1854,7 @@ void Faceplate::DrawSequencer() {
   last_step_held_ = last_now;
 
   // Editing.
-  // Panel: keep the sound playing across pattern changes (MatrixBrute).
+  // Panel: keep the sound playing across pattern changes.
   // Shift + Panel, a right click or a long press arms a snapshot of everything playable:
   // edit freely (a drop), and a press of Panel puts it all back.
   {

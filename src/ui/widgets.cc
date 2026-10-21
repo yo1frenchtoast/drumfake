@@ -243,15 +243,20 @@ void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color
                     ImVec2(p.x + s * 0.35f, p.y + i * s * 0.35f), color, t);
       }
       break;
-    case ICON_SAMPLE: {
-      const float heights[] = { 0.2f, 0.5f, 0.9f, 0.4f, 0.7f, 1.0f, 0.5f, 0.8f, 0.3f, 0.15f };
-      for (int i = 0; i < 10; ++i) {
-        float x = p.x - s * 1.2f + i * s * 0.26f;
-        dl->AddLine(ImVec2(x, p.y - heights[i] * s * 0.7f),
-                    ImVec2(x, p.y + heights[i] * s * 0.7f), color, t);
+    case ICON_FREEZE:
+      // Snowflake: three crossed strokes with a small fork at each end.
+      for (int i = 0; i < 6; ++i) {
+        float a = i * kPi / 3.0f;
+        ImVec2 tip(p.x + std::cos(a) * s * 0.8f, p.y + std::sin(a) * s * 0.8f);
+        ImVec2 fork(p.x + std::cos(a) * s * 0.5f, p.y + std::sin(a) * s * 0.5f);
+        dl->AddLine(p, tip, color, t);
+        for (int side = -1; side <= 1; side += 2) {
+          float b = a + side * kPi / 4.0f;
+          dl->AddLine(fork, ImVec2(fork.x + std::cos(b) * s * 0.25f,
+                                   fork.y + std::sin(b) * s * 0.25f), color, t);
+        }
       }
       break;
-    }
     case ICON_BROWSE:
       dl->AddCircle(ImVec2(p.x - s * 0.15f, p.y - s * 0.15f), s * 0.5f, color, 20, t);
       dl->AddLine(ImVec2(p.x + s * 0.2f, p.y + s * 0.2f),
@@ -347,10 +352,18 @@ void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color
                           ImVec2(x + s * 0.08f, p.y), color);
       }
       break;
-    case ICON_SPICE:
-      dl->PathArcTo(ImVec2(p.x - s * 0.1f, p.y - s * 0.6f), s * 1.1f, kPi * 0.35f, kPi * 0.62f, 12);
-      dl->PathStroke(color, 0, t * 2.5f);
-      dl->AddLine(ImVec2(p.x + s * 0.1f, p.y - s * 0.6f), ImVec2(p.x + s * 0.35f, p.y - s * 0.85f), color, t);
+    case ICON_GRIDS:
+      // A 3x3 grid of dots, some filled: a drum map.
+      for (int row = -1; row <= 1; ++row) {
+        for (int column = -1; column <= 1; ++column) {
+          ImVec2 dot(p.x + column * s * 0.55f, p.y + row * s * 0.55f);
+          if ((row + column + 2) % 2 == 0) {
+            dl->AddCircleFilled(dot, s * 0.17f, color);
+          } else {
+            dl->AddCircle(dot, s * 0.17f, color, 10, t * 0.8f);
+          }
+        }
+      }
       break;
     case ICON_FX:
       dl->AddLine(ImVec2(p.x - s * 0.7f, p.y + s * 0.5f), ImVec2(p.x + s * 0.7f, p.y - s * 0.5f), color, t);

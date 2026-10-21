@@ -214,7 +214,7 @@ class Faceplate {
   bool xy_touched_ = false;
   bool panel_long_fired_ = false;  // The finger on Panel has armed (or restored) the snapshot.
   bool matrix_open_ = false;  // The Perform pad shows the modulation matrix.
-  bool vary_open_ = false;    // The Perform pad sets the pattern's Vary (Shift + Spice).
+  bool vary_open_ = false;    // The Perform pad sets the pattern's Vary (Shift + Grids).
   int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;

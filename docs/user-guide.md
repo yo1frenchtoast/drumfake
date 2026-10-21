@@ -118,13 +118,13 @@ the pattern.
   pattern change. Without Poly, short tracks restart with the pattern.
 - **Tempo**: the *Tempo* knob, *TAP*, or *Edit* → *BPM*. With *Follow MIDI clock* on, the tempo
   comes from the outside (the screen shows `EXT`).
-- **Vary**: *Shift* + *Spice*, per pattern (see [the X/Y pad](#the-xy-pad)). It changes the
+- **Vary**: *Shift* + *Grids*, per pattern (see [the X/Y pad](#the-xy-pad)). It changes the
   pattern as it plays, without writing
   anything into the steps: hits get softer, some are dropped, soft ghost notes (an echo of the
   previous hit of the track) appear on empty steps, the timing loosens a little, a few hits
   become double ratchets, and decays get shorter. The amount sets how much of each, from off
   to the full table below. The variations are drawn once and repeat on every loop, so the groove
-  stays a groove; *Shift* + *Vary* (the Dice) draws new ones. The amount and the draw are saved
+  stays a groove; *Shift* + *Vary* draws new ones. The amount and the draw are saved
   with the pattern.
 
   | At 100% | |
@@ -251,7 +251,7 @@ Modulations are per track, and saved in the kit.
     cutoff.
 - **Macros.** With the **Macros** mode of the X/Y pad, the pad moves two parameters of the
   selected track at once (chosen on the *Assign* page).
-- **Modulation matrix.** The **Matrix** button, after *Macros*, swaps the X/Y pad for a grid: one
+- **Modulation matrix.** The **Route** button, after *Macros*, swaps the X/Y pad for a grid: one
   row per source (LFO 1, LFO 2, Env, Ball), one column per parameter, on three tabs (Sound,
   Filter, Track). Tap a cell to send the source there, tap the lit cell to turn it off. The fill
   of the cell shows the amount (blue-green up, amber down), which you set with the knobs of the
@@ -266,7 +266,7 @@ A **kit** is the 8 sounds of a pattern (engine, all parameters, modulation setti
   the kit of the current pattern. *Copy* and *Paste* of a pattern also copy its kit.
 - **Browse** lists the 16 factory sounds. Tap one to load it on the selected track. In *Sounds*
   mode, pads 1–8 do the same (8 sounds per bank; tap *Sounds* again for bank 2).
-- **Panel mode** (as on the MatrixBrute): the current sound stays as it is when you change
+- **Panel mode**: the current sound stays as it is when you change
   pattern. Your edits are stored nowhere until you use *Edit* → *Store kit*, which writes them
   to the current pattern. Turning Panel off reloads the kit of the current pattern. The screen
   shows `PANEL` when active.
@@ -289,10 +289,10 @@ A **kit** is the 8 sounds of a pattern (engine, all parameters, modulation setti
 
 ## 4. Generating rhythms
 
-### Grids (X/Y pad, "Spice")
+### Grids (X/Y pad)
 
-The X/Y pad in **Spice** mode moves through the Grids drum map: the position picks the rhythm of
-three parts, played on tracks A–C. Click *Spice* again to turn it on or off. The *Assign* page
+The X/Y pad in **Grids** mode moves through the Grids drum map: the position picks the rhythm of
+three parts, played on tracks A–C. Click *Grids* again to turn it on or off. The *Assign* page
 sets the density of each part and the chaos. *Edit* → **Bake Grids** writes the current Grids
 rhythm into the steps of tracks A–C, so you can edit it.
 
@@ -339,26 +339,26 @@ deja vu up to 100 %, generate until you like the loop, then edit the steps by ha
 
 ### The X/Y pad
 
-Four modes, chosen with the buttons above the pad (the fifth button, **Matrix**, replaces the
+Four modes, chosen with the buttons above the pad (the fifth button, **Route**, replaces the
 pad with the [modulation matrix](#modulation)):
 
 | Mode | Effect while you touch the pad |
 |---|---|
-| **Spice** | Moves through the Grids drum map (see above). |
+| **Grids** | Moves through the Grids drum map (see above). |
 | **FX** | X = DJ filter (low pass on the left, high pass on the right), Y = delay throw. |
 | **Looper** | Loops the sequencer for as long as you touch the pad. Y sets the length. |
 | **Macros** | Moves the two parameters assigned on the *Assign* page. |
 
-**Vary.** *Shift* + *Spice* turns the pad into the Vary slider of the current pattern: the
-*Spice* button reads *Vary* (amber LED), and sliding left or right sets the amount (the left edge
-turns it off). *Shift* + *Vary* draws new variations; *Spice* alone goes back to Grids, and any
-other mode leaves it. A locked Shift works too.
+**Vary.** *Shift* + *Grids* turns the pad into the Vary slider of the current pattern: the
+*Grids* button reads *Vary* (amber LED), and sliding left or right sets the amount (the left edge
+turns it off). *Shift* + *Vary* draws new variations; *Grids* alone goes back to the drum map,
+and any other mode leaves it. A locked Shift works too.
 
 **Hold.** FX, Looper and Macros only act while you touch the pad. To keep one going, press its
 lit mode button while a finger is on the pad (with a mouse: right click the pad where you want
 it). The point turns amber and *HOLD* shows on the pad: it stays there after you let go, and
 touching the pad moves it. Press the lit button again (or right click the pad) to release it;
-changing mode or opening the Matrix also releases it. A held Looper keeps looping.
+changing mode or opening the Route grid also releases it. A held Looper keeps looping.
 
 ### Pads 1–8
 
@@ -434,8 +434,7 @@ the options).
 
 ## 9. Limits
 
-- The *Sample* button position is used as the Clouds *Freeze* button (Shift + Freeze resamples);
-  the sampler is the **Sample** engine. Samples are imported by dropping files, on the desktop
+- The sampler is the **Sample** engine. Samples are imported by dropping files, on the desktop
   and in the browser; not yet on Android.
 - The pool belongs to the project: a kit of the kit library that uses samples refers to slots of
   the pool, not to files.

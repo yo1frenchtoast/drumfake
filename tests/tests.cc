@@ -285,8 +285,8 @@ void TestVary() {
   CHECK(after.micro == stored.micro && after.ratchets == stored.ratchets);
   CHECK(!after.has_lock(P_DECAY));
 
-  // Dice: a new draw gives other variations.
-  engine->DiceVary();
+  // Redraw: a new draw gives other variations.
+  engine->RedrawVary();
   CHECK(engine->project().patterns[0].vary_seed != 1234u);
   auto third = RenderAndCollectVelocities(engine.get(), 2, kLoop);
   bool different = third.size() != second.size();

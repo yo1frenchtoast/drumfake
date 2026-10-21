@@ -41,9 +41,8 @@ Press **Play**, select a track with its pad and press the steps. The project is 
 
 ## Limitations
 
-- The *Sample* button position is used as the Clouds *Freeze* button (Shift + Freeze resamples
-  a loop); samples are imported by dropping WAV files on the window (desktop and browser, not
-  yet Android).
+- Samples are imported by dropping WAV files on the window: desktop and browser, not yet
+  Android.
 
 ## License
 

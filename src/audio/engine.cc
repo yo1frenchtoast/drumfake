@@ -511,7 +511,7 @@ void Engine::RecordResample(const float* out_l, const float* out_r) {
   }
 }
 
-void Engine::DiceVary() {
+void Engine::RedrawVary() {
   Pattern& pattern = project_->patterns[current_pattern_];
   pattern.vary_seed = Hash((static_cast<uint64_t>(pattern.vary_seed) << 32) ^
                            static_cast<uint64_t>(sample_counter_)) | 1;
