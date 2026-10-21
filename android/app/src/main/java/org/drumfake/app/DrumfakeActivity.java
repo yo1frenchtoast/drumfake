@@ -1,4 +1,4 @@
-package org.drumfreake.app;
+package org.drumfake.app;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -17,10 +17,10 @@ import java.util.Map;
 
 import org.libsdl.app.SDLActivity;
 
-// Loads libSDL3.so and libmain.so (the Drumf(re)ake app) and runs SDL_main().
+// Loads libSDL3.so and libmain.so (the Drumfake app) and runs SDL_main().
 // Also opens every MIDI device (USB, other apps) and forwards what they send
 // to the native MIDI input (src/io/midi_android.cc).
-public class DrumfreakeActivity extends SDLActivity {
+public class DrumfakeActivity extends SDLActivity {
     private MidiManager midiManager;
     private final Map<Integer, MidiDevice> midiDevices = new HashMap<>();
 

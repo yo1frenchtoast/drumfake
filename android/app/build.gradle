@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace = "org.drumfreake.app"
+    namespace = "org.drumfake.app"
     compileSdk = 36
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "org.drumfreake.app"
+        applicationId = "org.drumfake.app"
         minSdk = 26  // AAudio.
         targetSdk = 36
         versionCode = 1

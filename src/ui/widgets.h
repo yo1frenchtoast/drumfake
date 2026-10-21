@@ -1,17 +1,17 @@
 // Hardware-looking widgets drawn with the ImGui draw list.
 //
-// All positions are given in "panel" coordinates (the 1540x850 layout of the
-// prototype photo); Canvas converts them to screen pixels.
+// All positions are given in "panel" coordinates (a 1540x850
+// layout); Canvas converts them to screen pixels.
 
-#ifndef DRUMFREAKE_UI_WIDGETS_H_
-#define DRUMFREAKE_UI_WIDGETS_H_
+#ifndef DRUMFAKE_UI_WIDGETS_H_
+#define DRUMFAKE_UI_WIDGETS_H_
 
 #include <unordered_map>
 #include <vector>
 
 #include "imgui.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 const float kPanelWidth = 1540.0f;
 const float kPanelHeight = 815.0f;
@@ -179,6 +179,6 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
 
 void DrawIcon(const Canvas& c, Icon icon, ImVec2 center, float size, ImU32 color);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_UI_WIDGETS_H_
+#endif  // DRUMFAKE_UI_WIDGETS_H_

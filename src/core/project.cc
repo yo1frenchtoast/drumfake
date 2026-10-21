@@ -5,7 +5,7 @@
 #include "core/presets.h"
 #include "core/scales.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 const float kDivisionSteps[kNumDivisions] = {
   2.0f, 4.0f / 3.0f, 1.0f, 2.0f / 3.0f, 0.5f
@@ -220,4 +220,4 @@ void Project::Init() {
   marbles_tracks[1] = 1;  // ...and t3 the snare.
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

@@ -11,7 +11,7 @@
 
 #include "core/scales.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 using nlohmann::json;
 
@@ -290,7 +290,19 @@ std::string DefaultProjectPath() {
     const char* home = std::getenv("HOME");
     base = std::string(home ? home : ".") + "/.local/share";
   }
-  return base + "/drumfreake/project.json";
+  return base + "/drumfake/project.json";
+}
+
+bool MigrateLegacyDataDirectory(const std::string& project_path) {
+  namespace fs = std::filesystem;
+  fs::path directory = fs::path(project_path).parent_path();
+  fs::path legacy = directory.parent_path() / "drumfreake";
+  std::error_code error;
+  if (directory.empty() || fs::exists(directory, error) || !fs::is_directory(legacy, error)) {
+    return false;
+  }
+  fs::rename(legacy, directory, error);
+  return !error;
 }
 
 std::string KitDirectory(const std::string& project_path) {
@@ -391,4 +403,4 @@ bool DeleteKitFile(const std::string& path, std::string* error) {
   return true;
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

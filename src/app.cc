@@ -22,7 +22,7 @@
 #include "imgui_impl_sdl3.h"
 #include "ui/faceplate.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -222,7 +222,7 @@ bool Frame(AppState* s) {
 
   ImGui::SetNextWindowPos(ImVec2(0, 0));
   ImGui::SetNextWindowSize(io.DisplaySize);
-  ImGui::Begin("Drumf(re)ake", nullptr,
+  ImGui::Begin("Drumfake", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
@@ -331,13 +331,13 @@ int RunApp(Engine* engine, const AppOptions& options) {
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
   SDL_Window* window = SDL_CreateWindow(
-      "Drumf(re)ake", 1400, 773,
+      "Drumfake", 1400, 773,
       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | kExtraWindowFlags);
   if (!window) {
     // Retry without multisampling.
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-    window = SDL_CreateWindow("Drumf(re)ake", 1400, 773,
+    window = SDL_CreateWindow("Drumfake", 1400, 773,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | kExtraWindowFlags);
   }
   if (!window) {
@@ -418,4 +418,4 @@ int RunApp(Engine* engine, const AppOptions& options) {
 #endif
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

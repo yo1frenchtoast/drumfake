@@ -24,8 +24,8 @@ docs/                  this documentation
 ```
 
 The CMake targets: `mutable_dsp` (the Mutable Instruments sources, built as a static library
-with `-w`), `drumfreake_core` (everything in `src/core` and `src/audio`, built with `-Wall
--Wextra`), `drumfreake_tests`, and `drumfreake` (the application).
+with `-w`), `drumfake_core` (everything in `src/core` and `src/audio`, built with `-Wall
+-Wextra`), `drumfake_tests`, and `drumfake` (the application).
 
 ## Data flow
 
@@ -142,7 +142,7 @@ test in `tests.cc`.
 ## Testing
 
 ```sh
-./build/drumfreake_tests
+./build/drumfake_tests
 ```
 
 The suite is one executable (`tests/tests.cc`) with no framework: `CHECK(cond)` and
@@ -159,7 +159,7 @@ the Mutable Instruments code.
 
 ### Checking the UI
 
-- Desktop: `./build/drumfreake --screenshot out.ppm` renders a few frames and writes the
+- Desktop: `./build/drumfake --screenshot out.ppm` renders a few frames and writes the
   window. Convert it to PNG to look at it (`python3 -c "from PIL import Image;
   Image.open('out.ppm').save('out.png')"`). To capture a given page or view, set the default
   of `page_` or `view_` in `faceplate.h` temporarily.
@@ -177,8 +177,8 @@ versions (same pattern, same seed), or to measure the CPU load in a script.
 - UI model state is written by the UI thread under `engine.mutex()`; the audio thread reads it.
 - New engine features get tests; UI changes are checked with a screenshot.
 - Update the [user guide](user-guide.md) and [controls](controls.md) when a behavior changes.
-- The project is GPLv3. Independent project: no Arturia branding in the UI (factual comments in
-  the code are fine).
+- The project is GPLv3 and independent: no third-party brand or product names in the UI, the
+  docs or the code.
 
 ## Android notes
 
@@ -191,8 +191,8 @@ versions (same pattern, same seed), or to measure the CPU load in a script.
 
 ## Web notes
 
-- `emcmake cmake` builds the same targets with Emscripten: `drumfreake.html` and a
-  `drumfreake_tests.js` that runs under Node.js. SDL3 comes from the submodule, statically.
+- `emcmake cmake` builds the same targets with Emscripten: `drumfake.html` and a
+  `drumfake_tests.js` that runs under Node.js. SDL3 comes from the submodule, statically.
 - There are no threads: the browser drives the main loop (`emscripten_set_main_loop_arg` in
   `src/app.cc`, one `Frame()` per animation frame) and SDL renders audio on the main thread,
   between frames, with 1024-frame buffers. The engine lock is still taken, it just never waits.

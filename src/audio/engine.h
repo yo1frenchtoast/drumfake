@@ -5,8 +5,8 @@
 // or writes them; Render() takes the same lock. The atomics (playhead, meters,
 // scope) can be read from any thread without the lock.
 
-#ifndef DRUMFREAKE_AUDIO_ENGINE_H_
-#define DRUMFREAKE_AUDIO_ENGINE_H_
+#ifndef DRUMFAKE_AUDIO_ENGINE_H_
+#define DRUMFAKE_AUDIO_ENGINE_H_
 
 #include <atomic>
 #include <cstdint>
@@ -21,7 +21,7 @@
 #include "core/midi_parser.h"
 #include "core/project.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 // What the XY pad does (the four buttons above it).
 enum XyMode {
@@ -90,7 +90,7 @@ class Engine {
   void ReloadKit();
 
   // Switches now when stopped, at the end of the pattern when playing.
-  // Leaves song mode, like selecting a pattern on the Arturia machines.
+  // Leaves song mode.
   void SelectPattern(int pattern);
 
   // Mute and solo: when any track is soloed, only soloed tracks play (the
@@ -288,6 +288,6 @@ class Engine {
 extern const float kRepeatPeriods[kNumRepeatRates];
 extern const char* const kRepeatNames[kNumRepeatRates];
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_ENGINE_H_
+#endif  // DRUMFAKE_AUDIO_ENGINE_H_

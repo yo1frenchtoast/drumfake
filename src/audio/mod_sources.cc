@@ -6,7 +6,7 @@
 #include "peaks/modulations/bouncing_ball.h"
 #include "peaks/modulations/multistage_envelope.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 struct ModSources::Impl {
   peaks::MultistageEnvelope envelope;
@@ -70,4 +70,4 @@ void ModSources::Process(float attack, float decay, float gravity, float bounce)
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

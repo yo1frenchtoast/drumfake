@@ -3,8 +3,8 @@
 // The model is plain data. It is written by the UI thread (under the engine
 // lock) and read by the audio thread.
 
-#ifndef DRUMFREAKE_CORE_PROJECT_H_
-#define DRUMFREAKE_CORE_PROJECT_H_
+#ifndef DRUMFAKE_CORE_PROJECT_H_
+#define DRUMFAKE_CORE_PROJECT_H_
 
 #include <cmath>
 #include <cstdint>
@@ -14,7 +14,7 @@
 #include "core/params.h"
 #include "core/scales.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 const int kMaxSteps = 64;
 const int kStepsPerPage = 16;
@@ -92,7 +92,7 @@ struct Pattern {
   // tracks, locks included) up to the end of page `destination`, and extends
   // the pattern to it. Otherwise copies page `source` onto page `destination`.
   void CopyPages(int source, int destination);
-  // Shift + page (as on the DrumBrute): sets the length to `new_length` steps,
+  // Shift + page: sets the length to `new_length` steps,
   // repeating the current steps (locks included) when it grows. With `track`
   // < 0 it is the pattern's length, and the tracks that follow it are repeated
   // (tracks with their own length keep it); otherwise it is the length of that
@@ -144,6 +144,6 @@ struct Project {
 // Builds the demo groove in `pattern`.
 void MakeDemoPattern(Pattern* pattern);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_PROJECT_H_
+#endif  // DRUMFAKE_CORE_PROJECT_H_

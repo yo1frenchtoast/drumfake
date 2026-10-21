@@ -1,8 +1,8 @@
-// One Drumf(re)ake track: a Plaits voice followed by a filter, drive, sample
+// One Drumfake track: a Plaits voice followed by a filter, drive, sample
 // rate reduction, choke gain, volume and pan, with reverb/delay sends.
 
-#ifndef DRUMFREAKE_AUDIO_TRACK_VOICE_H_
-#define DRUMFREAKE_AUDIO_TRACK_VOICE_H_
+#ifndef DRUMFAKE_AUDIO_TRACK_VOICE_H_
+#define DRUMFAKE_AUDIO_TRACK_VOICE_H_
 
 #include <cstddef>
 
@@ -13,7 +13,7 @@
 #include "plaits/dsp/voice.h"
 #include "stmlib/dsp/filter.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 static_assert(kBlockSize == plaits::kBlockSize, "Block size must match Plaits");
 
@@ -64,6 +64,6 @@ class TrackVoice {
   float mono_[kBlockSize];
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_TRACK_VOICE_H_
+#endif  // DRUMFAKE_AUDIO_TRACK_VOICE_H_

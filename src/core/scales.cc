@@ -2,7 +2,7 @@
 
 #include <cstdio>
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
@@ -145,4 +145,4 @@ std::string NoteName(int midi_note) {
   return buffer;
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

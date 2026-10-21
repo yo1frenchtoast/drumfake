@@ -7,7 +7,7 @@
 #include "marbles/random/random_stream.h"
 #include "marbles/random/t_generator.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 // In the order of marbles::TGeneratorModel.
 const char* const kMarblesModelNames[kNumMarblesModels] = {
@@ -83,4 +83,4 @@ void MarblesGenerate(const MarblesSettings& settings, uint32_t seed,
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

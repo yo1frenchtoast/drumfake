@@ -4,12 +4,12 @@
 // rings/resources.h define the same macros with different values, so the two
 // modules must never be included in the same translation unit.
 
-#ifndef DRUMFREAKE_AUDIO_BUSES_H_
-#define DRUMFREAKE_AUDIO_BUSES_H_
+#ifndef DRUMFAKE_AUDIO_BUSES_H_
+#define DRUMFAKE_AUDIO_BUSES_H_
 
 #include <cstddef>
 
-namespace drumfreake {
+namespace drumfake {
 
 const float kSampleRate = 48000.0f;  // Same as plaits::kSampleRate.
 const size_t kBlockSize = 12;        // Same as plaits::kBlockSize.
@@ -25,6 +25,6 @@ struct Buses {
   void Clear();
 };
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_BUSES_H_
+#endif  // DRUMFAKE_AUDIO_BUSES_H_

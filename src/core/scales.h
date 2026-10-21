@@ -1,11 +1,11 @@
 // Scales for the Keys pad mode.
 
-#ifndef DRUMFREAKE_CORE_SCALES_H_
-#define DRUMFREAKE_CORE_SCALES_H_
+#ifndef DRUMFAKE_CORE_SCALES_H_
+#define DRUMFAKE_CORE_SCALES_H_
 
 #include <string>
 
-namespace drumfreake {
+namespace drumfake {
 
 struct Scale {
   const char* name;
@@ -61,6 +61,6 @@ std::string ChordName(const int* notes, int count);
 const char* PitchClassName(int pitch_class);
 std::string NoteName(int midi_note);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_CORE_SCALES_H_
+#endif  // DRUMFAKE_CORE_SCALES_H_

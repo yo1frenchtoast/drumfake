@@ -9,11 +9,11 @@
 #include "RtMidi.h"
 #include "io/midi_input.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 namespace {
 
-const char* const kClientName = "Drumf(re)ake";
+const char* const kClientName = "Drumfake";
 
 struct Source {
   Engine* engine;
@@ -110,4 +110,4 @@ void MidiInput::Poll() {
   }
 }
 
-}  // namespace drumfreake
+}  // namespace drumfake

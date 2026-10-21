@@ -1,14 +1,14 @@
 // Offline rendering to a WAV file (headless mode and tests).
 
-#ifndef DRUMFREAKE_AUDIO_WAV_RENDER_H_
-#define DRUMFREAKE_AUDIO_WAV_RENDER_H_
+#ifndef DRUMFAKE_AUDIO_WAV_RENDER_H_
+#define DRUMFAKE_AUDIO_WAV_RENDER_H_
 
 #include <string>
 #include <vector>
 
 #include "audio/engine.h"
 
-namespace drumfreake {
+namespace drumfake {
 
 struct RenderStats {
   float peak = 0.0f;
@@ -27,6 +27,6 @@ bool RenderBars(Engine* engine, int bars, const std::string& path,
 bool WriteWav(const std::string& path, const std::vector<float>& interleaved,
               int channels, int sample_rate);
 
-}  // namespace drumfreake
+}  // namespace drumfake
 
-#endif  // DRUMFREAKE_AUDIO_WAV_RENDER_H_
+#endif  // DRUMFAKE_AUDIO_WAV_RENDER_H_

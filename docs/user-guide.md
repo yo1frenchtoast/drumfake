@@ -1,6 +1,6 @@
 # User guide
 
-Drumf(re)ake is a groovebox with 8 tracks. Each track has its own sound (a Plaits voice), a
+Drumfake is a groovebox with 8 tracks. Each track has its own sound (a Plaits voice), a
 filter, sends to the master effects, and a sequence of up to 64 steps. This guide explains the
 features in the order you meet them. The exact gestures are in the
 [controls reference](controls.md).
@@ -19,7 +19,7 @@ and a scope. The round encoder changes the Plaits engine of the track (or the so
 **First groove.** Press **Play**. Select a track, then press steps 1–16 to turn them on or
 off. The demo pattern is a good start: *Edit* → *Demo pattern*.
 
-**Saving.** *Save* (or `Ctrl+S`) writes the project to `~/.local/share/drumfreake/project.json`
+**Saving.** *Save* (or `Ctrl+S`) writes the project to `~/.local/share/drumfake/project.json`
 (the app's private storage on Android). It is reloaded at startup. *Undo* reverts the last
 edit of the current pattern, up to 32 times.
 
@@ -35,7 +35,7 @@ follow the playing page again (and turns Follow back on if it was off).
 - **Length.** *Edit* → *Length* sets the pattern length. *Last Step* held, then a step or a
   page, sets it without opening Edit.
 - **Extending.** *Shift* + a page sets the length to 16, 32, 48 or 64 steps and, when it grows,
-  repeats what is already there (locks included), as on the DrumBrute: a 16-step pattern and
+  repeats what is already there (locks included): a 16-step pattern and
   *Shift* + `B|32` gives the same 16 steps twice. A length that is not a whole page repeats on its
   own period (12 steps to 48 gives four times the 12). A shorter length just shortens.
   With **Poly** on, the *Steps* view extends the selected track alone (it gets its own length),
@@ -268,7 +268,7 @@ changing mode or opening the Matrix also releases it. A held Looper keeps loopin
 |---|---|
 | **Chords** | Plays real chords on the selected track, built on the scale of the Keys settings (see below). |
 | **Sounds** | Loads factory sounds on the selected track. |
-| **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step), like the DrumBrute Roller. |
+| **Repeats** | Repeats the held tracks at the chosen division. With Rec on, the repeats are written into the pattern (one per step, or as ratchets when faster than a step). |
 | **Keys** | Plays the selected track on a scale and writes the note into the selected step. Pads 1–8 are the notes of the scale, the instrument pads A–H are the black keys (see below). |
 
 **Chords.** In *Chords* mode, pads 1–8 play a chord on the selected track: the chord built on
@@ -310,7 +310,7 @@ the mode. *Shift* + Mute or Solo, or a right click on the button, clears them al
 ## 7. MIDI
 
 **Input.** On a PC, every ALSA port is available and hot-pluggable, plus a virtual port called
-*Drumf(re)ake*. On Android, USB devices and MIDI apps are available. The **MIDI** indicator on
+*Drumfake*. On Android, USB devices and MIDI apps are available. The **MIDI** indicator on
 the screen blinks on each message; `--midi-monitor` prints them in the terminal.
 
 - **One instrument = one channel.** Track A listens on channel 1, B on channel 2… H on channel
@@ -328,7 +328,7 @@ There is no MIDI output yet.
 ## 8. Offline rendering
 
 ```sh
-./build/drumfreake --render demo.wav --bars 4 --pattern 1
+./build/drumfake --render demo.wav --bars 4 --pattern 1
 ```
 
 renders a pattern to a WAV file without opening a window (see [building](building.md) for all
@@ -337,5 +337,3 @@ the options).
 ## 9. Limits
 
 - There is no sampler: the *Sample* button position is used as the Clouds *Freeze* button.
-- The exact functions of the Arturia DrumFreak are not public. The faceplate follows the layout
-  of the prototype photo, and the behavior of each button is an interpretation.
