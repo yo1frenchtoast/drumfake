@@ -229,9 +229,12 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
     dl->AddCircle(p, r * 0.55f, Shade(top, 0.85f), 40, c.S(1.0f));
     dl->AddCircle(p, r * 0.3f, Shade(top, 0.85f), 40, c.S(1.0f));
   }
-  ImVec2 tip(p.x + cosf(angle) * r * 0.9f, p.y + sinf(angle) * r * 0.9f);
-  ImVec2 base(p.x + cosf(angle) * r * 0.35f, p.y + sinf(angle) * r * 0.35f);
-  dl->AddLine(base, tip, pointer, c.S(2.4f));
+  // The encoder turns endlessly: no position to show.
+  if (style != KNOB_ENCODER) {
+    ImVec2 tip(p.x + cosf(angle) * r * 0.9f, p.y + sinf(angle) * r * 0.9f);
+    ImVec2 base(p.x + cosf(angle) * r * 0.35f, p.y + sinf(angle) * r * 0.35f);
+    dl->AddLine(base, tip, pointer, c.S(2.4f));
+  }
 
   return *value != old_value;
 }
