@@ -144,8 +144,12 @@ struct ParamInfo {
   float default_value;
 };
 
-// Plaits engines, in the order registered by plaits::Voice::Init().
-const int kNumEngines = 24;
+// Engines: the Plaits ones, in the order registered by plaits::Voice::Init(),
+// then the sampler's. New engines go at the end: saved files record how many
+// engines there were (see RemapEngine in core/project_io.cc).
+const int kNumPlaitsEngines = 24;
+const int kSampleEngine = kNumPlaitsEngines;  // Plays a sample of the project's pool.
+const int kNumEngines = kNumPlaitsEngines + 1;
 extern const char* const kEngineNames[kNumEngines];
 
 enum LfoShape {

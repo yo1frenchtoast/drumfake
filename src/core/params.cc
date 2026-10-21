@@ -31,6 +31,7 @@ const char* const kEngineNames[kNumEngines] = {
   "Bass Drum",
   "Snare Drum",
   "Hi-Hat",
+  "Sample",
 };
 
 const float kLfoPeriods[kNumLfoRates] = {

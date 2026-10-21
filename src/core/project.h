@@ -22,6 +22,9 @@ const int kNumPages = kMaxSteps / kStepsPerPage;
 const int kNumPatterns = 16;
 const int kMaxRatchets = 4;
 const int kMaxSongLength = 64;
+// The sampler's pool: numbered slots holding files of the project's "samples"
+// directory. A track on the Sample engine picks its slot with the Aux knob.
+const int kNumSampleSlots = 128;
 
 // Time division of a pattern: the length of one step, in 16th notes.
 const int kNumDivisions = 5;
@@ -136,6 +139,8 @@ struct Project {
   // Song: chain of pattern indices, played in order (a pattern may repeat).
   int song[kMaxSongLength];
   int song_length;
+  // Sample pool: file names in the samples directory ("" = empty slot).
+  std::string samples[kNumSampleSlots];
 
   // Default kit and demo pattern.
   void Init();

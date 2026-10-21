@@ -60,8 +60,9 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   gate_remaining_ -= std::min(gate_remaining_, kBlockSize);
   last_trigger_high_ = gate_high;
 
+  const int engine = Discrete(params[P_ENGINE], kNumEngines);
   plaits::Patch patch;
-  patch.engine = Discrete(params[P_ENGINE], kNumEngines);
+  patch.engine = std::min(engine, kNumPlaitsEngines - 1);
   patch.note = PitchToNote(params[P_PITCH]);
   patch.harmonics = params[P_HARMONICS];
   patch.timbre = params[P_TIMBRE];
@@ -80,14 +81,17 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   modulations.trigger_patched = true;
   modulations.level_patched = true;
 
-  plaits::Voice::Frame frames[kBlockSize];
-  voice_.Render(patch, modulations, frames, kBlockSize);
-
-  const float aux = params[P_AUX];
-  for (size_t i = 0; i < kBlockSize; ++i) {
-    float out = static_cast<float>(frames[i].out) / 32768.0f;
-    float aux_out = static_cast<float>(frames[i].aux) / 32768.0f;
-    mono_[i] = out + (aux_out - out) * aux;
+  if (engine == kSampleEngine) {
+    std::fill(mono_, mono_ + kBlockSize, 0.0f);  // The sample player comes next.
+  } else {
+    plaits::Voice::Frame frames[kBlockSize];
+    voice_.Render(patch, modulations, frames, kBlockSize);
+    const float aux = params[P_AUX];
+    for (size_t i = 0; i < kBlockSize; ++i) {
+      float out = static_cast<float>(frames[i].out) / 32768.0f;
+      float aux_out = static_cast<float>(frames[i].aux) / 32768.0f;
+      mono_[i] = out + (aux_out - out) * aux;
+    }
   }
 
   // Filter, with an exponentially decaying envelope on the cutoff.

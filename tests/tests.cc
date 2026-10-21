@@ -17,6 +17,7 @@
 #include "core/presets.h"
 #include "core/project_io.h"
 #include "core/sample_file.h"
+#include "core/sample_pool.h"
 #include "core/scales.h"
 #include "grids/resources.h"
 #include <nlohmann/json.hpp>
@@ -500,6 +501,126 @@ void TestWavDecoding() {
       CHECK(sample.frames.size() <= static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
     }
   }
+}
+
+void TestEngineCountMigration() {
+  namespace fs = std::filesystem;
+  // A project saved with the 24 Plaits engines and no engine count: Bass Drum (21) on
+  // the panel sound, Hi-Hat (23) in pattern 1's kit, a step locked to engine 5.
+  const float kBassDrum24 = DiscreteToNormalized(21, 24);
+  CHECK(Discrete(kBassDrum24, kNumEngines) != 21);  // What would go wrong without it.
+  nlohmann::json sound = { { "name", "Kick" }, { "params", { kBassDrum24 } } };
+  nlohmann::json hat = { { "name", "Hat" }, { "params", { DiscreteToNormalized(23, 24) } } };
+  nlohmann::json legacy = {
+    { "version", 2 },
+    { "sounds", { sound } },
+    { "patterns", { {
+      { "length", 16 },
+      { "kit", { sound, hat } },
+      { "tracks", { { { "length", 0 }, { "steps", { {
+        { "i", 2 }, { "on", true }, { "locks", { { std::to_string(P_ENGINE),
+                                                   DiscreteToNormalized(5, 24) } } } } } } } } },
+    } } },
+  };
+  fs::path dir = fs::temp_directory_path() / "drumfake_engine_migration";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  std::ofstream(dir / "old.json") << legacy.dump();
+  auto project = std::make_unique<Project>();
+  std::string error;
+  CHECK(LoadProject((dir / "old.json").string(), project.get(), &error));
+  CHECK(Discrete(project->sounds[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(project->patterns[0].kit[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(project->patterns[0].kit[1].params[P_ENGINE], kNumEngines) == 23);
+  const Step& locked = project->patterns[0].tracks[0].steps[2];
+  CHECK(locked.has_lock(P_ENGINE) && Discrete(locked.locks[P_ENGINE], kNumEngines) == 5);
+
+  // A kit file of the kit library from before (version 1).
+  nlohmann::json old_kit = { { "version", 1 }, { "tracks", { sound, hat } } };
+  std::ofstream(dir / "kit_001.json") << old_kit.dump();
+  TrackSound kit[kNumTracks];
+  CHECK(LoadKitFile((dir / "kit_001.json").string(), kit, &error));
+  CHECK(Discrete(kit[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(kit[1].params[P_ENGINE], kNumEngines) == 23);
+
+  // Saved now, the Sample engine stays the Sample engine.
+  project->sounds[3].params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
+  project->patterns[0].kit[3] = project->sounds[3];
+  CHECK(SaveProject(*project, (dir / "new.json").string(), &error));
+  auto reloaded = std::make_unique<Project>();
+  CHECK(LoadProject((dir / "new.json").string(), reloaded.get(), &error));
+  CHECK(Discrete(reloaded->sounds[3].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  CHECK(Discrete(reloaded->sounds[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(SaveKitFile(dir.string(), reloaded->sounds, "", &error));
+  CHECK(LoadKitFile((dir / "kit_002.json").string(), kit, &error));
+  CHECK(Discrete(kit[3].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  fs::remove_all(dir);
+}
+
+void TestSamplePool() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_sample_pool";
+  fs::remove_all(dir);
+  fs::create_directories(dir / "elsewhere");
+  auto write = [](const fs::path& path, const std::vector<uint8_t>& bytes) {
+    std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
+                                                static_cast<std::streamsize>(bytes.size()));
+  };
+  write(dir / "elsewhere" / "kick.wav", MakeWav(1, 1, 48000, 16, std::vector<float>(480, 0.5f)));
+  fs::create_directories(dir / "other");
+  write(dir / "other" / "kick.wav", MakeWav(1, 2, 44100, 24, std::vector<float>(882, -0.25f)));
+
+  const std::string project_path = (dir / "project.json").string();
+  const std::string samples = SampleDirectory(project_path);
+  CHECK(fs::path(samples) == dir / "samples");
+  std::string name;
+  std::string error;
+  CHECK(CopyIntoSampleDirectory((dir / "elsewhere" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick.wav");
+  // The same file again: reused, not copied twice.
+  CHECK(CopyIntoSampleDirectory((dir / "elsewhere" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick.wav");
+  // Another file with the same name: kept apart.
+  CHECK(CopyIntoSampleDirectory((dir / "other" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick 2.wav");
+  CHECK(!CopyIntoSampleDirectory((dir / "nothing.wav").string(), samples, &name, &error));
+  std::ofstream(fs::path(samples) / "text.wav") << "not audio";
+
+  auto project = std::make_unique<Project>();
+  project->Init();
+  CHECK(FirstFreeSampleSlot(*project) == 0);
+  project->samples[0] = "kick.wav";
+  project->samples[3] = "kick 2.wav";
+  project->samples[5] = "missing.wav";
+  project->samples[7] = "text.wav";
+  CHECK(FindSampleSlot(*project, "kick 2.wav") == 3);
+  CHECK(FindSampleSlot(*project, "nope.wav") == -1);
+  CHECK(FindSampleSlot(*project, "") == -1);
+  CHECK(FirstFreeSampleSlot(*project) == 1);
+
+  SamplePoolLoad load;
+  LoadSamplePool(*project, samples, &load);
+  CHECK(load.slots[0] && load.slots[0]->frames.size() == 480);
+  CHECK(load.slots[3] && load.slots[3]->frames.size() == 480);  // 441 stereo frames at 44.1 kHz.
+  CHECK(load.slots[3] && std::abs(load.slots[3]->frames[400] + 8192) < 40);
+  CHECK(!load.slots[5] && !load.slots[7] && !load.slots[1]);
+  CHECK(load.problems.size() == 2);
+  CHECK(load.bytes == (480 + 480) * sizeof(int16_t));
+
+  // The pool is saved with the project; names that are paths are refused.
+  project->samples[9] = "../outside.wav";
+  project->samples[10] = "sub/dir.wav";
+  CHECK(SaveProject(*project, project_path, &error));
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject(project_path, loaded.get(), &error));
+  CHECK(loaded->samples[0] == "kick.wav" && loaded->samples[3] == "kick 2.wav");
+  CHECK(loaded->samples[5] == "missing.wav");
+  CHECK(loaded->samples[9].empty() && loaded->samples[10].empty() && loaded->samples[1].empty());
+
+  for (int slot = 0; slot < kNumSampleSlots; ++slot) {
+    CHECK(SampleSlot(SampleSlotToAux(slot)) == slot);
+  }
+  fs::remove_all(dir);
 }
 
 void TestPatternExtend() {
@@ -1766,7 +1887,7 @@ void TestFullRender() {
     CHECK(stats.track_peak[t] > 0.005f);
   }
   // Every Plaits engine renders finite, audible audio.
-  for (int e = 0; e < kNumEngines; ++e) {
+  for (int e = 0; e < kNumPlaitsEngines; ++e) {
     auto single = MakeEngine();
     single->project().sounds[0].params[P_ENGINE] = DiscreteToNormalized(e, kNumEngines);
     single->project().patterns[0].tracks[0].steps[0].on = true;
@@ -1819,6 +1940,8 @@ int main() {
   TestVary();
   TestPatternExtend();
   TestWavDecoding();
+  TestEngineCountMigration();
+  TestSamplePool();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

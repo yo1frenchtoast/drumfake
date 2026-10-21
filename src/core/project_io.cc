@@ -17,7 +17,26 @@ using nlohmann::json;
 
 namespace {
 
-const int kFormatVersion = 2;  // 2: one kit per pattern.
+const int kFormatVersion = 3;  // 2: one kit per pattern. 3: engine count, sample pool.
+// Files written before they recorded their engine count had the 24 Plaits engines.
+const int kLegacyEngineCount = 24;
+
+// An engine value saved when there were `saved_count` engines, for the current
+// list (engines are only ever added at the end).
+float RemapEngine(float value, int saved_count) {
+  if (saved_count == kNumEngines || saved_count <= 0) {
+    return value;
+  }
+  int engine = std::min(Discrete(value, saved_count), kNumEngines - 1);
+  return DiscreteToNormalized(engine, kNumEngines);
+}
+
+// A sample file name from a project file: a plain name inside the samples
+// directory, never a path.
+bool ValidSampleName(const std::string& name) {
+  return !name.empty() && name != "." && name != ".." &&
+      name.find_first_of("/\\:") == std::string::npos && name.find('\0') == std::string::npos;
+}
 
 template<size_t N>
 json FloatArray(const float (&values)[N]) {
@@ -42,11 +61,12 @@ json KitToJson(const TrackSound* kit) {
   return j;
 }
 
-void KitFromJson(const json& j, TrackSound* kit) {
+void KitFromJson(const json& j, TrackSound* kit, int engine_count) {
   for (size_t i = 0; i < kNumTracks && i < j.size(); ++i) {
     kit[i].Reset();
     kit[i].name = j[i].value("name", "Init");
     ReadFloatArray(j[i]["params"], kit[i].params);
+    kit[i].params[P_ENGINE] = RemapEngine(kit[i].params[P_ENGINE], engine_count);
   }
 }
 
@@ -83,7 +103,7 @@ json StepToJson(int index, const Step& s) {
   return j;
 }
 
-void StepFromJson(const json& j, Step* s) {
+void StepFromJson(const json& j, Step* s, int engine_count) {
   s->Clear();
   s->on = j.value("on", false);
   s->velocity = Clamp01(j.value("vel", 0.8f));
@@ -106,6 +126,9 @@ void StepFromJson(const json& j, Step* s) {
         s->locks[p] = Clamp01(value.get<float>());
       }
     }
+    if (s->has_lock(P_ENGINE)) {
+      s->locks[P_ENGINE] = RemapEngine(s->locks[P_ENGINE], engine_count);
+    }
   }
 }
 
@@ -114,6 +137,7 @@ void StepFromJson(const json& j, Step* s) {
 bool SaveProject(const Project& project, const std::string& path, std::string* error) {
   json j;
   j["version"] = kFormatVersion;
+  j["engine_count"] = kNumEngines;
   j["bpm"] = project.bpm;
   j["volume"] = project.volume;
   j["master"] = FloatArray(project.master);
@@ -139,6 +163,12 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
     { "tracks", std::vector<int>(project.marbles_tracks, project.marbles_tracks + 2) },
   };
   j["song"] = std::vector<int>(project.song, project.song + project.song_length);
+  j["samples"] = json::array();
+  for (int i = 0; i < kNumSampleSlots; ++i) {
+    if (!project.samples[i].empty()) {
+      j["samples"].push_back({ { "slot", i }, { "file", project.samples[i] } });
+    }
+  }
   j["sounds"] = KitToJson(project.sounds);
   for (int i = 0; i < kNumPatterns; ++i) {
     const Pattern& pattern = project.patterns[i];
@@ -192,6 +222,7 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
     for (Pattern& pattern : loaded.patterns) {
       pattern.Clear();
     }
+    const int engine_count = j.value("engine_count", kLegacyEngineCount);
     loaded.bpm = std::max(30.0f, std::min(300.0f, j.value("bpm", 120.0f)));
     loaded.volume = Clamp01(j.value("volume", 0.8f));
     ReadFloatArray(j["master"], loaded.master);
@@ -236,8 +267,17 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         }
       }
     }
+    if (j.contains("samples")) {
+      for (const json& entry : j["samples"]) {
+        int slot = entry.value("slot", -1);
+        std::string file = entry.value("file", "");
+        if (slot >= 0 && slot < kNumSampleSlots && ValidSampleName(file)) {
+          loaded.samples[slot] = file;
+        }
+      }
+    }
     if (j.contains("sounds")) {
-      KitFromJson(j["sounds"], loaded.sounds);
+      KitFromJson(j["sounds"], loaded.sounds, engine_count);
     }
     // Projects saved before kits were per pattern share one kit.
     for (Pattern& pattern : loaded.patterns) {
@@ -255,7 +295,7 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         pattern.division = std::max(0, std::min(kNumDivisions - 1,
                                                 jp.value("division", kDefaultDivision)));
         if (jp.contains("kit")) {
-          KitFromJson(jp["kit"], pattern.kit);
+          KitFromJson(jp["kit"], pattern.kit, engine_count);
         }
         if (!jp.contains("tracks")) {
           continue;
@@ -267,7 +307,7 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
           for (const json& js : jt["steps"]) {
             int s = js.value("i", -1);
             if (s >= 0 && s < kMaxSteps) {
-              StepFromJson(js, &track.steps[s]);
+              StepFromJson(js, &track.steps[s], engine_count);
             }
           }
         }
@@ -376,7 +416,8 @@ bool SaveKitFile(const std::string& directory, const TrackSound* kit,
     return false;
   }
   json j;
-  j["version"] = 1;
+  j["version"] = 2;  // 2: engine count.
+  j["engine_count"] = kNumEngines;
   j["tracks"] = KitToJson(kit);
   file << j.dump(1);
   return true;
@@ -386,7 +427,7 @@ bool LoadKitFile(const std::string& path, TrackSound* kit, std::string* error) {
   try {
     std::ifstream file(path);
     json j = json::parse(file);
-    KitFromJson(j.at("tracks"), kit);
+    KitFromJson(j.at("tracks"), kit, j.value("engine_count", kLegacyEngineCount));
     return true;
   } catch (const std::exception& e) {
     *error = e.what();
