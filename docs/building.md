@@ -44,6 +44,7 @@ English output you can filter.
 | `--pattern N` | Pattern to render, 1 to 16. |
 | `--grids` | Play the Grids rhythm of the X/Y pad instead of the pattern steps. |
 | `--screenshot OUT.ppm` | Debug: render a few frames, save the window as a PPM image, quit. |
+| `--theme midnight\|cream\|sage\|plum\|fake` | Use this theme for the run, over the one saved in `settings.json`. |
 
 ## Android
 

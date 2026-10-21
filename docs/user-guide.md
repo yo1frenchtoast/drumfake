@@ -19,6 +19,20 @@ and a scope. The round encoder changes the Plaits engine of the track (or the so
 **First groove.** Press **Play**. Select a track, then press steps 1–16 to turn them on or
 off. The demo pattern is a good start: *Edit* → *Demo pattern*.
 
+**Themes.** *Edit* → *Theme* switches the look of the faceplate, in turn:
+
+| Theme | Look |
+|---|---|
+| **Midnight** (default) | Navy panel, coral accents, pastel track colours |
+| **Cream** | Cream panel, warm brown print, terracotta accents, bakelite knobs |
+| **Sage** | Sage-green panel, ivory pads, rust accents, cream knob caps |
+| **Plum** | Deep plum panel, gold accents and knob caps |
+| **Fake** | The original slate panel with its mint accent, one accent for every track |
+
+All but Fake give each track its own colour, on its pad, its meter and its steps. The choice belongs to the machine, not to the
+project: it is saved at once in `settings.json` beside the project and kept when another
+project is opened.
+
 **Saving.** *Save* (or `Ctrl+S`) writes the project to `~/.local/share/drumfake/project.json`
 (the app's private storage on Android). It is reloaded at startup. *Undo* reverts the last
 edit of the current pattern, up to 32 times.
@@ -403,7 +417,7 @@ the screen blinks on each message; `--midi-monitor` prints them in the terminal.
 - **Other channels** (channels assigned to no track, for example channel 10): the 8 notes of
   the major scale starting at the *Trig* note (C2 by default, so the white keys C2 to C3)
   trigger tracks A–H, each at its own pitch.
-- **Settings**: *Edit* → *MIDI settings*: the channel of each track (or off), the *Trig* note,
+- **Settings**: *Edit* → *MIDI*: the channel of each track (or off), the *Trig* note,
   and **Follow MIDI clock**: tempo, Start, Stop, Continue and Song Position come from the MIDI
   clock (24 PPQN).
 

@@ -166,13 +166,13 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
 
   if (ring) {
     float ring_radius = r * 1.32f;
-    dl->AddCircle(p, ring_radius, colors::kLabelDim, 48, c.S(1.2f));
+    dl->AddCircle(p, ring_radius, theme().label_dim, 48, c.S(1.2f));
     dl->PathArcTo(p, ring_radius, kKnobStart, angle, 48);
     dl->PathStroke(ring_color, 0, c.S(2.6f));
     // Position dot at the start of travel, like on the panel.
     ImVec2 dot(p.x + cosf(kKnobStart) * ring_radius * 1.12f,
                p.y + sinf(kKnobStart) * ring_radius * 1.12f);
-    dl->AddCircleFilled(dot, c.S(2.0f), colors::kLabel);
+    dl->AddCircleFilled(dot, c.S(2.0f), theme().label);
 
     if (decor && decor->marker >= 0.0f && std::fabs(decor->marker - *value) > 0.004f) {
       // Offset between the knob and the value actually playing.
@@ -187,39 +187,17 @@ bool Knob(const Canvas& c, const char* id, ImVec2 center, float radius,
     if (decor && decor->automated) {
       ImVec2 badge(p.x + ring_radius * 0.95f, p.y - ring_radius * 0.95f);
       dl->AddCircleFilled(badge, c.S(3.4f),
-                          decor->badge_color ? decor->badge_color : colors::kAccent);
+                          decor->badge_color ? decor->badge_color : theme().accent);
       dl->AddCircle(badge, c.S(3.4f), IM_COL32(0, 0, 0, 160), 12, c.S(1.0f));
     }
   }
 
   // Shadow and body.
   dl->AddCircleFilled(ImVec2(p.x + c.S(2), p.y + c.S(3)), r, IM_COL32(0, 0, 0, 110), 40);
-  ImU32 body;
-  ImU32 top;
-  ImU32 pointer;
-  switch (style) {
-    case KNOB_BLACK:
-      body = IM_COL32(17, 20, 24, 255);
-      top = IM_COL32(40, 46, 53, 255);
-      pointer = IM_COL32(230, 236, 234, 255);
-      break;
-    case KNOB_AMBER:
-      body = IM_COL32(196, 146, 52, 255);
-      top = IM_COL32(242, 184, 75, 255);
-      pointer = IM_COL32(45, 32, 10, 255);
-      break;
-    case KNOB_ENCODER:
-      body = IM_COL32(20, 20, 22, 255);
-      top = IM_COL32(205, 205, 208, 255);
-      pointer = IM_COL32(90, 90, 95, 255);
-      break;
-    case KNOB_SILVER:
-    default:
-      body = IM_COL32(146, 154, 160, 255);
-      top = IM_COL32(220, 225, 228, 255);
-      pointer = IM_COL32(40, 46, 52, 255);
-      break;
-  }
+  const KnobColours& colours = theme().knobs[style];
+  const ImU32 body = colours.body;
+  const ImU32 top = colours.top;
+  const ImU32 pointer = colours.pointer;
   dl->AddCircleFilled(p, r, body, 40);
   float cap = style == KNOB_ENCODER ? 0.82f : 0.72f;
   dl->AddCircleFilled(p, r * cap, top, 40);
@@ -406,7 +384,7 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
                     IM_COL32(0, 0, 0, 120), rounding);
   ImVec2 fa(a.x, a.y + press);
   ImVec2 fb(b.x, b.y + press);
-  const ImU32 rubber = face_color ? face_color : colors::kButtonTop;
+  const ImU32 rubber = face_color ? face_color : theme().button_top;
   ImU32 face = in.hovered ? Shade(rubber, 1.15f) : rubber;
   if (lit && !led) {
     // Backlit: tint the rubber with the light color.
@@ -415,11 +393,11 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
         ImGui::ColorConvertU32ToFloat4(face), ImVec4(tint.x, tint.y, tint.z, 1.0f),
         0.42f * tint.w));
   }
-  dl->AddRectFilled(fa, fb, colors::kButton, rounding);
+  dl->AddRectFilled(fa, fb, theme().button, rounding);
   dl->AddRectFilled(ImVec2(fa.x + c.S(2), fa.y + c.S(1.5f)),
                     ImVec2(fb.x - c.S(2), fb.y - c.S(3)), face, rounding);
 
-  ImU32 content = lit && !led ? lit_color : colors::kLabel;
+  ImU32 content = lit && !led ? lit_color : theme().label;
   ImVec2 mid((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f + press / c.scale - 1.0f);
   if (lit && !led) {
     // Backlit button: soft glow around the face.
@@ -450,13 +428,13 @@ Interaction Button(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
   }
   if (led) {
     ImVec2 led_pos(min.x + 7.0f, min.y + 7.0f);
-    c.draw_list->AddCircleFilled(c.P(led_pos), c.S(2.6f), lit ? lit_color : colors::kLedOff);
+    c.draw_list->AddCircleFilled(c.P(led_pos), c.S(2.6f), lit ? lit_color : theme().led_off);
     if (lit) {
       c.draw_list->AddCircleFilled(c.P(led_pos), c.S(5.0f), (lit_color & 0x00ffffff) | 0x40000000);
     }
   }
   if (label && *label) {
-    c.Text((min.x + max.x) * 0.5f, max.y + 11.0f, 11.0f, colors::kLabel, label, true, true);
+    c.Text((min.x + max.x) * 0.5f, max.y + 11.0f, 11.0f, theme().label, label, true, true);
   }
   return in;
 }

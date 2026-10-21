@@ -17,6 +17,7 @@
 
 #include "audio/sample_loader.h"
 #include "core/project_io.h"
+#include "core/settings.h"
 #include "io/midi_input.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -118,28 +119,6 @@ ImFont* LoadFont(const char* const* candidates, float size) {
   return io.Fonts->AddFontDefault(&config);
 }
 
-void SetupStyle() {
-  ImGuiStyle& style = ImGui::GetStyle();
-  ImGui::StyleColorsDark();
-  style.FrameRounding = 2.0f;
-  style.GrabRounding = 2.0f;
-  style.WindowPadding = ImVec2(0, 0);
-  style.WindowBorderSize = 0.0f;
-  // Screen widgets, in the faceplate's colors (see ui/widgets.h).
-  const ImVec4 kAccent = ImGui::ColorConvertU32ToFloat4(colors::kAccent);
-  const ImVec4 kAccentLight(0.50f, 0.88f, 0.78f, 1.0f);
-  ImVec4* c = style.Colors;
-  c[ImGuiCol_FrameBg] = ImVec4(0.09f, 0.14f, 0.16f, 1.0f);
-  c[ImGuiCol_FrameBgHovered] = ImVec4(0.12f, 0.19f, 0.21f, 1.0f);
-  c[ImGuiCol_FrameBgActive] = ImVec4(0.15f, 0.24f, 0.26f, 1.0f);
-  c[ImGuiCol_SliderGrab] = kAccent;
-  c[ImGuiCol_SliderGrabActive] = kAccentLight;
-  c[ImGuiCol_CheckMark] = kAccent;
-  c[ImGuiCol_Button] = ImVec4(0.12f, 0.19f, 0.21f, 1.0f);
-  c[ImGuiCol_ButtonHovered] = ImVec4(0.16f, 0.26f, 0.28f, 1.0f);
-  c[ImGuiCol_ButtonActive] = kAccent;
-  c[ImGuiCol_Text] = ImGui::ColorConvertU32ToFloat4(colors::kScreenText);
-}
 
 bool SaveScreenshot(const std::string& path, int width, int height) {
   std::vector<unsigned char> pixels(static_cast<size_t>(width) * height * 3);
@@ -370,7 +349,21 @@ int RunApp(Engine* engine, const AppOptions& options) {
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
   io.IniFilename = nullptr;
-  SetupStyle();
+  // The theme saved in the settings, unless --theme says otherwise.
+  Settings settings;
+  LoadSettings(SettingsPath(project_path), &settings);
+  if (!settings.theme.empty() && FindTheme(settings.theme) != THEME_LAST) {
+    SetTheme(FindTheme(settings.theme));
+  }
+  if (!options.theme.empty()) {
+    int id = FindTheme(options.theme);
+    if (id == THEME_LAST) {
+      fprintf(stderr, "Unknown theme %s (midnight, cream, sage, plum, fake)\n",
+              options.theme.c_str());
+    }
+    SetTheme(id);
+  }
+  ApplyImGuiStyle();
 
   static const char* const kRegular[] = {
     "fonts/NotoSans-Regular.ttf",  // Android assets, web preloaded files.

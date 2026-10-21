@@ -26,7 +26,7 @@ using namespace drumfake;
 namespace {
 
 void PrintUsage() {
-  printf("usage: drumfake [--project FILE] [--midi-monitor]\n"
+  printf("usage: drumfake [--project FILE] [--midi-monitor] [--theme NAME]\n"
          "       drumfake --render OUT.wav [--bars N] [--project FILE]"
          " [--pattern N] [--grids]\n");
 }
@@ -66,6 +66,8 @@ int main(int argc, char** argv) {
       pattern = std::max(1, std::min(kNumPatterns, atoi(argv[++i]))) - 1;
     } else if (arg == "--screenshot" && has_value) {
       app_options.screenshot_path = argv[++i];
+    } else if (arg == "--theme" && has_value) {
+      app_options.theme = argv[++i];
     } else if (arg == "--midi-monitor") {
       midi_monitor = true;
     } else if (arg == "--grids") {

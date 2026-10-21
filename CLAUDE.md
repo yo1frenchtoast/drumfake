@@ -18,7 +18,8 @@ from an existing machine.
   include two of them in one translation unit (see `audio/buses.h`). Each of Peaks, Marbles and
   Clouds lives in its own `.cc` (`mod_sources`, `core/marbles_gen`, `clouds_fx`) behind a pimpl.
 - `patches/`: header overrides that shadow the submodule (it is never edited), see its README.
-- `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, and the
+- `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, themes
+  (`theme.h`: every colour; Fake must stay pixel-identical, see docs/development.md), and the
   multitouch layer (fingers captured by pads/knobs/buttons, one free finger drives ImGui).
 - `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android, Web MIDI
   in the browser).

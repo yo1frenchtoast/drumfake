@@ -21,6 +21,7 @@
 #include "core/project_io.h"
 #include "core/sample_file.h"
 #include "core/sample_pool.h"
+#include "core/settings.h"
 #include "audio/sample_loader.h"
 #include "audio/track_voice.h"
 #include "core/scales.h"
@@ -1271,6 +1272,31 @@ void TestSliceEditing() {
   CHECK(std::abs(NearestZeroCrossing(wave, 470, 48) - 480) <= 1);
   CHECK(NearestZeroCrossing(wave, 120, 48) == 120);  // None within reach.
   CHECK(NearestZeroCrossing(wave, 0, 48) >= 0);
+}
+
+void TestSettings() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_settings";
+  fs::remove_all(dir);
+  const std::string path = SettingsPath((dir / "project.json").string());
+  CHECK(fs::path(path) == dir / "settings.json");
+  Settings settings;
+  CHECK(!LoadSettings(path, &settings));  // No file yet: nothing changes.
+  CHECK(settings.theme.empty());
+  settings.theme = "classic";
+  std::string error;
+  CHECK(SaveSettings(path, settings, &error));
+  Settings loaded;
+  CHECK(LoadSettings(path, &loaded));
+  CHECK(loaded.theme == "classic");
+  std::ofstream(path) << "{ not json";
+  Settings kept;
+  kept.theme = "cream";
+  CHECK(!LoadSettings(path, &kept));
+  CHECK(kept.theme == "cream");
+  std::ofstream(path) << "{\"theme\": 3}";
+  CHECK(LoadSettings(path, &kept) && kept.theme == "cream");  // Not a string: ignored.
+  fs::remove_all(dir);
 }
 
 void TestSampleTracks() {
@@ -2672,6 +2698,7 @@ int main() {
   TestSlices();
   TestSliceEditing();
   TestResampling();
+  TestSettings();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();
