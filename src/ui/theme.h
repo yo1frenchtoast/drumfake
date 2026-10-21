@@ -84,14 +84,15 @@ struct Theme {
   ImVec4 widget_accent_light;  // A slider's grab while dragged.
 };
 
-enum ThemeId { THEME_CREAM, THEME_MIDNIGHT, THEME_SAGE, THEME_PLUM, THEME_CLASSIC, THEME_LAST };
+enum ThemeId { THEME_MIDNIGHT, THEME_CREAM, THEME_SAGE, THEME_PLUM, THEME_FAKE, THEME_LAST };
 
 // The theme the panel is drawn with.
 const Theme& theme();
 void SetTheme(int id);
 int theme_index();
 const Theme& theme_at(int id);
-// THEME_LAST when no theme has that id.
+// THEME_LAST when no theme has that id ("classic", the Fake theme's old id, is
+// still found).
 int FindTheme(const std::string& id);
 // ImGui's style for the screen's widgets, in the current theme: again after
 // SetTheme.

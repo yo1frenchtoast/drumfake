@@ -19,7 +19,7 @@ from an existing machine.
   Clouds lives in its own `.cc` (`mod_sources`, `core/marbles_gen`, `clouds_fx`) behind a pimpl.
 - `patches/`: header overrides that shadow the submodule (it is never edited), see its README.
 - `src/ui/`: ImGui faceplate on a layout grid (`layout::` in `faceplate.cc`), widgets, themes
-  (`theme.h`: every colour; Classic must stay pixel-identical, see docs/development.md), and the
+  (`theme.h`: every colour; Fake must stay pixel-identical, see docs/development.md), and the
   multitouch layer (fingers captured by pads/knobs/buttons, one free finger drives ImGui).
 - `src/io/`: MIDI input (RtMidi/ALSA on desktop, Java MidiManager + JNI on Android, Web MIDI
   in the browser).

@@ -20,7 +20,7 @@ the [user guide](user-guide.md).
 | Step pages A–D | | `Z` / `X` |
 | Last Step (held) / Poly / Shift (held) | right click or long press on Shift or Last Step locks it until a combination is used (or the button is pressed again) | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (acts on release) |
-| Edit: Theme | switches the look (Cream, Midnight, Sage, Plum, Classic), saved for the machine | |
+| Edit: Theme | switches the look (Midnight, Cream, Sage, Plum, Fake), saved for the machine | |
 | Back (↺) | closes Edit, Browse and other screens; releases the selected step | `Esc` |
 | WAV file dropped on the window | imports it onto the pad under it (A–H), or the selected track | |
 | Browse: Sounds / Samples | the factory sounds, or the project's sample pool; tap one (or turn the encoder) to load it on the selected track; Samples: *Slices 4/8/16/32/Auto/Clear* slice the track's sample, *Sens* sets how many attacks Auto keeps, *Edit* opens the slice editor | |

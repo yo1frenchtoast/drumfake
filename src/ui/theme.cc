@@ -285,9 +285,9 @@ const Theme kPlum = {
   ImVec4(0.98f, 0.86f, 0.58f, 1.0f),
 };
 
-// Classic: the original slate panel with its mint accent.
-const Theme kClassic = {
-  "classic", "Classic",
+// Fake: the original slate panel with its mint accent.
+const Theme kFake = {
+  "fake", "Fake",
   IM_COL32(18, 21, 24, 255),
   IM_COL32(43, 49, 56, 255),
   IM_COL32(64, 73, 82, 255),
@@ -350,9 +350,9 @@ const Theme kClassic = {
   ImVec4(0.50f, 0.88f, 0.78f, 1.0f),
 };
 
-const Theme* const kThemes[THEME_LAST] = { &kCream, &kMidnight, &kSage, &kPlum, &kClassic };
+const Theme* const kThemes[THEME_LAST] = { &kMidnight, &kCream, &kSage, &kPlum, &kFake };
 
-int current = THEME_CREAM;
+int current = THEME_MIDNIGHT;
 
 }  // namespace
 
@@ -369,6 +369,9 @@ int theme_index() { return current; }
 const Theme& theme_at(int id) { return *kThemes[id >= 0 && id < THEME_LAST ? id : 0]; }
 
 int FindTheme(const std::string& id) {
+  if (id == "classic") {
+    return THEME_FAKE;  // Its name before.
+  }
   for (int i = 0; i < THEME_LAST; ++i) {
     if (id == kThemes[i]->id) {
       return i;

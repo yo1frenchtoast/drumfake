@@ -358,7 +358,7 @@ int RunApp(Engine* engine, const AppOptions& options) {
   if (!options.theme.empty()) {
     int id = FindTheme(options.theme);
     if (id == THEME_LAST) {
-      fprintf(stderr, "Unknown theme %s (cream, midnight, sage, plum, classic)\n",
+      fprintf(stderr, "Unknown theme %s (midnight, cream, sage, plum, fake)\n",
               options.theme.c_str());
     }
     SetTheme(id);
