@@ -11,6 +11,8 @@ the [user guide](user-guide.md).
 | Pads A–H | click = plays and selects the track (Shift = accent); right click = selects it without playing | `Q W E R T Y U I` |
 | Pads 1–8 | depends on the mode: Chords (chords of the scale), Sounds, Repeats, Keys | `A S D F G H J K` |
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
+| Perform: X/Y pad | drag = moves the point; right click = holds FX, Looper or Macros at that point, right click again to release | |
+| Perform: Shift + Spice | shows Vary on the pad (drag left/right = amount); Shift + Vary = new variations (Dice); Spice = back to Grids | `Alt` + click |
 | Perform: Matrix | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
@@ -38,6 +40,7 @@ on-screen menus.
 |---|---|
 | Long press (0.5 s) | Right click: select a step |
 | Double tap on a knob | Double-click: reset the knob to its default |
+| Finger on the X/Y pad + lit mode button (FX, Looper, Macros) | Right click on the pad: hold it there (the lit button again releases it) |
 
 ## Hold combinations
 
@@ -52,6 +55,8 @@ These work with the button held down, like on a DrumBrute.
 | Shift | Panel (or right click, long press) | Arm the snapshot of all sounds and settings; while it is armed, a plain press of Panel restores it |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
 | Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |
+| Shift | Steps | The steps follow the playing page again (after a page was chosen by hand) |
+| Shift | page A–D | Extend to 16, 32, 48 or 64 steps by repeating the pattern (Poly: the selected track in Steps view, the whole pattern in Patterns view) |
 | Copy | source page, then destination page | Copy a page, or repeat it up to the destination |
 | Copy | pad, then pad | Copy the sequence of one track onto another |
 | Erase | pad | Clear the track (stopped), or erase its hits as the playhead passes (playing) |

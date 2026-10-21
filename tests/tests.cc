@@ -194,6 +194,164 @@ void TestRatchetsAndProbability() {
   CHECK(engine->trigger_count[1].load() == 0);
 }
 
+// Every trigger of `track` over `frames`: sample time and velocity.
+std::vector<std::pair<int64_t, float>> RenderAndCollectVelocities(Engine* engine, int track,
+                                                                  size_t frames) {
+  std::vector<std::pair<int64_t, float>> triggers;
+  std::vector<float> buffer(2 * kBlockSize);
+  uint32_t seen = engine->trigger_count[track].load();
+  for (size_t done = 0; done < frames; done += kBlockSize) {
+    engine->Render(buffer.data(), kBlockSize);
+    uint32_t count = engine->trigger_count[track].load();
+    if (count != seen) {
+      seen = count;
+      triggers.push_back({ engine->last_trigger_sample[track].load(),
+                           engine->last_trigger_velocity[track].load() });
+    }
+  }
+  return triggers;
+}
+
+void TestVary() {
+  // A 16-step hat on every step and a kick on every beat (velocity 0.8).
+  auto make = [](float vary, uint32_t seed) {
+    auto engine = MakeEngine();
+    Pattern& p = engine->project().patterns[0];
+    for (int s = 0; s < 16; ++s) {
+      p.tracks[2].steps[s].on = true;
+      p.tracks[0].steps[s].on = s % 4 == 0;
+    }
+    p.vary = vary;
+    p.vary_seed = seed;
+    engine->Play();
+    return engine;
+  };
+  const size_t kLoop = 16 * kSamplesPerStep;
+
+  // No Vary: every step plays at its velocity, on time.
+  {
+    auto engine = make(0.0f, 1);
+    auto hats = RenderAndCollectVelocities(engine.get(), 2, kLoop - 100);
+    CHECK(hats.size() == 16);
+    for (size_t i = 0; i < hats.size(); ++i) {
+      CHECK_NEAR(hats[i].first, static_cast<double>(i) * kSamplesPerStep, kBlockSize);
+      CHECK_NEAR(hats[i].second, 0.8, 1e-6);
+    }
+  }
+
+  // Full Vary: hits are dropped, softened and moved, the same way on every loop.
+  auto engine = make(1.0f, 1234);
+  const Step stored = engine->project().patterns[0].tracks[2].steps[5];
+  auto first = RenderAndCollectVelocities(engine.get(), 2, kLoop);
+  auto second = RenderAndCollectVelocities(engine.get(), 2, kLoop);
+  CHECK(first.size() == second.size());
+  CHECK(first.size() < 16 + 4);  // At most a ratchet on a few steps.
+  bool softer = false;
+  for (size_t i = 0; i < first.size() && i < second.size(); ++i) {
+    CHECK_NEAR(second[i].first - first[i].first, static_cast<double>(kLoop), kBlockSize);
+    CHECK_NEAR(second[i].second, first[i].second, 1e-6);
+    CHECK(first[i].second <= 0.8f + 1e-6f);
+    softer = softer || first[i].second < 0.7f;
+  }
+  CHECK(softer);
+  // Nothing is written into the pattern.
+  const Step& after = engine->project().patterns[0].tracks[2].steps[5];
+  CHECK(after.on == stored.on && after.velocity == stored.velocity);
+  CHECK(after.micro == stored.micro && after.ratchets == stored.ratchets);
+  CHECK(!after.has_lock(P_DECAY));
+
+  // Dice: a new draw gives other variations.
+  engine->DiceVary();
+  CHECK(engine->project().patterns[0].vary_seed != 1234u);
+  auto third = RenderAndCollectVelocities(engine.get(), 2, kLoop);
+  bool different = third.size() != second.size();
+  for (size_t i = 0; !different && i < third.size(); ++i) {
+    different = std::fabs(third[i].second - second[i].second) > 1e-6f ||
+        std::llabs(third[i].first - second[i].first - static_cast<int64_t>(kLoop)) > kBlockSize;
+  }
+  CHECK(different);
+
+  // The same seed gives the same variations; an empty track gets no ghost notes.
+  auto again = make(1.0f, 1234);
+  auto replay = RenderAndCollectVelocities(again.get(), 2, kLoop);
+  CHECK(replay.size() == first.size());
+  for (size_t i = 0; i < replay.size() && i < first.size(); ++i) {
+    CHECK(replay[i].first == first[i].first);
+  }
+  CHECK(again->trigger_count[5].load() == 0);
+
+  // Ghost notes: with a sparse kick and full Vary, some seeds add soft hits on the steps
+  // between the beats (ratchets added by Vary fall half a step after a beat).
+  int ghosts = 0;
+  for (uint32_t seed = 1; seed <= 20; ++seed) {
+    auto sparse = make(1.0f, seed);
+    for (auto& [time, velocity] : RenderAndCollectVelocities(sparse.get(), 0, kLoop)) {
+      int64_t offset = time % (4 * kSamplesPerStep);
+      if (offset > kSamplesPerStep * 3 / 4 && offset < kSamplesPerStep * 13 / 4) {
+        ++ghosts;
+        CHECK(velocity <= 0.45f * 0.8f + 1e-6f);
+      }
+    }
+  }
+  CHECK(ghosts > 0);
+}
+
+void TestPatternExtend() {
+  Pattern p;
+  p.Clear();
+  p.tracks[0].steps[0].on = true;
+  p.tracks[0].steps[0].locks[P_CUTOFF] = 0.3f;
+  p.tracks[0].steps[10].on = true;
+  p.tracks[2].steps[3].on = true;
+  // Stale steps past the length are overwritten by the repetition.
+  p.tracks[0].steps[20].on = true;
+
+  // 16 > 32: the whole pattern repeats.
+  p.Extend(-1, 32);
+  CHECK(p.length == 32);
+  CHECK(p.tracks[0].steps[16].on && p.tracks[0].steps[26].on);
+  CHECK_NEAR(p.tracks[0].steps[16].locks[P_CUTOFF], 0.3, 1e-6);
+  CHECK(!p.tracks[0].steps[20].on);
+  CHECK(p.tracks[2].steps[19].on);
+
+  // A length that is not a whole page repeats on its own period: 12 > 48.
+  p.Clear();
+  p.length = 12;
+  p.tracks[1].steps[5].on = true;
+  p.Extend(-1, 48);
+  CHECK(p.length == 48);
+  for (int s = 0; s < 48; ++s) {
+    CHECK(p.tracks[1].steps[s].on == (s % 12 == 5));
+  }
+
+  // Shorter: only the length changes.
+  p.Extend(-1, 16);
+  CHECK(p.length == 16);
+  CHECK(p.tracks[1].steps[41].on);
+
+  // One track (Poly, Steps view): only that track grows, to its own length.
+  p.Clear();
+  p.poly = true;
+  p.tracks[0].steps[2].on = true;
+  p.tracks[3].steps[2].on = true;
+  p.Extend(3, 64);
+  CHECK(p.length == 16);
+  CHECK(p.tracks[3].length == 64);
+  CHECK(p.tracks[3].steps[50].on && p.tracks[3].steps[34].on);
+  CHECK(!p.tracks[0].steps[18].on);
+  CHECK(p.tracks[0].length == 0);
+
+  // The whole pattern (Poly, Patterns view): tracks with their own length keep it.
+  p.tracks[5].length = 6;
+  p.tracks[5].steps[1].on = true;
+  p.Extend(-1, 32);
+  CHECK(p.length == 32);
+  CHECK(p.tracks[0].steps[18].on);
+  CHECK(p.tracks[3].length == 64);
+  CHECK(p.tracks[5].length == 6);
+  CHECK(!p.tracks[5].steps[7].on);
+}
+
 void TestTrackLengthAndPatternChain() {
   auto engine = MakeEngine();
   Project& project = engine->project();
@@ -1296,6 +1454,8 @@ void TestProjectRoundTrip() {
   project.song[1] = 2;
   project.song[2] = 5;
   project.patterns[3].tracks[4].length = 5;
+  project.patterns[3].vary = 0.4f;
+  project.patterns[3].vary_seed = 0xdeadbeef;
 
   std::string path = (std::filesystem::temp_directory_path() / "drumfreake_test.json").string();
   std::string error;
@@ -1318,6 +1478,9 @@ void TestProjectRoundTrip() {
   const Step& chord_step = loaded->patterns[3].tracks[4].steps[17];
   CHECK(chord_step.chord_size == 2 && chord_step.chord[0] == 4 && chord_step.chord[1] == 7);
   CHECK(loaded->patterns[3].tracks[4].steps[16].chord_size == 0);
+  CHECK_NEAR(loaded->patterns[3].vary, 0.4, 1e-6);
+  CHECK(loaded->patterns[3].vary_seed == 0xdeadbeef);
+  CHECK(loaded->patterns[2].vary == 0.0f);
   CHECK(loaded->patterns[3].poly);
   CHECK(loaded->patterns[3].division == 1);
   CHECK(loaded->patterns[0].division == kDefaultDivision);
@@ -1427,6 +1590,8 @@ int main() {
   TestLegacyProjectKits();
   TestLiveRecording();
   TestChoke();
+  TestVary();
+  TestPatternExtend();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

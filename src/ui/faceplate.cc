@@ -903,7 +903,8 @@ void Faceplate::DrawTopLeft() {
   // until a combination is used or Shift is pressed again.
   Interaction shift = Button(c, "##shift", ImVec2(layout::kLeftX0, kShiftY0),
                              ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
-                             ICON_NONE, shift_held_, colors::kAmber);
+                             ICON_NONE, shift_held_, colors::kShift, false,
+                             colors::kShiftFace);
   if (shift_latched_ && shift_used_) {
     shift_latched_ = false;
   }
@@ -919,10 +920,11 @@ void Faceplate::DrawTopLeft() {
       (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
   if (shift_held_) {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
-           colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End", false);
+           colors::kLabelDim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
+           false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   (locked)"
-                          : "15: follow   16: poly   pad: select", false);
+           colors::kLabelDim, shift_latched_ ? "pad: select   A-D: extend   Spice: vary   Steps: live   (locked)"
+                          : "pad: select   A-D: extend   Spice: vary   Steps: live", false);
   }
   UpdateRepeat();
 }
@@ -949,17 +951,54 @@ void Faceplate::DrawXySection() {
     float x0 = layout::kLeftX0 + i * (w + layout::kGap);
     bool lit = !matrix_open_ && engine_->xy_mode == m.mode;
     ImU32 led = colors::kLedWhite;
-    if (m.mode == XY_GRIDS && engine_->grids_enabled) {
+    const bool vary_button = m.mode == XY_GRIDS && vary_open_;
+    if (vary_button) {
+      lit = true;
+      led = colors::kAmber;
+    } else if (m.mode == XY_GRIDS && engine_->grids_enabled) {
       lit = true;
       led = colors::kAccent;
+    } else if (lit && xy_held_) {
+      led = colors::kAmber;
     }
     Interaction in = Button(c, m.id, ImVec2(x0, layout::kFunctionRowY0),
-                            ImVec2(x0 + w, layout::kFunctionRowY1), m.label, "", m.icon,
-                            lit, led, true);
-    if (in.pressed) {
+                            ImVec2(x0 + w, layout::kFunctionRowY1),
+                            vary_button ? "Vary" : m.label, "", m.icon, lit, led, true);
+    if (in.pressed && m.mode == XY_GRIDS && (shift_held_ || vary_open_)) {
+      // Shift + Spice shows Vary on the pad; Shift + Vary draws new variations (Dice);
+      // Spice alone goes back to Grids.
+      if (!shift_held_) {
+        vary_open_ = false;
+      } else if (vary_open_) {
+        shift_used_ = true;
+        engine_->DiceVary();
+        Toast(pattern().vary > 0.0f ? "Vary: new variations"
+                                    : "Vary: new variations (slide right to hear them)");
+      } else {
+        shift_used_ = true;
+        vary_open_ = true;
+      }
+      xy_held_ = false;
+      engine_->xy_mode = XY_GRIDS;
+      matrix_open_ = false;
+    } else if (in.pressed) {
+      vary_open_ = false;
       if (m.mode == XY_GRIDS && engine_->xy_mode == XY_GRIDS) {
         engine_->grids_enabled = !engine_->grids_enabled;
         Toast(engine_->grids_enabled ? "Grids on (tracks A-C)" : "Grids off");
+      } else if (m.mode == engine_->xy_mode && !matrix_open_) {
+        // The lit button holds the pad where it is touched, or releases the hold.
+        if (engine_->xy_touched && !xy_held_) {
+          xy_held_ = true;
+          xy_hold_x_ = engine_->xy_x;
+          xy_hold_y_ = engine_->xy_y;
+          Toast(std::string(m.label) + " held");
+        } else if (xy_held_) {
+          xy_held_ = false;
+          Toast(std::string(m.label) + " released");
+        }
+      } else {
+        xy_held_ = false;
       }
       engine_->xy_mode = m.mode;
       matrix_open_ = false;
@@ -975,6 +1014,8 @@ void Faceplate::DrawXySection() {
       matrix_open_ = !matrix_open_;
       engine_->xy_touched = false;
       xy_touched_ = false;
+      xy_held_ = false;
+      vary_open_ = false;
     }
   }
 
@@ -993,6 +1034,10 @@ void Faceplate::DrawXySection() {
 
   if (matrix_open_) {
     DrawModMatrix(min, max);
+    return;
+  }
+  if (vary_open_) {
+    DrawVaryPad(min, max);
     return;
   }
 
@@ -1021,15 +1066,37 @@ void Faceplate::DrawXySection() {
     x = engine_->grids_x;
     y = engine_->grids_y;
   } else {
-    engine_->xy_touched = active;
+    // A right click holds the pad at the clicked point (the mouse cannot press the
+    // mode button while it touches the pad), or releases the hold.
+    if (in.right_clicked) {
+      xy_held_ = !xy_held_;
+      ImVec2 a = c.P(min);
+      ImVec2 b = c.P(max);
+      xy_hold_x_ = ImClamp((io.MousePos.x - a.x) / (b.x - a.x), 0.0f, 1.0f);
+      xy_hold_y_ = ImClamp(1.0f - (io.MousePos.y - a.y) / (b.y - a.y), 0.0f, 1.0f);
+      Toast(xy_held_ ? "Pad held" : "Pad released");
+    }
+    if (xy_held_) {
+      // Touching a held pad moves the held point.
+      if (active) {
+        xy_hold_x_ = x;
+        xy_hold_y_ = y;
+      }
+      x = xy_hold_x_;
+      y = xy_hold_y_;
+    }
+    engine_->xy_touched = active || xy_held_;
     engine_->xy_x = x;
     engine_->xy_y = y;
   }
 
-  bool show_cursor = grids_mode || active;
+  bool show_cursor = grids_mode || active || xy_held_;
   if (show_cursor) {
     ImVec2 p(min.x + x * (max.x - min.x), max.y - y * (max.y - min.y));
     ImU32 color = grids_mode && !engine_->grids_enabled ? colors::kLabelDim : colors::kAccent;
+    if (xy_held_ && !grids_mode) {
+      color = colors::kAmber;
+    }
     dl->AddLine(c.P(p.x, min.y), c.P(p.x, max.y), WithAlpha(color, 70), c.S(1));
     dl->AddLine(c.P(min.x, p.y), c.P(max.x, p.y), WithAlpha(color, 70), c.S(1));
     dl->AddCircleFilled(c.P(p), c.S(10), WithAlpha(color, 80));
@@ -1047,13 +1114,57 @@ void Faceplate::DrawXySection() {
       break;
     case XY_LOOPER: {
       static const char* const kLoopNames[] = { "1/32", "1/16", "1/8", "1/4", "1/2", "1 bar" };
-      snprintf(text, sizeof(text), "LOOPER  %s", active ? kLoopNames[Discrete(y, 6)] : "touch to loop");
+      snprintf(text, sizeof(text), "LOOPER  %s",
+               active || xy_held_ ? kLoopNames[Discrete(y, 6)] : "touch to loop");
       break;
     }
     case XY_MACROS:
       snprintf(text, sizeof(text), "MACROS  (Assign page)");
       break;
   }
+  if (xy_held_ && !grids_mode) {
+    strncat(text, "  HOLD", sizeof(text) - strlen(text) - 1);
+  }
+  c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
+}
+
+// Vary on the Perform pad (Shift + Spice): the horizontal position sets the amount of
+// the current pattern, like a slider; Shift + Vary draws new variations (Dice).
+void Faceplate::DrawVaryPad(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  Interaction in = HitBox(c, "##vary", min, max, false);
+  touch_targets_.push_back({ TOUCH_XY, 0, 0, min, max });
+  engine_->xy_touched = false;
+  Pattern& p = pattern();
+  float x = -1.0f;
+  if (xy_touched_) {
+    x = xy_touch_x_;
+  } else if (in.active) {
+    ImVec2 a = c.P(min);
+    ImVec2 b = c.P(max);
+    x = ImClamp((ImGui::GetIO().MousePos.x - a.x) / (b.x - a.x), 0.0f, 1.0f);
+  }
+  if (x >= 0.0f) {
+    p.vary = x < 0.03f ? 0.0f : x;  // The left edge turns it off.
+  }
+
+  float fill = min.x + p.vary * (max.x - min.x);
+  if (p.vary > 0.0f) {
+    dl->AddRectFilled(c.P(min), c.P(fill, max.y), WithAlpha(colors::kAmber, 45), c.S(8),
+                      ImDrawFlags_RoundCornersLeft);
+    dl->AddLine(c.P(fill, min.y), c.P(fill, max.y), colors::kAmber, c.S(2));
+  }
+  char text[64];
+  if (p.vary > 0.0f) {
+    snprintf(text, sizeof(text), "VARY %d%%", static_cast<int>(p.vary * 100.0f + 0.5f));
+  } else {
+    snprintf(text, sizeof(text), "VARY OFF");
+  }
+  c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, 16,
+         p.vary > 0.0f ? colors::kAmber : colors::kLabelDim, text, true, true);
+  snprintf(text, sizeof(text), "P%02d  slide: amount   Shift + Vary: dice",
+           engine_->current_pattern() + 1);
   c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
 }
 
@@ -1480,6 +1591,14 @@ void Faceplate::DrawSequencer() {
                       colors::kAccent).pressed) {
     patterns_mode_ = false;
     song_edit_ = false;
+    // Shift + Steps: the steps follow the playing page again (after a page was
+    // chosen by hand), turning Follow back on if it was off.
+    if (shift_held_) {
+      shift_used_ = true;
+      follow_enabled_ = true;
+      follow_playhead_ = true;
+      Toast("Steps follow the playing page");
+    }
   }
 
   // During playback the steps follow the page playing on the selected track,
@@ -1495,15 +1614,16 @@ void Faceplate::DrawSequencer() {
   }
 
   // The page buttons also name lengths: with Last Step held they set the
-  // pattern length; with Copy held, the first one pressed is the source and
-  // the second the destination.
+  // pattern length; with Shift held they extend the pattern to that length by
+  // repeating it (in Poly mode and Steps view, the selected track alone); with
+  // Copy held, the first one pressed is the source and the second the destination.
   int play_page = track_step >= 0 ? track_step / kStepsPerPage : -1;
   const char* const kPageLabels[kNumPages] = { "A|16", "B|32", "C|48", "D|64" };
   for (int i = 0; i < kNumPages; ++i) {
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
-        last_step_held_ || copy_held_;
+        last_step_held_ || copy_held_ || shift_held_;
     ImU32 color = i == view_page_ ? colors::kAccent
         : (i == play_page ? colors::kAmber : colors::kLabelDim);
     bool lit = in_pattern && (i == view_page_ || i == play_page);
@@ -1517,6 +1637,21 @@ void Faceplate::DrawSequencer() {
         p.length = (i + 1) * kStepsPerPage;
         last_step_used_ = true;
         Toast("Pattern length: " + std::to_string(p.length) + " steps");
+      } else if (shift_held_) {
+        shift_used_ = true;
+        PushUndo();
+        const int new_length = (i + 1) * kStepsPerPage;
+        if (p.poly && !patterns_mode_) {
+          const int old_length = p.track_length(track);
+          p.Extend(track, new_length);
+          Toast(std::string("Track ") + static_cast<char>('A' + track) + ": " +
+                std::to_string(old_length) + " > " + std::to_string(new_length) + " steps");
+        } else {
+          const int old_length = p.length;
+          p.Extend(-1, new_length);
+          Toast("Pattern: " + std::to_string(old_length) + " > " +
+                std::to_string(new_length) + " steps");
+        }
       } else if (copy_held_) {
         copy_used_ = true;
         if (copy_source_page_ < 0) {

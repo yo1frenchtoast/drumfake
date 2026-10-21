@@ -29,10 +29,18 @@ edit of the current pattern, up to 32 times.
 
 A pattern has up to 64 steps, shown 16 at a time: pages **A|16**, **B|32**, **C|48**, **D|64**.
 During playback the steps follow the page played by the selected track. Choosing a page by
-hand freezes the display until the next Play.
+hand freezes the display until the next Play, or until *Shift* + *Steps*, which makes the steps
+follow the playing page again (and turns Follow back on if it was off).
 
 - **Length.** *Edit* → *Length* sets the pattern length. *Last Step* held, then a step or a
   page, sets it without opening Edit.
+- **Extending.** *Shift* + a page sets the length to 16, 32, 48 or 64 steps and, when it grows,
+  repeats what is already there (locks included), as on the DrumBrute: a 16-step pattern and
+  *Shift* + `B|32` gives the same 16 steps twice. A length that is not a whole page repeats on its
+  own period (12 steps to 48 gives four times the 12). A shorter length just shortens.
+  With **Poly** on, the *Steps* view extends the selected track alone (it gets its own length),
+  and the *Patterns* view the whole pattern: tracks with their own length keep it. Undo restores
+  the pattern.
 - **Copying pages.** *Copy* held, then a source page, then a destination page. `A|16` then
   `D|64` repeats the first 16 steps (locks included, all tracks) up to step 64 and extends the
   pattern. A destination before the source copies the page.
@@ -96,6 +104,23 @@ the pattern.
   pattern change. Without Poly, short tracks restart with the pattern.
 - **Tempo**: the *Tempo* knob, *TAP*, or *Edit* → *BPM*. With *Follow MIDI clock* on, the tempo
   comes from the outside (the screen shows `EXT`).
+- **Vary**: *Shift* + *Spice*, per pattern (see [the X/Y pad](#the-xy-pad)). It changes the
+  pattern as it plays, without writing
+  anything into the steps: hits get softer, some are dropped, soft ghost notes (an echo of the
+  previous hit of the track) appear on empty steps, the timing loosens a little, a few hits
+  become double ratchets, and decays get shorter. The amount sets how much of each, from off
+  to the full table below. The variations are drawn once and repeat on every loop, so the groove
+  stays a groove; *Shift* + *Vary* (the Dice) draws new ones. The amount and the draw are saved
+  with the pattern.
+
+  | At 100% | |
+  |---|---|
+  | Velocity | down to 40% of the step's |
+  | Dropped hits | up to 30% of them |
+  | Ghost notes | on up to 15% of the empty steps (not on an empty track), at 25–45% of the velocity |
+  | Timing | ±8% of a step |
+  | Ratchets | up to 12% of the single hits play twice |
+  | Decay | down to half (the step's lock or the knob) |
 
 ## 3. Sound design
 
@@ -225,6 +250,17 @@ pad with the [modulation matrix](#modulation)):
 | **FX** | X = DJ filter (low pass on the left, high pass on the right), Y = delay throw. |
 | **Looper** | Loops the sequencer for as long as you touch the pad. Y sets the length. |
 | **Macros** | Moves the two parameters assigned on the *Assign* page. |
+
+**Vary.** *Shift* + *Spice* turns the pad into the Vary slider of the current pattern: the
+*Spice* button reads *Vary* (amber LED), and sliding left or right sets the amount (the left edge
+turns it off). *Shift* + *Vary* draws new variations; *Spice* alone goes back to Grids, and any
+other mode leaves it. A locked Shift works too.
+
+**Hold.** FX, Looper and Macros only act while you touch the pad. To keep one going, press its
+lit mode button while a finger is on the pad (with a mouse: right click the pad where you want
+it). The point turns amber and *HOLD* shows on the pad: it stays there after you let go, and
+touching the pad moves it. Press the lit button again (or right click the pad) to release it;
+changing mode or opening the Matrix also releases it. A held Looper keeps looping.
 
 ### Pads 1–8
 

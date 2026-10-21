@@ -79,6 +79,12 @@ struct Pattern {
   // Polyrhythm: tracks with their own length keep cycling across pattern
   // loops instead of restarting with the pattern.
   bool poly;
+  // Vary: variations applied while the pattern plays, never written into its
+  // steps (velocity, dropped and ghost hits, timing, extra ratchets, decay).
+  // `vary` is the amount (0 = none); each step's variation is drawn from
+  // `vary_seed`, so it is the same on every loop until the next Dice.
+  float vary;
+  uint32_t vary_seed;
 
   void Clear();
   bool IsEmpty() const;
@@ -86,6 +92,12 @@ struct Pattern {
   // tracks, locks included) up to the end of page `destination`, and extends
   // the pattern to it. Otherwise copies page `source` onto page `destination`.
   void CopyPages(int source, int destination);
+  // Shift + page (as on the DrumBrute): sets the length to `new_length` steps,
+  // repeating the current steps (locks included) when it grows. With `track`
+  // < 0 it is the pattern's length, and the tracks that follow it are repeated
+  // (tracks with their own length keep it); otherwise it is the length of that
+  // track alone.
+  void Extend(int track, int new_length);
   int track_length(int track) const {
     int l = tracks[track].length;
     return l > 0 ? l : length;

@@ -77,6 +77,27 @@ void Pattern::Clear() {
   swing = 0.5f;
   division = kDefaultDivision;
   poly = false;
+  vary = 0.0f;
+  vary_seed = 1;
+}
+
+void Pattern::Extend(int track, int new_length) {
+  new_length = std::clamp(new_length, 1, kMaxSteps);
+  const int period = track < 0 ? length : track_length(track);
+  for (int t = 0; t < kNumTracks; ++t) {
+    bool repeated = track < 0 ? tracks[t].length == 0 : t == track;
+    if (!repeated) {
+      continue;
+    }
+    for (int s = period; s < new_length; ++s) {
+      tracks[t].steps[s] = tracks[t].steps[s % period];
+    }
+  }
+  if (track < 0) {
+    length = new_length;
+  } else {
+    tracks[track].length = new_length;
+  }
 }
 
 void Pattern::CopyPages(int source, int destination) {
