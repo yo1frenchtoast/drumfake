@@ -31,10 +31,14 @@ class Faceplate {
   void FingerDown(uint64_t finger, ImVec2 position);
   void FingerMove(uint64_t finger, ImVec2 position);
   void FingerUp(uint64_t finger);
+  // A file dropped on the window at `position` (display coordinates): a WAV is
+  // imported onto the pad under it, or onto the selected track. Takes the lock.
+  void DropFile(const std::string& path, ImVec2 position);
 
  private:
-  enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS };
-  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS };
+  enum PadMode { PADS_SOUNDS, PADS_REPEATS, PADS_CHORDS, PADS_KEYS, PADS_SLICES };
+  enum ScreenView { VIEW_MAIN, VIEW_EDIT, VIEW_BROWSE, VIEW_MIDI, VIEW_MARBLES, VIEW_KITS,
+                    VIEW_SLICES };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
   void DrawChrome();
@@ -115,6 +119,53 @@ class Faceplate {
   Engine* engine_ = nullptr;
   Canvas canvas_;
   std::string project_path_;
+  // File work queued while drawing (under the engine lock) and done after it,
+  // since loading samples takes the lock itself.
+  struct PendingImport {
+    std::string path;
+    int track;
+  };
+  std::vector<PendingImport> pending_imports_;
+  bool reload_samples_ = false;
+  void DoFileWork();
+  void DrawPanel();
+
+  // Sampler.
+  // Name, short name and value shown for knob `k` of the current page: on the
+  // Sound page, the Sample engine gives Harmonics, Timbre, Morph, Decay and Aux
+  // their own meaning.
+  void KnobLabel(int k, float value, const char** short_name, const char** name,
+                 std::string* text) const;
+  bool OnSampleEngine() const;
+  // Puts the selected track on `slot` (Browse > Samples).
+  void PlaceSample(int track, int slot);
+  void DrawSampleBrowser(ImVec2 min, ImVec2 max);
+  // The sample of the selected track, with Start, end of Length and Loop.
+  void DrawSampleOverview(ImVec2 min, ImVec2 max);
+  bool browse_samples_ = false;  // Browse shows the sample pool.
+  float auto_sensitivity_ = 0.5f;  // Share of the attacks Auto slicing keeps.
+  int auto_sliced_slot_ = -1;      // Sliced by Auto: the sensitivity slider redoes it.
+  // Slice editor (Browse > Samples > Edit): the slot edited, the selected slice,
+  // the zoom (1 = the whole sample) around a centre, the marker being dragged.
+  void DrawSliceEditor(ImVec2 min, ImVec2 max);
+  // Moves the selected slice's start by `delta` (fraction of the sample),
+  // snapped to a zero crossing.
+  void NudgeSlice(float delta);
+  void PreviewSlice(int slice);
+  int slice_edit_slot_ = -1;
+  int selected_slice_ = 0;
+  float slice_zoom_ = 1.0f;
+  float slice_center_ = 0.5f;
+  int dragging_slice_ = -1;
+  // Peaks of 64-frame blocks of the edited sample, for drawing it zoomed.
+  const SampleData* slice_peaks_sample_ = nullptr;
+  size_t slice_peaks_frames_ = 0;
+  std::vector<float> slice_peaks_;
+  int browse_sample_page_ = 0;   // 16 slots per page.
+  // Overview of the last sample drawn: peak per column, rebuilt when it changes.
+  const SampleData* overview_sample_ = nullptr;
+  size_t overview_frames_ = 0;
+  std::vector<float> overview_;
 
   Page page_ = PAGE_SOUND;
   PadMode pad_mode_ = PADS_SOUNDS;
@@ -136,6 +187,10 @@ class Faceplate {
   bool solo_mode_ = false;
   int held_step_ = -1;
   int preset_bank_ = 0;
+  int slice_bank_ = 0;  // Slices mode: pads 1-8 play slices 8 * bank + 1 to 8.
+  // The slices of the selected track's sample, or null (not on the Sample engine).
+  const SampleSlices* TrackSlices() const;
+  void PlaySlice(int pad);
   float encoder_ = 0.5f;
   float encoder_accumulator_ = 0.0f;
   int browse_index_ = 0;

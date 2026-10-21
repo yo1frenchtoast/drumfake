@@ -144,8 +144,19 @@ struct ParamInfo {
   float default_value;
 };
 
-// Plaits engines, in the order registered by plaits::Voice::Init().
-const int kNumEngines = 24;
+// Engines: the Plaits ones, in the order registered by plaits::Voice::Init(),
+// then the sampler's. New engines go at the end: saved files record how many
+// engines there were (see RemapEngine in core/project_io.cc).
+const int kNumPlaitsEngines = 24;
+const int kSampleEngine = kNumPlaitsEngines;  // Plays a sample of the project's pool.
+// Granular engines on a sample of the pool (see audio/grain_player.h).
+const int kScrubEngine = kSampleEngine + 1;   // Grains scanning through the sample.
+const int kSprayEngine = kSampleEngine + 2;   // A cloud of grains around a position.
+const int kBurstEngine = kSampleEngine + 3;   // Percussive bursts of grains.
+const int kNumEngines = kSampleEngine + 4;
+// Engines that play a sample of the pool (the slot is the Aux knob).
+inline bool IsSampleEngine(int engine) { return engine >= kSampleEngine; }
+inline bool IsGrainEngine(int engine) { return engine > kSampleEngine; }
 extern const char* const kEngineNames[kNumEngines];
 
 enum LfoShape {
@@ -206,7 +217,8 @@ inline float Clamp01(float x) {
 float PitchToNote(float value);          // MIDI note, 12 to 108.
 float CutoffToHz(float value);           // 20 Hz to 20 kHz.
 float FilterDecayToSeconds(float value); // 5 ms to 2 s.
-float GateToSeconds(float value);        // 1 ms to 512 ms.
+float GateToSeconds(float value);
+float GrainReleaseToSeconds(float value);  // Release of the grain engines, 5 ms to 8 s.        // 1 ms to 512 ms.
 float CrushToRatio(float value);         // 1 (off) down to 1/64.
 float NoteToNormalizedPitch(float note);
 float CloudsPitchToSemitones(float value);  // -24 to +24, 0 at the centre.

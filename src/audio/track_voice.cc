@@ -8,9 +8,11 @@
 
 namespace drumfake {
 
-void TrackVoice::Init() {
+void TrackVoice::Init(uint32_t seed) {
   stmlib::BufferAllocator allocator(ram_block_, sizeof(ram_block_));
   voice_.Init(&allocator);
+  sample_player_.Init();
+  grain_player_.Init(seed);
   filter_.Init();
   crusher_.Init();
   gate_remaining_ = 0;
@@ -42,7 +44,9 @@ void TrackVoice::Choke() {
   gate_remaining_ = 0;
 }
 
-void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buses) {
+void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buses,
+                        const SampleData* sample, const SampleSlices* slices) {
+  const int engine = Discrete(params[P_ENGINE], kNumEngines);
   // Gate. Plaits detects a trigger on a rising edge, so when a note is
   // retriggered while its gate is still high, the gate goes low for one block.
   if (gate_pending_ && !last_trigger_high_) {
@@ -53,6 +57,11 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
     gate_pending_ = false;
     filter_envelope_ = 1.0f;
     choke_gain_ = choke_target_ = 1.0f;
+    if (engine == kSampleEngine) {
+      sample_player_.Start();
+    } else if (IsGrainEngine(engine)) {
+      grain_player_.Start();
+    }
   } else if (gate_pending_) {
     gate_remaining_ = 0;
   }
@@ -61,7 +70,7 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   last_trigger_high_ = gate_high;
 
   plaits::Patch patch;
-  patch.engine = Discrete(params[P_ENGINE], kNumEngines);
+  patch.engine = std::min(engine, kNumPlaitsEngines - 1);
   patch.note = PitchToNote(params[P_PITCH]);
   patch.harmonics = params[P_HARMONICS];
   patch.timbre = params[P_TIMBRE];
@@ -80,14 +89,21 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   modulations.trigger_patched = true;
   modulations.level_patched = true;
 
-  plaits::Voice::Frame frames[kBlockSize];
-  voice_.Render(patch, modulations, frames, kBlockSize);
-
-  const float aux = params[P_AUX];
-  for (size_t i = 0; i < kBlockSize; ++i) {
-    float out = static_cast<float>(frames[i].out) / 32768.0f;
-    float aux_out = static_cast<float>(frames[i].aux) / 32768.0f;
-    mono_[i] = out + (aux_out - out) * aux;
+  if (engine == kSampleEngine) {
+    sample_player_.Render(sample, slices, params, PitchToNote(params[P_PITCH]) + note_offset_,
+                          gate_high, mono_);
+  } else if (IsGrainEngine(engine)) {
+    grain_player_.Render(sample, engine, params, PitchToNote(params[P_PITCH]) + note_offset_,
+                         gate_high, mono_);
+  } else {
+    plaits::Voice::Frame frames[kBlockSize];
+    voice_.Render(patch, modulations, frames, kBlockSize);
+    const float aux = params[P_AUX];
+    for (size_t i = 0; i < kBlockSize; ++i) {
+      float out = static_cast<float>(frames[i].out) / 32768.0f;
+      float aux_out = static_cast<float>(frames[i].aux) / 32768.0f;
+      mono_[i] = out + (aux_out - out) * aux;
+    }
   }
 
   // Filter, with an exponentially decaying envelope on the cutoff.

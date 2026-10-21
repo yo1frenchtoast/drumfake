@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "core/sample_pool.h"
 #include "core/scales.h"
 
 #if defined(__SSE__) || defined(__x86_64__)
@@ -55,12 +56,12 @@ Engine::~Engine() { }
 void Engine::Init() {
   project_->Init();
   for (int i = 0; i < kChordVoices; ++i) {
-    chord_voices_[i].Init();
+    chord_voices_[i].Init(static_cast<uint32_t>(101 + i));
     chord_owner_[i] = 0;
     chord_started_[i] = 0;
   }
   for (int i = 0; i < kNumTracks; ++i) {
-    voices_[i].Init();
+    voices_[i].Init(static_cast<uint32_t>(1 + i));
     track_step[i] = -1;
     trigger_count[i] = 0;
     track_peak[i] = 0.0f;
@@ -94,6 +95,7 @@ void Engine::Init() {
   cpu_load = 0.0f;
   midi_activity = 0;
   midi_input_ports = 0;
+  resample_progress = 0.0f;
   clock_ticks_ = -1;
   last_tick_time_ = -1.0;
   tick_interval_ = 0.0;
@@ -135,6 +137,7 @@ void Engine::Play() {
     queued_pattern_ = -1;
   }
   playing_ = true;
+  pattern_started_ = true;
   clock_ticks_ = -1;  // With an external clock, wait for its first tick.
   position_ = 0.0;
   beat_position_ = 0.0;
@@ -438,6 +441,76 @@ bool Engine::VaryStep(const Pattern& pattern, int track, int s, const Step& stor
   return true;
 }
 
+void Engine::SwapSample(int slot, std::shared_ptr<const SampleData>* sample) {
+  if (slot >= 0 && slot < kNumSampleSlots) {
+    samples_[slot].swap(*sample);
+  }
+}
+
+void Engine::SwapSamples(std::shared_ptr<const SampleData>* samples) {
+  for (int i = 0; i < kNumSampleSlots; ++i) {
+    samples_[i].swap(samples[i]);
+  }
+}
+
+const SampleData* Engine::sample(int slot) const {
+  return slot >= 0 && slot < kNumSampleSlots ? samples_[slot].get() : nullptr;
+}
+
+const SampleData* Engine::VoiceSample(const float* params) const {
+  if (!IsSampleEngine(Discrete(params[P_ENGINE], kNumEngines))) {
+    return nullptr;
+  }
+  return samples_[SampleSlot(params[P_AUX])].get();
+}
+
+void Engine::ArmResample(std::vector<int16_t>* buffer) {
+  resample_buffer_.swap(*buffer);
+  resample_state_ = resample_buffer_.empty() ? RESAMPLE_IDLE : RESAMPLE_ARMED;
+  resample_length_ = 0;
+  resample_progress.store(0.0f, std::memory_order_relaxed);
+}
+
+void Engine::CancelResample(std::vector<int16_t>* buffer) {
+  buffer->swap(resample_buffer_);
+  resample_state_ = RESAMPLE_IDLE;
+}
+
+bool Engine::TakeResample(std::vector<int16_t>* frames) {
+  if (resample_state_ != RESAMPLE_DONE) {
+    return false;
+  }
+  frames->swap(resample_buffer_);
+  frames->resize(resample_length_);  // Shrinks only: on the UI thread, after the swap.
+  resample_state_ = RESAMPLE_IDLE;
+  return true;
+}
+
+void Engine::RecordResample(const float* out_l, const float* out_r) {
+  const bool started = pattern_started_;
+  pattern_started_ = false;
+  if (resample_state_ == RESAMPLE_ARMED && started && playing_) {
+    const Pattern& pattern = project_->patterns[current_pattern_];
+    resample_state_ = RESAMPLE_RECORDING;
+    resample_length_ = 0;
+    resample_target_ = std::min(resample_buffer_.size(),
+                                static_cast<size_t>(pattern.length) * SamplesPerStep());
+  }
+  if (resample_state_ != RESAMPLE_RECORDING) {
+    return;
+  }
+  for (size_t i = 0; i < kBlockSize && resample_length_ < resample_target_; ++i) {
+    float mono = std::clamp(0.5f * (out_l[i] + out_r[i]), -1.0f, 1.0f);
+    resample_buffer_[resample_length_++] = static_cast<int16_t>(std::lround(mono * 32767.0f));
+  }
+  resample_progress.store(static_cast<float>(resample_length_) / std::max<size_t>(1, resample_target_),
+                          std::memory_order_relaxed);
+  // Done at the end of the loop, or when the transport stops.
+  if (resample_length_ >= resample_target_ || !playing_) {
+    resample_state_ = RESAMPLE_DONE;
+  }
+}
+
 void Engine::DiceVary() {
   Pattern& pattern = project_->patterns[current_pattern_];
   pattern.vary_seed = Hash((static_cast<uint64_t>(pattern.vary_seed) << 32) ^
@@ -478,8 +551,13 @@ void Engine::LiveChord(int track, float velocity, int note_offset, const int8_t*
   RecordHit(track, velocity, note_offset, 1, extras, count);
 }
 
+void Engine::LiveTriggerLocked(int track, float velocity, const float* locks) {
+  FireTrack(track, velocity, 0, locks, SamplesPerStep() * 16);
+  RecordHit(track, velocity, 0, 1, nullptr, 0, locks);
+}
+
 void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
-                       const int8_t* extras, int count) {
+                       const int8_t* extras, int count, const float* locks) {
   if (!recording || !playing_ || looping_) {
     return;
   }
@@ -494,6 +572,13 @@ void Engine::RecordHit(int track, float velocity, int note_offset, int ratchets,
   step.chord_size = static_cast<uint8_t>(std::min(count, kMaxChordNotes - 1));
   for (int i = 0; i < step.chord_size; ++i) {
     step.chord[i] = extras[i];
+  }
+  if (locks) {
+    for (int p = 0; p < kNumLockable; ++p) {
+      if (!std::isnan(locks[p])) {
+        step.locks[p] = locks[p];
+      }
+    }
   }
   if (static_cast<double>(n) > position_) {
     // Rounded to an upcoming step: don't play it twice.
@@ -745,6 +830,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
     }
     // End of the pattern: chain to the next one.
     pattern_start_ = boundary;
+    pattern_started_ = true;
     int previous_pattern = current_pattern_;
     if (queued_pattern_ >= 0) {
       ChangePattern(queued_pattern_);
@@ -963,10 +1049,12 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
     for (int p = 0; p < kNumLockable; ++p) {
       effective_param[t][p].store(params[p], std::memory_order_relaxed);
     }
-    voices_[t].Render(params, extra_delay_send, &buses_);
+    const SampleData* sample = VoiceSample(params);
+    const SampleSlices* slices = sample ? &project_->slices[SampleSlot(params[P_AUX])] : nullptr;
+    voices_[t].Render(params, extra_delay_send, &buses_, sample, slices);
     for (int k = 0; k < kChordVoices; ++k) {
       if (chord_owner_[k] == t && chord_voices_[k].busy()) {
-        chord_voices_[k].Render(params, extra_delay_send, &buses_);
+        chord_voices_[k].Render(params, extra_delay_send, &buses_, sample, slices);
       }
     }
     track_peak[t].store(voices_[t].peak(), std::memory_order_relaxed);
@@ -975,6 +1063,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
   master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);
   clouds_fx_->Process(out_l, out_r, kBlockSize, project_->clouds, clouds_freeze);
+  RecordResample(out_l, out_r);
   RenderClick(out_l, out_r);
 
   float peak = master_peak.load(std::memory_order_relaxed) * 0.98f;

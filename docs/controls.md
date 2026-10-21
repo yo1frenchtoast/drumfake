@@ -21,6 +21,11 @@ the [user guide](user-guide.md).
 | Last Step (held) / Poly / Shift (held) | right click or long press on Shift or Last Step locks it until a combination is used (or the button is pressed again) | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (acts on release) |
 | Back (↺) | closes Edit, Browse and other screens; releases the selected step | `Esc` |
+| WAV file dropped on the window | imports it onto the pad under it (A–H), or the selected track | |
+| Browse: Sounds / Samples | the factory sounds, or the project's sample pool; tap one (or turn the encoder) to load it on the selected track; Samples: *Slices 4/8/16/32/Auto/Clear* slice the track's sample, *Sens* sets how many attacks Auto keeps, *Edit* opens the slice editor | |
+| Slice editor | click: select (and hear) a slice; drag a start: move it; double-click: add a start; right click / long press on a start: remove it; wheel: zoom | encoder: nudge the selected start |
+| Shift + Freeze | resample one loop of the pattern into a new sample (again: cancel) | |
+| Shift + Keys | Slices mode: pads 1–8 play the slices of the track's sample; Shift + Slices: next 8; Keys: back to the keyboard | |
 
 The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods**, **Envs**,
 **Clouds**, **Assign**.

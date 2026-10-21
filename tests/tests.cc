@@ -1,9 +1,13 @@
 // Tests for the Drumfake core: sequencer timing, Grids port, persistence and
 // a full render. Run: ./build/drumfake_tests
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <new>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -15,9 +19,29 @@
 #include "core/midi_parser.h"
 #include "core/presets.h"
 #include "core/project_io.h"
+#include "core/sample_file.h"
+#include "core/sample_pool.h"
+#include "audio/sample_loader.h"
+#include "audio/track_voice.h"
 #include "core/scales.h"
 #include "grids/resources.h"
 #include <nlohmann/json.hpp>
+
+// Counts heap allocations, to check that the audio rendering never allocates.
+std::atomic<long> g_allocations{ 0 };
+
+void* operator new(std::size_t size) {
+  g_allocations.fetch_add(1, std::memory_order_relaxed);
+  if (void* p = std::malloc(size ? size : 1)) {
+    return p;
+  }
+  throw std::bad_alloc();
+}
+void* operator new[](std::size_t size) { return operator new(size); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 using namespace drumfake;
 
@@ -294,6 +318,1033 @@ void TestVary() {
     }
   }
   CHECK(ghosts > 0);
+}
+
+// A WAV file in memory. `samples` are interleaved, in [-1, 1]. `tag` 0xfffe writes a
+// WAVE_FORMAT_EXTENSIBLE header whose sub-format is `sub_tag`. `before_data` is
+// inserted between the format and data chunks.
+std::vector<uint8_t> MakeWav(int tag, int channels, int rate, int bits,
+                             const std::vector<float>& samples,
+                             const std::vector<uint8_t>& before_data = {}, int sub_tag = 1) {
+  std::vector<uint8_t> out;
+  auto u16 = [&](uint32_t v) { out.push_back(v & 0xff); out.push_back((v >> 8) & 0xff); };
+  auto u32 = [&](uint32_t v) { u16(v & 0xffff); u16(v >> 16); };
+  auto tag4 = [&](const char* t) { out.insert(out.end(), t, t + 4); };
+  const bool extensible = tag == 0xfffe;
+  const int bytes = bits / 8;
+  tag4("RIFF");
+  u32(0);  // Patched below.
+  tag4("WAVE");
+  tag4("fmt ");
+  u32(extensible ? 40 : 16);
+  u16(tag);
+  u16(channels);
+  u32(rate);
+  u32(rate * channels * bytes);
+  u16(channels * bytes);
+  u16(bits);
+  if (extensible) {
+    u16(22);    // Extension size.
+    u16(bits);  // Valid bits.
+    u32(0);     // Channel mask.
+    u16(sub_tag);
+    static const uint8_t kGuidTail[14] = { 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00,
+                                           0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 };
+    out.insert(out.end(), kGuidTail, kGuidTail + 14);
+  }
+  out.insert(out.end(), before_data.begin(), before_data.end());
+  tag4("data");
+  u32(static_cast<uint32_t>(samples.size() * bytes));
+  const bool is_float = tag == 3 || (extensible && sub_tag == 3);
+  for (float s : samples) {
+    if (is_float && bits == 32) {
+      uint32_t u;
+      memcpy(&u, &s, 4);
+      u32(u);
+    } else if (is_float) {
+      double d = s;
+      uint64_t u;
+      memcpy(&u, &d, 8);
+      u32(static_cast<uint32_t>(u));
+      u32(static_cast<uint32_t>(u >> 32));
+    } else if (bits == 8) {
+      out.push_back(static_cast<uint8_t>(std::lround(128.0f + s * 127.0f)));
+    } else {
+      int64_t v = std::llround(static_cast<double>(s) * ((1ll << (bits - 1)) - 1));
+      for (int b = 0; b < bytes; ++b) {
+        out.push_back(static_cast<uint8_t>((v >> (8 * b)) & 0xff));
+      }
+    }
+  }
+  uint32_t riff = static_cast<uint32_t>(out.size() - 8);
+  for (int b = 0; b < 4; ++b) {
+    out[4 + b] = static_cast<uint8_t>(riff >> (8 * b));
+  }
+  return out;
+}
+
+std::vector<float> Sine(int frames, int channels, int rate, float frequency, float amplitude) {
+  std::vector<float> s(static_cast<size_t>(frames) * channels);
+  for (int f = 0; f < frames; ++f) {
+    for (int c = 0; c < channels; ++c) {
+      s[static_cast<size_t>(f) * channels + c] =
+          amplitude * sinf(2.0f * 3.14159265f * frequency * f / rate);
+    }
+  }
+  return s;
+}
+
+int CountRisingZeroCrossings(const std::vector<int16_t>& frames, size_t begin, size_t end) {
+  int count = 0;
+  for (size_t i = begin + 1; i < end; ++i) {
+    count += frames[i - 1] < 0 && frames[i] >= 0;
+  }
+  return count;
+}
+
+void TestWavDecoding() {
+  SampleData sample;
+  std::string error;
+
+  // 16-bit mono at 48 kHz: kept as it is.
+  std::vector<float> ramp = { 0.0f, 0.25f, -0.5f, 0.999f, -1.0f };
+  auto wav = MakeWav(1, 1, 48000, 16, ramp);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == ramp.size());
+  for (size_t i = 0; i < ramp.size() && i < sample.frames.size(); ++i) {
+    CHECK_NEAR(sample.frames[i] / 32767.0, ramp[i], 2.0 / 32767.0);
+  }
+  CHECK(sample.source_rate == 48000 && sample.source_channels == 1 && sample.source_bits == 16);
+  CHECK(!sample.truncated);
+
+  // Every encoding, stereo mixed down to mono: (0.5 + -0.25) / 2.
+  struct Encoding { int tag; int bits; int sub_tag; };
+  const Encoding kEncodings[] = {
+    { 1, 8, 1 }, { 1, 16, 1 }, { 1, 24, 1 }, { 1, 32, 1 }, { 3, 32, 1 }, { 3, 64, 1 },
+    { 0xfffe, 24, 1 }, { 0xfffe, 32, 3 },
+  };
+  for (const Encoding& e : kEncodings) {
+    std::vector<float> stereo;
+    for (int f = 0; f < 32; ++f) {
+      stereo.push_back(0.5f);
+      stereo.push_back(-0.25f);
+    }
+    wav = MakeWav(e.tag, 2, 48000, e.bits, stereo, {}, e.sub_tag);
+    CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+    CHECK(sample.frames.size() == 32);
+    CHECK_NEAR(sample.frames.empty() ? 0.0 : sample.frames[10] / 32767.0, 0.125,
+               e.bits == 8 ? 0.01 : 1e-3);
+    CHECK(sample.source_float == (e.tag == 3 || e.sub_tag == 3));
+  }
+
+  // Unknown chunks before the data, one of odd size (padded to even): skipped.
+  std::vector<uint8_t> extra = { 'J', 'U', 'N', 'K', 4, 0, 0, 0, 1, 2, 3, 4,
+                                 'L', 'I', 'S', 'T', 3, 0, 0, 0, 'a', 'b', 'c', 0 };
+  wav = MakeWav(1, 1, 48000, 16, ramp, extra);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == ramp.size());
+  CHECK_NEAR(sample.frames.size() > 2 ? sample.frames[2] / 32767.0 : 0.0, -0.5, 1e-3);
+
+  // 44.1 kHz to 48 kHz: the length scales, a 1 kHz tone keeps its pitch and level.
+  wav = MakeWav(1, 2, 44100, 24, Sine(44100, 2, 44100, 1000.0f, 0.8f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(std::llabs(static_cast<long long>(sample.frames.size()) - 48000) <= 1);
+  if (sample.frames.size() >= 48000) {
+    CHECK(std::abs(CountRisingZeroCrossings(sample.frames, 100, 47900) - 996) <= 2);
+    int16_t peak = 0;
+    for (size_t i = 1000; i < 47000; ++i) {
+      peak = std::max<int16_t>(peak, static_cast<int16_t>(std::abs(sample.frames[i])));
+    }
+    CHECK_NEAR(peak / 32767.0, 0.8, 0.02);
+  }
+
+  // 96 kHz to 48 kHz: a 30 kHz tone (above the new Nyquist) is filtered out, not
+  // folded back to 18 kHz; a 5 kHz tone passes.
+  auto rms = [](const std::vector<int16_t>& f) {
+    double sum = 0.0;
+    for (size_t i = 2000; i + 2000 < f.size(); ++i) {
+      sum += static_cast<double>(f[i]) * f[i];
+    }
+    return std::sqrt(sum / static_cast<double>(f.size() - 4000)) / 32767.0;
+  };
+  wav = MakeWav(3, 1, 96000, 32, Sine(96000, 1, 96000, 30000.0f, 0.7f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(std::llabs(static_cast<long long>(sample.frames.size()) - 48000) <= 1);
+  CHECK(rms(sample.frames) < 0.01);
+  wav = MakeWav(3, 1, 96000, 32, Sine(96000, 1, 96000, 5000.0f, 0.7f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK_NEAR(rms(sample.frames), 0.7 / std::sqrt(2.0), 0.01);
+
+  // Longer than the limit: cut after kMaxSampleSeconds.
+  const int kLongFrames = static_cast<int>((kMaxSampleSeconds + 2.0f) * 8000);
+  wav = MakeWav(1, 1, 8000, 8, std::vector<float>(kLongFrames, 0.1f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.truncated);
+  CHECK(sample.frames.size() == static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+
+  // A file cut short keeps the frames it has.
+  wav = MakeWav(1, 1, 48000, 16, std::vector<float>(1000, 0.3f));
+  wav.resize(wav.size() - 2 * 400 - 1);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == 599);
+
+  // Errors.
+  const uint8_t kText[] = "hello, this is not a wave file";
+  CHECK(!DecodeWav(kText, sizeof(kText), &sample, &error));
+  CHECK(error == "not a WAV file");
+  wav = MakeWav(2, 1, 48000, 16, ramp);  // ADPCM.
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 48000, 12, ramp);
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 4000, 16, ramp);
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 0, 48000, 16, {});
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 48000, 16, ramp);
+  wav.resize(36);  // Format chunk, no data chunk.
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(error == "no audio data");
+  CHECK(!LoadWav("/nonexistent/drumfake.wav", &sample, &error));
+
+  // Damaged files never crash: every truncation, and random corruption.
+  wav = MakeWav(0xfffe, 2, 44100, 24, Sine(300, 2, 44100, 440.0f, 0.5f), extra);
+  for (size_t length = 0; length <= wav.size(); ++length) {
+    DecodeWav(wav.data(), length, &sample, &error);
+  }
+  uint32_t seed = 12345;
+  for (int i = 0; i < 2000; ++i) {
+    std::vector<uint8_t> damaged = wav;
+    for (int k = 0; k < 4; ++k) {
+      seed = seed * 1664525u + 1013904223u;
+      damaged[(seed >> 8) % damaged.size()] = static_cast<uint8_t>(seed >> 24);
+    }
+    if (DecodeWav(damaged.data(), damaged.size(), &sample, &error)) {
+      CHECK(sample.frames.size() <= static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+    }
+  }
+}
+
+void TestEngineCountMigration() {
+  namespace fs = std::filesystem;
+  // A project saved with the 24 Plaits engines and no engine count: Bass Drum (21) on
+  // the panel sound, Hi-Hat (23) in pattern 1's kit, a step locked to engine 5.
+  const float kBassDrum24 = DiscreteToNormalized(21, 24);
+  CHECK(Discrete(kBassDrum24, kNumEngines) != 21);  // What would go wrong without it.
+  nlohmann::json sound = { { "name", "Kick" }, { "params", { kBassDrum24 } } };
+  nlohmann::json hat = { { "name", "Hat" }, { "params", { DiscreteToNormalized(23, 24) } } };
+  nlohmann::json legacy = {
+    { "version", 2 },
+    { "sounds", { sound } },
+    { "patterns", { {
+      { "length", 16 },
+      { "kit", { sound, hat } },
+      { "tracks", { { { "length", 0 }, { "steps", { {
+        { "i", 2 }, { "on", true }, { "locks", { { std::to_string(P_ENGINE),
+                                                   DiscreteToNormalized(5, 24) } } } } } } } } },
+    } } },
+  };
+  fs::path dir = fs::temp_directory_path() / "drumfake_engine_migration";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  std::ofstream(dir / "old.json") << legacy.dump();
+  auto project = std::make_unique<Project>();
+  std::string error;
+  CHECK(LoadProject((dir / "old.json").string(), project.get(), &error));
+  CHECK(Discrete(project->sounds[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(project->patterns[0].kit[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(project->patterns[0].kit[1].params[P_ENGINE], kNumEngines) == 23);
+  const Step& locked = project->patterns[0].tracks[0].steps[2];
+  CHECK(locked.has_lock(P_ENGINE) && Discrete(locked.locks[P_ENGINE], kNumEngines) == 5);
+
+  // A kit file of the kit library from before (version 1).
+  nlohmann::json old_kit = { { "version", 1 }, { "tracks", { sound, hat } } };
+  std::ofstream(dir / "kit_001.json") << old_kit.dump();
+  TrackSound kit[kNumTracks];
+  CHECK(LoadKitFile((dir / "kit_001.json").string(), kit, &error));
+  CHECK(Discrete(kit[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(Discrete(kit[1].params[P_ENGINE], kNumEngines) == 23);
+
+  // Saved with the Sample engine as the 25th and last engine: it stays the Sample engine.
+  nlohmann::json sample_sound = { { "name", "Smp" }, { "params", { DiscreteToNormalized(24, 25) } } };
+  nlohmann::json with_sampler = { { "version", 3 }, { "engine_count", 25 }, { "sounds", { sample_sound } } };
+  std::ofstream(dir / "sampler.json") << with_sampler.dump();
+  CHECK(LoadProject((dir / "sampler.json").string(), project.get(), &error));
+  CHECK(Discrete(project->sounds[0].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  CHECK(LoadProject((dir / "old.json").string(), project.get(), &error));
+
+  // Saved now, the Sample engine stays the Sample engine.
+  project->sounds[3].params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
+  project->patterns[0].kit[3] = project->sounds[3];
+  CHECK(SaveProject(*project, (dir / "new.json").string(), &error));
+  auto reloaded = std::make_unique<Project>();
+  CHECK(LoadProject((dir / "new.json").string(), reloaded.get(), &error));
+  CHECK(Discrete(reloaded->sounds[3].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  CHECK(Discrete(reloaded->sounds[0].params[P_ENGINE], kNumEngines) == 21);
+  CHECK(SaveKitFile(dir.string(), reloaded->sounds, "", &error));
+  CHECK(LoadKitFile((dir / "kit_002.json").string(), kit, &error));
+  CHECK(Discrete(kit[3].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  fs::remove_all(dir);
+}
+
+void TestSamplePool() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_sample_pool";
+  fs::remove_all(dir);
+  fs::create_directories(dir / "elsewhere");
+  auto write = [](const fs::path& path, const std::vector<uint8_t>& bytes) {
+    std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
+                                                static_cast<std::streamsize>(bytes.size()));
+  };
+  write(dir / "elsewhere" / "kick.wav", MakeWav(1, 1, 48000, 16, std::vector<float>(480, 0.5f)));
+  fs::create_directories(dir / "other");
+  write(dir / "other" / "kick.wav", MakeWav(1, 2, 44100, 24, std::vector<float>(882, -0.25f)));
+
+  const std::string project_path = (dir / "project.json").string();
+  const std::string samples = SampleDirectory(project_path);
+  CHECK(fs::path(samples) == dir / "samples");
+  std::string name;
+  std::string error;
+  CHECK(CopyIntoSampleDirectory((dir / "elsewhere" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick.wav");
+  // The same file again: reused, not copied twice.
+  CHECK(CopyIntoSampleDirectory((dir / "elsewhere" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick.wav");
+  // Another file with the same name: kept apart.
+  CHECK(CopyIntoSampleDirectory((dir / "other" / "kick.wav").string(), samples, &name, &error));
+  CHECK(name == "kick 2.wav");
+  CHECK(!CopyIntoSampleDirectory((dir / "nothing.wav").string(), samples, &name, &error));
+  std::ofstream(fs::path(samples) / "text.wav") << "not audio";
+
+  auto project = std::make_unique<Project>();
+  project->Init();
+  CHECK(FirstFreeSampleSlot(*project) == 0);
+  project->samples[0] = "kick.wav";
+  project->samples[3] = "kick 2.wav";
+  project->samples[5] = "missing.wav";
+  project->samples[7] = "text.wav";
+  CHECK(FindSampleSlot(*project, "kick 2.wav") == 3);
+  CHECK(FindSampleSlot(*project, "nope.wav") == -1);
+  CHECK(FindSampleSlot(*project, "") == -1);
+  CHECK(FirstFreeSampleSlot(*project) == 1);
+
+  SamplePoolLoad load;
+  LoadSamplePool(*project, samples, &load);
+  CHECK(load.slots[0] && load.slots[0]->frames.size() == 480);
+  CHECK(load.slots[3] && load.slots[3]->frames.size() == 480);  // 441 stereo frames at 44.1 kHz.
+  CHECK(load.slots[3] && std::abs(load.slots[3]->frames[400] + 8192) < 40);
+  CHECK(!load.slots[5] && !load.slots[7] && !load.slots[1]);
+  CHECK(load.problems.size() == 2);
+  CHECK(load.bytes == (480 + 480) * sizeof(int16_t));
+
+  // The pool is saved with the project; names that are paths are refused.
+  project->samples[9] = "../outside.wav";
+  project->samples[10] = "sub/dir.wav";
+  CHECK(SaveProject(*project, project_path, &error));
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject(project_path, loaded.get(), &error));
+  CHECK(loaded->samples[0] == "kick.wav" && loaded->samples[3] == "kick 2.wav");
+  CHECK(loaded->samples[5] == "missing.wav");
+  CHECK(loaded->samples[9].empty() && loaded->samples[10].empty() && loaded->samples[1].empty());
+
+  for (int slot = 0; slot < kNumSampleSlots; ++slot) {
+    CHECK(SampleSlot(SampleSlotToAux(slot)) == slot);
+  }
+  fs::remove_all(dir);
+}
+
+// A sample whose frames are all different, to tell positions apart.
+std::shared_ptr<SampleData> NumberedSample(int frames) {
+  auto sample = std::make_shared<SampleData>();
+  sample->frames.resize(static_cast<size_t>(frames));
+  for (int i = 0; i < frames; ++i) {
+    sample->frames[static_cast<size_t>(i)] = static_cast<int16_t>((i * 13) % 32000 - 16000);
+  }
+  return sample;
+}
+
+// Plays `sample` on a lone voice and returns `frames` frames of its output
+// (post-filter, pre-pan; the defaults bypass the filter, drive and crusher).
+std::vector<float> PlaySample(const SampleData* sample, const TrackSound& sound, size_t frames,
+                              int note = 0, size_t gate = 0) {
+  auto voice = std::make_unique<TrackVoice>();
+  voice->Init();
+  voice->Trigger(1.0f, note, 1 << 30, gate ? gate : 1 << 30);
+  std::vector<float> out;
+  Buses buses;
+  while (out.size() < frames) {
+    buses.Clear();
+    voice->Render(sound.params, 0.0f, &buses, sample);
+    out.insert(out.end(), voice->last_block(), voice->last_block() + kBlockSize);
+  }
+  out.resize(frames);
+  return out;
+}
+
+TrackSound SampleSound() {
+  TrackSound s;
+  s.Reset();
+  s.params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
+  s.params[P_HARMONICS] = 0.0f;
+  s.params[P_TIMBRE] = 1.0f;
+  s.params[P_MORPH] = 0.0f;
+  s.params[P_DECAY] = 1.0f;
+  s.params[P_PITCH] = NoteToNormalizedPitch(kSampleRootNote);
+  return s;
+}
+
+void TestSamplePlayer() {
+  const int kFrames = 4801;
+  auto sample = NumberedSample(kFrames);
+  auto frame = [&](int i) { return sample->frames[static_cast<size_t>(i)] / 32768.0f; };
+  TrackSound sound = SampleSound();
+
+  // At C4, the sample at its own speed from the first frame, then silence.
+  auto out = PlaySample(sample.get(), sound, kFrames + 600);
+  int mismatches = 0;
+  for (int i = 0; i < kFrames - 100; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(std::fabs(out[kFrames - 1]) < 0.02f);  // Faded out at the end.
+  CHECK(out[kFrames + 100] == 0.0f && out[kFrames + 500] == 0.0f);
+
+  // An octave up plays every other frame.
+  out = PlaySample(sample.get(), sound, 2000, 12);
+  mismatches = 0;
+  for (int i = 0; i < 2000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2 * i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+
+  // Length fully down from Start at the end: backwards (after the 24-frame declick).
+  TrackSound reverse = sound;
+  reverse.params[P_HARMONICS] = 1.0f;
+  reverse.params[P_TIMBRE] = 0.0f;
+  out = PlaySample(sample.get(), reverse, 3000);
+  mismatches = 0;
+  for (int i = 24; i < 3000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(kFrames - 1 - i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(out[0] == 0.0f);
+
+  // Start in the middle.
+  TrackSound middle = sound;
+  middle.params[P_HARMONICS] = 0.5f;
+  out = PlaySample(sample.get(), middle, 2000);
+  mismatches = 0;
+  for (int i = 24; i < 2000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2400 + i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+
+  // The middle of Length plays nothing.
+  TrackSound empty = sound;
+  empty.params[P_TIMBRE] = 0.5f;
+  out = PlaySample(sample.get(), empty, 600);
+  CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+
+  // Loop from the middle: after the end, it plays the second half again.
+  TrackSound loop = sound;
+  loop.params[P_MORPH] = 0.5f;
+  out = PlaySample(sample.get(), loop, 3 * kFrames);
+  mismatches = 0;
+  for (int k = 10; k < 1500; ++k) {
+    mismatches += std::fabs(out[static_cast<size_t>(4800 + k)] - frame(2400 + k)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  float late = 0.0f;
+  for (size_t i = 3 * kFrames - 500; i < 3 * kFrames; ++i) {
+    late = std::max(late, std::fabs(out[i]));
+  }
+  CHECK(late > 0.1f);
+
+  // Decay below the top: the sample fades after the gate closes.
+  auto steady = std::make_shared<SampleData>();
+  steady->frames.assign(48000, 16384);
+  TrackSound release = sound;
+  release.params[P_DECAY] = 0.3f;  // About 30 ms.
+  out = PlaySample(steady.get(), release, 24000, 0, 480);
+  CHECK_NEAR(out[100], 0.5, 1e-3);
+  CHECK(std::fabs(out[12000]) < 0.005f);
+  out = PlaySample(steady.get(), sound, 24000, 0, 480);  // Decay up: holds.
+  CHECK_NEAR(out[20000], 0.5, 1e-3);
+
+  // No sample: silence. A sample replaced by a shorter one while playing: no crash.
+  out = PlaySample(nullptr, sound, 600);
+  CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+  {
+    auto voice = std::make_unique<TrackVoice>();
+    voice->Init();
+    voice->Trigger(1.0f, 0, 1 << 30, 1 << 30);
+    Buses buses;
+    auto tiny = NumberedSample(100);
+    for (int b = 0; b < 400; ++b) {
+      buses.Clear();
+      voice->Render(sound.params, 0.0f, &buses, b < 200 ? sample.get() : tiny.get());
+      for (size_t i = 0; i < kBlockSize; ++i) {
+        CHECK(std::isfinite(voice->last_block()[i]));
+      }
+    }
+  }
+}
+
+double Rms(const std::vector<float>& v, double from_seconds, double to_seconds) {
+  size_t a = static_cast<size_t>(from_seconds * kSampleRate);
+  size_t b = std::min(v.size(), static_cast<size_t>(to_seconds * kSampleRate));
+  double sum = 0.0;
+  for (size_t i = a; i < b; ++i) {
+    sum += static_cast<double>(v[i]) * v[i];
+  }
+  return b > a ? std::sqrt(sum / static_cast<double>(b - a)) : 0.0;
+}
+
+TrackSound GrainSound(int engine) {
+  TrackSound s = SampleSound();
+  s.params[P_ENGINE] = DiscreteToNormalized(engine, kNumEngines);
+  s.params[P_HARMONICS] = 0.5f;
+  s.params[P_TIMBRE] = 0.5f;   // 20 grains per second.
+  s.params[P_MORPH] = 0.0f;    // No chaos (Burst: the shortest shape).
+  s.params[P_COLOUR] = 0.5f;   // 70 ms grains (Burst: chaos, set below).
+  s.params[P_DECAY] = 0.5f;
+  return s;
+}
+
+void TestGrainEngines() {
+  // 2 s: silence, then a 1 kHz sine from 1 s.
+  auto half = std::make_shared<SampleData>();
+  half->frames.assign(96000, 0);
+  for (int i = 48000; i < 96000; ++i) {
+    half->frames[static_cast<size_t>(i)] =
+        static_cast<int16_t>(16384.0f * sinf(2.0f * 3.14159265f * 1000.0f * i / 48000.0f));
+  }
+  auto sine = std::make_shared<SampleData>();
+  sine->frames.resize(96000);
+  for (int i = 0; i < 96000; ++i) {
+    sine->frames[static_cast<size_t>(i)] =
+        static_cast<int16_t>(16384.0f * sinf(2.0f * 3.14159265f * 1000.0f * i / 48000.0f));
+  }
+
+  // Spray reads around its position: the sine half sounds, the silent half does not.
+  TrackSound spray = GrainSound(kSprayEngine);
+  spray.params[P_HARMONICS] = 0.75f;
+  auto out = PlaySample(half.get(), spray, 48000);
+  CHECK(Rms(out, 0.1, 1.0) > 0.05);
+  spray.params[P_HARMONICS] = 0.2f;
+  out = PlaySample(half.get(), spray, 48000);
+  CHECK(Rms(out, 0.0, 1.0) < 1e-4);
+
+  // The grains follow the note: an octave up, 2 kHz inside the first grain.
+  TrackSound pitched = GrainSound(kSprayEngine);
+  pitched.params[P_HARMONICS] = 0.0f;
+  pitched.params[P_TIMBRE] = 0.0f;  // 2 grains per second...
+  pitched.params[P_COLOUR] = 1.0f;  // ...of 500 ms.
+  out = PlaySample(sine.get(), pitched, 24000, 12);
+  int crossings = 0;
+  for (size_t i = 4801; i < 19200; ++i) {
+    crossings += out[i - 1] < 0.0f && out[i] >= 0.0f;
+  }
+  CHECK(std::abs(crossings - 600) <= 4);
+
+  // Scrub: frozen at the start, it stays in the silence; at the sample's own
+  // speed, it reaches the sine after a second.
+  TrackSound scrub = GrainSound(kScrubEngine);
+  scrub.params[P_HARMONICS] = 0.0f;
+  out = PlaySample(half.get(), scrub, 96000);
+  CHECK(Rms(out, 0.0, 2.0) < 1e-4);
+  scrub.params[P_HARMONICS] = 0.5f;
+  out = PlaySample(half.get(), scrub, 96000);
+  CHECK(Rms(out, 0.0, 0.85) < 1e-4);
+  CHECK(Rms(out, 1.2, 1.9) > 0.05);
+
+  // Burst: the energy is at the start, then it dies away.
+  TrackSound burst = GrainSound(kBurstEngine);
+  burst.params[P_HARMONICS] = 0.1f;
+  burst.params[P_TIMBRE] = 0.7f;
+  burst.params[P_MORPH] = 0.2f;
+  burst.params[P_COLOUR] = 0.0f;
+  out = PlaySample(sine.get(), burst, 48000);
+  CHECK(Rms(out, 0.0, 0.05) > 0.05);
+  CHECK(Rms(out, 0.5, 1.0) < 1e-3);
+
+  // Release after the gate.
+  TrackSound short_release = GrainSound(kSprayEngine);
+  short_release.params[P_DECAY] = 0.2f;  // About 22 ms.
+  out = PlaySample(sine.get(), short_release, 48000, 0, 4800);
+  CHECK(Rms(out, 0.02, 0.1) > 0.05);
+  CHECK(Rms(out, 0.5, 1.0) < 1e-4);
+
+  // Repeatable, finite and bounded even at full chaos, density and size.
+  for (int engine : { kScrubEngine, kSprayEngine, kBurstEngine }) {
+    TrackSound wild = GrainSound(engine);
+    for (int p : { P_HARMONICS, P_TIMBRE, P_MORPH, P_COLOUR, P_DECAY }) {
+      wild.params[p] = 1.0f;
+    }
+    auto first = PlaySample(sine.get(), wild, 24000, 7);
+    auto second = PlaySample(sine.get(), wild, 24000, 7);
+    CHECK(first == second);
+    bool finite = true;
+    float peak = 0.0f;
+    for (float v : first) {
+      finite = finite && std::isfinite(v);
+      peak = std::max(peak, std::fabs(v));
+    }
+    CHECK(finite);
+    CHECK(peak > 0.01f && peak < 4.0f);
+    out = PlaySample(nullptr, wild, 2400);
+    CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+  }
+
+  // Through the engine, without allocating.
+  auto engine = MakeEngine();
+  auto data = std::shared_ptr<const SampleData>(sine);
+  engine->SwapSample(0, &data);
+  for (int t = 0; t < 3; ++t) {
+    engine->project().sounds[t] = GrainSound(kScrubEngine + t);
+    engine->project().sounds[t].params[P_AUX] = SampleSlotToAux(0);
+    engine->project().sounds[t].params[P_GATE] = 1.0f;
+    engine->project().patterns[0].tracks[t].steps[0].on = true;
+  }
+  engine->Play();
+  std::vector<float> buffer(2 * 256);
+  long before = g_allocations.load();
+  float peak[3] = {};
+  for (int i = 0; i < 400; ++i) {
+    engine->Render(buffer.data(), 256);
+    for (int t = 0; t < 3; ++t) {
+      peak[t] = std::max(peak[t], engine->track_peak[t].load());
+    }
+  }
+  CHECK(g_allocations.load() == before);
+  for (int t = 0; t < 3; ++t) {
+    CHECK(peak[t] > 0.01f);
+  }
+}
+
+void TestSlices() {
+  SampleSlices slices;
+  EqualSlices(8, &slices);
+  CHECK(slices.count == 8);
+  CHECK_NEAR(slices.start(3), 0.375, 1e-6);
+  CHECK_NEAR(slices.end(7), 1.0, 1e-6);
+  EqualSlices(0, &slices);
+  CHECK(slices.count == 1);
+  EqualSlices(100, &slices);
+  CHECK(slices.count == kMaxSlices);
+
+  // Tidying: sorted, in [0, 1), no duplicates, the first at 0.
+  slices.count = 6;
+  const float kMessy[6] = { 0.5f, 0.25f, 0.5f, -0.1f, NAN, 1.0f };
+  std::copy(kMessy, kMessy + 6, slices.starts);
+  TidySlices(&slices);
+  CHECK(slices.count == 3);
+  CHECK(slices.starts[0] == 0.0f && slices.starts[1] == 0.25f && slices.starts[2] == 0.5f);
+
+  for (int count = 1; count <= kMaxSlices; ++count) {
+    CHECK(SliceOfColour(0.0f, count) == -1);
+    for (int k = 0; k < count; ++k) {
+      CHECK(SliceOfColour(ColourOfSlice(k, count), count) == k);
+    }
+  }
+  CHECK(SliceOfColour(0.7f, 0) == -1);
+
+  // Attacks: decaying noise bursts at known times over a quiet floor.
+  const double kHits[5] = { 0.0, 0.25, 0.5, 0.8, 1.3 };
+  SampleData hits;
+  hits.frames.assign(96000, 0);
+  uint32_t seed = 7;
+  for (size_t i = 0; i < hits.frames.size(); ++i) {
+    seed = seed * 1664525u + 1013904223u;
+    float noise = static_cast<float>(seed >> 9) / 4194304.0f - 1.0f;
+    float level = 0.002f;
+    for (double t : kHits) {
+      double age = static_cast<double>(i) / 48000.0 - t;
+      if (age >= 0.0 && age < 0.15) {
+        level += 0.8f * static_cast<float>(std::exp(-age / 0.03));
+      }
+    }
+    hits.frames[i] = static_cast<int16_t>(std::clamp(noise * level, -1.0f, 1.0f) * 32767.0f);
+  }
+  CHECK(DetectSlices(hits, &slices) == 5);
+  for (int k = 0; k < 5 && k < slices.count; ++k) {
+    double seconds = slices.start(k) * 2.0;
+    CHECK(seconds <= kHits[k] + 1e-6 && seconds >= kHits[k] - 0.011);
+  }
+  // Hits that barely raise the level over a sustained cymbal (as in a break with
+  // a ride): soft low kicks under steady bright inharmonic partials. The peak
+  // level rises by less than 2 times, so the level alone misses them.
+  const double kKicks[6] = { 0.1, 0.35, 0.6, 0.85, 1.1, 1.35 };
+  SampleData ride;
+  ride.frames.resize(72000);
+  int ride_peak = 0;
+  for (size_t i = 0; i < ride.frames.size(); ++i) {
+    double t = static_cast<double>(i) / 48000.0;
+    double v = 0.0;
+    for (int p = 0; p < 12; ++p) {
+      v += 0.02 * std::sin(2.0 * 3.14159265 * (3100.0 + 437.0 * p * (1.0 + 0.03 * p)) * t + p);
+    }
+    ride_peak = std::max(ride_peak, static_cast<int>(std::fabs(v) * 32767.0));
+    for (double k : kKicks) {
+      double age = t - k;
+      if (age >= 0.0 && age < 0.3) {
+        v += 0.15 * std::exp(-age / 0.06) * std::sin(2.0 * 3.14159265 * 60.0 * age);
+      }
+    }
+    ride.frames[i] = static_cast<int16_t>(std::clamp(v, -1.0, 1.0) * 32767.0);
+  }
+  int peak = 0;
+  for (int16_t v : ride.frames) {
+    peak = std::max(peak, std::abs(static_cast<int>(v)));
+  }
+  CHECK(peak < 2 * ride_peak);
+  CHECK(DetectSlices(ride, &slices) == 7);  // The start, then each kick.
+  for (int k = 1; k < 7 && k < slices.count; ++k) {
+    double error_ms = (slices.start(k) * 1.5 - kKicks[k - 1]) * 1000.0;
+    CHECK(error_ms > -6.0 && error_ms < 2.0);
+  }
+  // More attacks than slices: the strongest are kept, over the whole sample.
+  SampleData busy;
+  busy.frames.assign(48000 * 8, 0);
+  for (int hit = 0; hit < 80; ++hit) {  // Every 100 ms, every fourth one louder.
+    float level = hit % 4 == 0 ? 0.8f : 0.25f;
+    for (int i = 0; i < 2400; ++i) {
+      seed = seed * 1664525u + 1013904223u;
+      float noise = static_cast<float>(seed >> 9) / 4194304.0f - 1.0f;
+      busy.frames[static_cast<size_t>(hit * 4800 + i)] =
+          static_cast<int16_t>(noise * level * std::exp(-i / 400.0f) * 32767.0f);
+    }
+  }
+  CHECK(DetectSlices(busy, &slices) == kMaxSlices);
+  CHECK(slices.start(kMaxSlices - 1) > 0.9f);  // Up to the end, not the first 48 hits.
+  int loud = 0;
+  for (int k = 1; k < slices.count; ++k) {
+    double hit = slices.start(k) * 80.0;  // 80 hits over the sample.
+    loud += static_cast<int>(std::lround(hit)) % 4 == 0;
+  }
+  CHECK(loud == 19);  // All the loud hits after the first are among them.
+  // A lower sensitivity keeps the strongest share: here the loud hits first.
+  CHECK(DetectSlices(busy, &slices, 0.25f) == 21);  // The start and 20 of the 79 attacks.
+  loud = 0;
+  for (int k = 1; k < slices.count; ++k) {
+    loud += static_cast<int>(std::lround(slices.start(k) * 80.0)) % 4 == 0;
+  }
+  CHECK(loud == 19);
+  for (int k = 1; k < slices.count; ++k) {
+    CHECK(slices.start(k) > slices.start(k - 1));
+  }
+  CHECK(DetectSlices(busy, &slices, 0.0f) == 1);
+  SampleData quiet;
+  quiet.frames.assign(48000, 0);
+  CHECK(DetectSlices(quiet, &slices) == 1 && slices.starts[0] == 0.0f);
+  SampleData steady;
+  steady.frames.resize(48000);
+  for (size_t i = 0; i < steady.frames.size(); ++i) {
+    steady.frames[i] = static_cast<int16_t>(16000.0f * sinf(0.05f * static_cast<float>(i)));
+  }
+  CHECK(DetectSlices(steady, &slices) == 1);
+
+  // The Sample engine plays the slice Colour picks, Start and Length within it.
+  auto sample = NumberedSample(4800);
+  auto frame = [&](int i) { return sample->frames[static_cast<size_t>(i)] / 32768.0f; };
+  SampleSlices quarters;
+  EqualSlices(4, &quarters);
+  TrackSound sound = SampleSound();
+  sound.params[P_COLOUR] = ColourOfSlice(2, 4);
+  auto play = [&](const TrackSound& s, size_t frames) {
+    auto voice = std::make_unique<TrackVoice>();
+    voice->Init();
+    voice->Trigger(1.0f, 0, 1 << 30, 1 << 30);
+    std::vector<float> out;
+    Buses buses;
+    while (out.size() < frames) {
+      buses.Clear();
+      voice->Render(s.params, 0.0f, &buses, sample.get(), &quarters);
+      out.insert(out.end(), voice->last_block(), voice->last_block() + kBlockSize);
+    }
+    return out;
+  };
+  auto out = play(sound, 2000);
+  int mismatches = 0;
+  for (int i = 24; i < 1100; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(2400 + i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  CHECK(out[1300] == 0.0f && out[1900] == 0.0f);  // The slice is 1200 frames long.
+  TrackSound backwards = sound;
+  backwards.params[P_HARMONICS] = 1.0f;
+  backwards.params[P_TIMBRE] = 0.0f;
+  out = play(backwards, 1000);
+  mismatches = 0;
+  for (int i = 24; i < 1000; ++i) {
+    mismatches += std::fabs(out[static_cast<size_t>(i)] - frame(3599 - i)) > 1e-6f;
+  }
+  CHECK(mismatches == 0);
+  TrackSound whole = sound;
+  whole.params[P_COLOUR] = 0.0f;  // Fully down: the whole sample.
+  out = play(whole, 4000);
+  CHECK(std::fabs(out[3000] - frame(3000)) < 1e-6f);
+
+  // A Slices pad while recording writes the slice as a lock on the step.
+  auto engine = MakeEngine();
+  engine->recording = true;
+  engine->Play();
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = ColourOfSlice(5, 8);
+  engine->LiveTriggerLocked(1, 0.9f, locks);
+  const Step& written = engine->project().patterns[0].tracks[1].steps[0];
+  CHECK(written.on && written.has_lock(P_COLOUR));
+  CHECK(SliceOfColour(written.locks[P_COLOUR], 8) == 5);
+  CHECK(!written.has_lock(P_CUTOFF));
+
+  // Slices are saved with the pool.
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_slices";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  auto project = std::make_unique<Project>();
+  project->Init();
+  project->samples[4] = "break.wav";
+  EqualSlices(16, &project->slices[4]);
+  std::string error;
+  CHECK(SaveProject(*project, (dir / "p.json").string(), &error));
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject((dir / "p.json").string(), loaded.get(), &error));
+  CHECK(loaded->slices[4].count == 16);
+  CHECK_NEAR(loaded->slices[4].start(9), 9.0 / 16.0, 1e-6);
+  CHECK(loaded->slices[3].count == 0);
+
+  // A new sample in a slot starts without slices; the same file keeps them.
+  auto wav = MakeWav(1, 1, 48000, 16, std::vector<float>(4800, 0.2f));
+  std::ofstream(dir / "a.wav", std::ios::binary)
+      .write(reinterpret_cast<const char*>(wav.data()), static_cast<std::streamsize>(wav.size()));
+  auto importer = MakeEngine();
+  importer->project().slices[0].count = 5;  // Left over in the slot.
+  std::string message;
+  CHECK(ImportSample(importer.get(), (dir / "p.json").string(), (dir / "a.wav").string(), 0,
+                     &message));
+  CHECK(importer->project().slices[0].count == 0);
+  CHECK(importer->project().sounds[0].params[P_COLOUR] == 0.0f);
+  EqualSlices(4, &importer->project().slices[0]);
+  CHECK(ImportSample(importer.get(), (dir / "p.json").string(), (dir / "a.wav").string(), 1,
+                     &message));
+  CHECK(importer->project().slices[0].count == 4);
+  fs::remove_all(dir);
+}
+
+void TestResampling() {
+  // A kick on every beat of a 16-step pattern (6000 samples per step).
+  auto make = []() {
+    auto engine = MakeEngine();
+    for (int s = 0; s < 16; s += 4) {
+      engine->project().patterns[0].tracks[0].steps[s].on = true;
+    }
+    return engine;
+  };
+  std::vector<float> output(2 * kBlockSize);
+  auto render = [&output](Engine* engine, size_t frames) {
+    for (size_t done = 0; done < frames; done += kBlockSize) {
+      engine->Render(output.data(), kBlockSize);
+    }
+  };
+  const size_t kLoop = 16 * kSamplesPerStep;
+  const size_t kBuffer = static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate);
+
+  // Armed while stopped: nothing until Play, then exactly one loop from its start.
+  auto engine = make();
+  std::vector<int16_t> buffer(kBuffer);
+  engine->ArmResample(&buffer);
+  CHECK(buffer.empty() && engine->resample_state() == Engine::RESAMPLE_ARMED);
+  render(engine.get(), 20000);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_ARMED);
+  engine->Play();
+  long before = g_allocations.load();
+  render(engine.get(), kLoop / 2);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_RECORDING);
+  CHECK_NEAR(engine->resample_progress.load(), 0.5, 0.01);
+  render(engine.get(), kLoop / 2 + 1000);
+  CHECK(g_allocations.load() == before);  // Recording never allocates.
+  CHECK(engine->resample_state() == Engine::RESAMPLE_DONE);
+  std::vector<int16_t> frames;
+  CHECK(engine->TakeResample(&frames));
+  CHECK(engine->resample_state() == Engine::RESAMPLE_IDLE);
+  CHECK(frames.size() == kLoop);
+  auto loudest = [&](size_t from, size_t to) {
+    int peak = 0;
+    for (size_t i = from; i < to && i < frames.size(); ++i) {
+      peak = std::max(peak, std::abs(static_cast<int>(frames[i])));
+    }
+    return peak;
+  };
+  CHECK(loudest(0, 1200) > 2000);                      // The first kick, right at the start.
+  CHECK(loudest(4 * kSamplesPerStep, 4 * kSamplesPerStep + 1200) > 2000);  // The second.
+  CHECK(!engine->TakeResample(&frames));
+
+  // Armed while playing: it waits for the next start of the pattern.
+  engine = make();
+  engine->Play();
+  render(engine.get(), 5 * kSamplesPerStep);
+  buffer.assign(kBuffer, 0);
+  engine->ArmResample(&buffer);
+  render(engine.get(), 10 * kSamplesPerStep + kSamplesPerStep / 2);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_ARMED);
+  render(engine.get(), kSamplesPerStep);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_RECORDING);
+  render(engine.get(), kLoop);
+  CHECK(engine->TakeResample(&frames));
+  CHECK(frames.size() == kLoop);
+  CHECK(loudest(0, 1200) > 2000);  // Starts on the pattern's first kick.
+
+  // Cancelling gives the buffer back; stopping keeps what was recorded.
+  buffer.assign(kBuffer, 0);
+  engine->ArmResample(&buffer);
+  engine->CancelResample(&buffer);
+  CHECK(buffer.size() == kBuffer && engine->resample_state() == Engine::RESAMPLE_IDLE);
+  engine = make();
+  engine->ArmResample(&buffer);
+  engine->Play();
+  render(engine.get(), kLoop / 4);
+  engine->Stop();
+  render(engine.get(), 1200);
+  CHECK(engine->TakeResample(&frames));
+  CHECK(frames.size() > kLoop / 4 - 100 && frames.size() < kLoop / 4 + 100);
+
+  // The recording becomes a sample of the pool, in a file of its own.
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_resampling";
+  fs::remove_all(dir);
+  const std::string project_path = (dir / "project.json").string();
+  std::vector<int16_t> recorded = frames;
+  int slot = -1;
+  std::string message;
+  CHECK(AddRecordedSample(engine.get(), project_path, recorded, &slot, &message));
+  CHECK(slot == 0 && engine->project().samples[0] == "Resample 001.wav");
+  CHECK(engine->sample(0) && engine->sample(0)->frames == frames);
+  SampleData reread;
+  std::string error;
+  CHECK(LoadWav((dir / "samples" / "Resample 001.wav").string(), &reread, &error));
+  CHECK(reread.frames == frames);
+  CHECK(AddRecordedSample(engine.get(), project_path, frames, &slot, &message));
+  CHECK(slot == 1 && engine->project().samples[1] == "Resample 002.wav");
+  CHECK(!AddRecordedSample(engine.get(), project_path, {}, &slot, &message));
+  fs::remove_all(dir);
+}
+
+void TestSliceEditing() {
+  SampleSlices slices;
+  CHECK(AddSlice(&slices, 0.5f) == 1);  // Unsliced: the start, then this one.
+  CHECK(slices.count == 2 && slices.starts[0] == 0.0f && slices.starts[1] == 0.5f);
+  CHECK(AddSlice(&slices, 0.25f) == 1);  // Kept in order.
+  CHECK(AddSlice(&slices, 0.75f) == 3);
+  CHECK(slices.count == 4 && slices.starts[1] == 0.25f && slices.starts[2] == 0.5f);
+  CHECK(AddSlice(&slices, 0.5f + kMinSliceGap * 0.5f) == -1);  // Too close.
+  CHECK(AddSlice(&slices, 0.0f) == -1 && AddSlice(&slices, 1.0f) == -1);
+  CHECK(SliceAt(slices, 0.1f) == 0 && SliceAt(slices, 0.25f) == 1 && SliceAt(slices, 0.6f) == 2);
+  CHECK(SliceAt(slices, 0.99f) == 3);
+
+  // Moving stays between the neighbours; the first slice stays at 0.
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.4f), 0.4, 1e-6);
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.1f), 0.25 + kMinSliceGap, 1e-6);
+  CHECK_NEAR(MoveSlice(&slices, 2, 0.9f), 0.75 - kMinSliceGap, 1e-6);
+  CHECK(MoveSlice(&slices, 0, 0.3f) == 0.0f && slices.starts[0] == 0.0f);
+  for (int k = 1; k < slices.count; ++k) {
+    CHECK(slices.starts[k] > slices.starts[k - 1]);
+  }
+
+  // Removing merges into the previous slice; the first cannot go.
+  CHECK(RemoveSlice(&slices, 1));
+  CHECK(slices.count == 3 && SliceAt(slices, 0.3f) == 0);
+  CHECK(!RemoveSlice(&slices, 0) && !RemoveSlice(&slices, 3));
+
+  // Full: no more slices.
+  EqualSlices(kMaxSlices, &slices);
+  CHECK(AddSlice(&slices, 0.5f + 0.5f / kMaxSlices) == -1);
+
+  // Zero crossings: the nearest one within the radius, or the frame itself.
+  SampleData wave;
+  wave.frames.resize(4800);
+  for (size_t i = 0; i < wave.frames.size(); ++i) {
+    wave.frames[i] = static_cast<int16_t>(10000.0f * sinf(2.0f * 3.14159265f * 100.0f * i / 48000.0f));
+  }
+  // A 100 Hz sine crosses zero every 240 frames.
+  CHECK(std::abs(NearestZeroCrossing(wave, 250, 48) - 240) <= 1);
+  CHECK(std::abs(NearestZeroCrossing(wave, 470, 48) - 480) <= 1);
+  CHECK(NearestZeroCrossing(wave, 120, 48) == 120);  // None within reach.
+  CHECK(NearestZeroCrossing(wave, 0, 48) >= 0);
+}
+
+void TestSampleTracks() {
+  namespace fs = std::filesystem;
+  // A step plays the sample of its slot through the engine.
+  auto engine = MakeEngine();
+  auto sample = std::shared_ptr<const SampleData>(NumberedSample(24000));
+  engine->SwapSample(5, &sample);
+  CHECK(!sample);  // The slot was empty.
+  CHECK(engine->sample(5) && engine->sample(5)->frames.size() == 24000);
+  TrackSound& sound = engine->project().sounds[0];
+  sound = SampleSound();
+  sound.params[P_AUX] = SampleSlotToAux(5);
+  engine->project().patterns[0].tracks[0].steps[0].on = true;
+  engine->project().patterns[0].tracks[0].steps[8].on = true;
+  engine->Play();
+  auto triggers = RenderAndCollect(engine.get(), 0, 8 * kSamplesPerStep + 2000);
+  CHECK(triggers.size() == 2);
+  CHECK(engine->track_peak[0].load() > 0.1f);  // Measured while the second hit plays.
+
+  // An empty slot is silent.
+  auto silent = MakeEngine();
+  silent->project().sounds[0] = SampleSound();
+  silent->project().sounds[0].params[P_AUX] = SampleSlotToAux(9);
+  silent->project().patterns[0].tracks[0].steps[0].on = true;
+  silent->Play();
+  RenderAndCollect(silent.get(), 0, 4 * kSamplesPerStep);
+  CHECK(silent->track_peak[0].load() == 0.0f);
+
+  // Rendering never allocates, samples playing or not.
+  std::vector<float> buffer(2 * 256);
+  long before = g_allocations.load();
+  for (int i = 0; i < 2000; ++i) {
+    engine->Render(buffer.data(), 256);
+  }
+  CHECK(g_allocations.load() == before);
+  auto witness = std::make_unique<int>(1);  // The counter does count.
+  CHECK(g_allocations.load() > before);
+
+  // Importing a file onto a track, then reloading the project with its pool.
+  fs::path dir = fs::temp_directory_path() / "drumfake_sample_tracks";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  auto wav = MakeWav(1, 2, 44100, 24, Sine(4410, 2, 44100, 440.0f, 0.5f));
+  std::ofstream(dir / "Tone A.wav", std::ios::binary)
+      .write(reinterpret_cast<const char*>(wav.data()), static_cast<std::streamsize>(wav.size()));
+  const std::string project_path = (dir / "project.json").string();
+  auto importer = MakeEngine();
+  std::string message;
+  CHECK(ImportSample(importer.get(), project_path, (dir / "Tone A.wav").string(), 2, &message));
+  CHECK(message.find("Tone A on track C") == 0);
+  CHECK(fs::exists(dir / "samples" / "Tone A.wav"));
+  const TrackSound& imported = importer->project().sounds[2];
+  CHECK(imported.name == "Tone A");
+  CHECK(Discrete(imported.params[P_ENGINE], kNumEngines) == kSampleEngine);
+  const int slot = SampleSlot(imported.params[P_AUX]);
+  CHECK(importer->project().samples[slot] == "Tone A.wav");
+  CHECK(importer->sample(slot) && importer->sample(slot)->frames.size() == 4800);
+  // Importing the same file again reuses its slot.
+  CHECK(ImportSample(importer.get(), project_path, (dir / "Tone A.wav").string(), 3, &message));
+  CHECK(SampleSlot(importer->project().sounds[3].params[P_AUX]) == slot);
+  CHECK(!ImportSample(importer.get(), project_path, (dir / "none.wav").string(), 3, &message));
+
+  std::string error;
+  importer->project().samples[slot + 1] = "gone.wav";
+  CHECK(SaveProject(importer->project(), project_path, &error));
+  auto reloaded = MakeEngine();
+  CHECK(LoadProject(project_path, &reloaded->project(), &error));
+  std::vector<std::string> problems;
+  LoadProjectSamples(reloaded.get(), project_path, &problems);
+  CHECK(reloaded->sample(slot) && reloaded->sample(slot)->frames.size() == 4800);
+  CHECK(!reloaded->sample(slot + 1));
+  CHECK(problems.size() == 1);
+  fs::remove_all(dir);
 }
 
 void TestPatternExtend() {
@@ -1560,7 +2611,7 @@ void TestFullRender() {
     CHECK(stats.track_peak[t] > 0.005f);
   }
   // Every Plaits engine renders finite, audible audio.
-  for (int e = 0; e < kNumEngines; ++e) {
+  for (int e = 0; e < kNumPlaitsEngines; ++e) {
     auto single = MakeEngine();
     single->project().sounds[0].params[P_ENGINE] = DiscreteToNormalized(e, kNumEngines);
     single->project().patterns[0].tracks[0].steps[0].on = true;
@@ -1612,6 +2663,15 @@ int main() {
   TestChoke();
   TestVary();
   TestPatternExtend();
+  TestWavDecoding();
+  TestEngineCountMigration();
+  TestSamplePool();
+  TestSamplePlayer();
+  TestSampleTracks();
+  TestGrainEngines();
+  TestSlices();
+  TestSliceEditing();
+  TestResampling();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

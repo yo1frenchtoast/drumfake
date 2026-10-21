@@ -132,8 +132,92 @@ the pattern.
 | **Filter** | Cutoff, Resonance, Mode (low, band, high pass), Filter Env amount and decay, Drive, Crush, Gate length. |
 | **Track** | Volume, Pan, Reverb and Delay sends, Pitch / Timbre / Morph envelope amounts, Choke group. |
 
-The 24 engines are those of Plaits. Tracks in the same **Choke group** cut each other off (for
-an open and a closed hi-hat).
+The first 24 engines are those of Plaits; the last four play a sample of the project: **Sample**,
+and the granular **Scrub**, **Spray** and **Burst** (see [Sampler](#sampler)). Tracks in the same **Choke group** cut each other off (for an open and a
+closed hi-hat).
+
+### Sampler
+
+Any track can play a sample instead of a Plaits voice. It keeps everything else: the filter,
+drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys and Vary.
+
+- **Importing.** Drop WAV files on the window (desktop, or the page in a browser): on a pad
+  A–H, the file goes to that track;
+  anywhere else, to the selected track. The file is copied into `samples/` beside the project,
+  takes a slot of the project's **pool** (128 slots, saved with the project) and the track
+  switches to the **Sample** engine, set to play the whole sample once at its own pitch.
+  Dropping the same file again reuses its slot.
+- **Files.** WAV, 8 to 32-bit or float, mono or stereo (mixed to mono), 8 to 192 kHz
+  (converted to 48 kHz), up to 60 seconds (longer files are cut, the message says so).
+- **Browse → Samples** lists the pool: tap a sample (or turn the encoder) to put it on the
+  selected track. A track already on the Sample engine keeps its settings and changes sample.
+- **The Sound page on the Sample engine:**
+
+  | Knob | On the Sample engine |
+  |---|---|
+  | Pitch | C4 plays the sample at its own speed; each semitone up plays it faster. |
+  | Start (Harm) | Where it starts, from the beginning (0%) to the end (100%). |
+  | Len (Timb) | How much of it plays after Start, up to all of it; below the middle (*rev*), it plays **backwards** from Start. The middle plays nothing. |
+  | Loop (Mrph) | *Off* plays once. Above, the part from this point to the end of Len loops while the note lasts (with a short crossfade): the higher, the shorter the loop. |
+  | Rel (Dcy) | Release after the gate closes (Gate on the Filter page). *Full* plays the sample to its end. |
+  | Smpl (Aux) | The slot of the pool. |
+  | Slce (Col) | The slice, once the sample is sliced: *Whole* (fully down) plays the whole sample; above, Start, Len and Loop apply within the slice. |
+
+  The screen shows the sample (in place of the scope) with **Start** (green), the end of **Len**
+  (red) and the **Loop** point (amber); while playing, they follow locks and modulations.
+- **Slices.** In *Browse → Samples*, the buttons at the bottom slice the sample of the selected
+  track: into **4, 8, 16 or 32** equal parts, **Auto** (a slice at each attack, found in each frequency
+  band, so a kick under a ride counts), or **Clear**. **Sens** sets how many attacks Auto keeps,
+  the strongest first: 100% slices every hit, ghost notes and cymbals included; 50% (the
+  default) about half; lower keeps only the main hits. Moving it after Auto slices again, so you
+  can set it by ear. At most 48 slices. Slices belong to the sample (all tracks using it share
+  them) and are saved with the project.
+- **Editing slices by hand.** *Edit* (same row) opens the slice editor on the screen: the
+  sample with its numbered slice starts, the selected slice shaded.
+  - Click in the waveform to select a slice (it plays, when the selected track is on that
+    sample); **drag a start** to move it, or turn the **encoder** to nudge the selected one.
+  - **Double-click** adds a start there; a **right click** (or a long press) on a start removes
+    it (the slice before runs on). *Add* splits the selected slice in two, *Remove* merges it
+    into the previous one.
+  - Starts snap to the nearest zero crossing, so slices do not click. The first slice always
+    starts at the beginning (use Start to skip silence).
+  - *−* / *+* and the mouse wheel zoom (up to 256 times) around the selection; `<` / `>`
+    select the previous or next slice; *Done* goes back to the browser. In *Slices* pad mode,
+    a pad selects its slice in the editor.
+  - Adding or removing a slice renumbers the ones after it: steps locked to a slice number
+    then play its new neighbour.
+
+  Then:
+  - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (Shift held: full
+    velocity). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With
+    *Rec* on, a pad writes its hit on the step under the playhead, with the slice as a lock.
+  - With a step held, a Slices pad sets the slice that step plays.
+  - **Col (Slce)** picks a slice for the whole track, and can be locked per step: chop a break
+    and play its slices in another order.
+- **Resampling.** **Shift + Freeze** records one loop of the current pattern, everything you hear
+  (without the metronome), into a new sample of the pool (`Resample 001.wav`…): from the next
+  start of the pattern when playing, or from *Play*. The screen shows `LOOP ARMED`, then
+  `LOOP REC` and how much is done; the Freeze button lights red. **Shift + Freeze** again
+  cancels; stopping keeps what was recorded. Nothing changes on the tracks: pick the new sample
+  in *Browse → Samples* (it loops cleanly on the pattern's length; slice it to chop it again).
+- **Granular engines.** Turn the encoder past *Sample* to play the same sample as a stream of
+  short grains (up to 16 at once). They use the same slot (Smpl) and Pitch, and their sound lasts
+  as long as the gate (*Gate* on the Filter page, or the step's own gate), then fades over **Rel**
+  (5 ms to 8 s). **Chaos** makes each grain start a little elsewhere, last longer or shorter and
+  drift in pitch.
+
+  | Engine | Harm | Timb | Mrph | Col |
+  |---|---|---|---|---|
+  | **Scrub**: grains scanning through the sample, from its beginning on every note | **Scan** speed: 0 freezes, the middle is the sample's own speed, fully up 4 times faster (the pitch stays) | **Dens**: 2 to 200 grains per second | **Chaos** | **Size**: 10 to 500 ms |
+  | **Spray**: a cloud of grains around a position | **Pos** in the sample | Dens | Chaos (up to a fifth of the sample around Pos) | Size |
+  | **Burst**: percussive bursts of grains, for hits | Pos | Dens | **Shape**: short and tight to long (grain size and length of the burst) | Chaos |
+
+  The screen marks *Pos* in green on Spray and Burst.
+- **Per step**: every one of these knobs can be locked on a step, including **Smpl**, so one
+  track can play a different sample on each step (a whole kit on one track), and a modulation
+  can move Start or change the sample.
+- A sample that cannot be loaded (file missing from `samples/`) leaves its slot silent and is
+  reported when the project opens; the rest of the project loads.
 
 ### Modulation
 
@@ -336,4 +420,8 @@ the options).
 
 ## 9. Limits
 
-- There is no sampler: the *Sample* button position is used as the Clouds *Freeze* button.
+- The *Sample* button position is used as the Clouds *Freeze* button (Shift + Freeze resamples);
+  the sampler is the **Sample** engine. Samples are imported by dropping files, on the desktop
+  and in the browser; not yet on Android.
+- The pool belongs to the project: a kit of the kit library that uses samples refers to slots of
+  the pool, not to files.

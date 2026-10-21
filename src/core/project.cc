@@ -178,6 +178,12 @@ void MakeDemoPattern(Pattern* p) {
 }
 
 void Project::Init() {
+  for (std::string& sample : samples) {
+    sample.clear();
+  }
+  for (SampleSlices& s : slices) {
+    s.Clear();
+  }
   const int kDefaultKit[kNumTracks] = {
     PRESET_KICK_808, PRESET_SNARE_808, PRESET_CLOSED_HAT, PRESET_OPEN_HAT,
     PRESET_CLAP, PRESET_LOW_TOM, PRESET_COWBELL, PRESET_ACID_BASS

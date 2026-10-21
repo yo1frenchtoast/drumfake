@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "audio/clouds_fx.h"
 #include "audio/master_fx.h"
@@ -20,6 +21,7 @@
 #include "core/grids_gen.h"
 #include "core/midi_parser.h"
 #include "core/project.h"
+#include "core/sample_file.h"
 
 namespace drumfake {
 
@@ -106,9 +108,13 @@ class Engine {
   // above it. The extra notes use voices from a shared pool (kChordVoices), with the
   // sound and the effects of the track.
   void LiveChord(int track, float velocity, int note_offset, const int8_t* extras, int count);
-  // When recording, writes a hit on the step nearest to the playhead.
+  // Plays a track now with parameter locks (NAN = not locked; Slices pads lock
+  // the slice). When recording, writes the step with them.
+  void LiveTriggerLocked(int track, float velocity, const float* locks);
+  // When recording, writes a hit on the step nearest to the playhead (with
+  // `locks`, when given).
   void RecordHit(int track, float velocity, int note_offset, int ratchets,
-                 const int8_t* extras = nullptr, int count = 0);
+                 const int8_t* extras = nullptr, int count = 0, const float* locks = nullptr);
   // For the tests: voices of the pool that are sounding.
   int chord_voices_active() const;
 
@@ -132,6 +138,27 @@ class Engine {
   bool xy_touched = false;
   float xy_x = 0.5f;
   float xy_y = 0.5f;
+
+  // Sampler: the audio of each slot of the project's sample pool (null when
+  // empty). SwapSample exchanges one slot with `*sample`, SwapSamples all of
+  // them with `samples` (kNumSampleSlots); the previous ones come back there, to
+  // be released once the lock is let go (never on the audio thread).
+  void SwapSample(int slot, std::shared_ptr<const SampleData>* sample);
+  void SwapSamples(std::shared_ptr<const SampleData>* samples);
+  const SampleData* sample(int slot) const;
+
+  // Resampling: records the master output (before the metronome) for one
+  // loop of the current pattern, from its next start or from Play, into a new
+  // sample. The UI thread provides the buffer (its size caps the length) and
+  // takes it back; the audio thread never allocates.
+  enum ResampleState { RESAMPLE_IDLE, RESAMPLE_ARMED, RESAMPLE_RECORDING, RESAMPLE_DONE };
+  void ArmResample(std::vector<int16_t>* buffer);
+  // Stops waiting or recording; the buffer comes back in `buffer`.
+  void CancelResample(std::vector<int16_t>* buffer);
+  ResampleState resample_state() const { return resample_state_; }
+  // When done: the recording (mono, 48 kHz, resized to its length; the buffer
+  // is swapped out) and back to idle. False otherwise.
+  bool TakeResample(std::vector<int16_t>* frames);
 
   // Vary: draws new variations for the current pattern (the "Dice").
   void DiceVary();
@@ -161,6 +188,8 @@ class Engine {
   // inputs open (set by io/midi_input).
   std::atomic<uint32_t> midi_activity;
   std::atomic<int> midi_input_ports;
+  // Resampling: how much of the loop is recorded, 0 to 1.
+  std::atomic<float> resample_progress;
   // Seconds of audio rendered per second of wall time, for the CPU meter.
   std::atomic<float> cpu_load;
 
@@ -204,6 +233,16 @@ class Engine {
 
   std::mutex mutex_;
   std::unique_ptr<Project> project_;
+  std::shared_ptr<const SampleData> samples_[kNumSampleSlots];
+  ResampleState resample_state_ = RESAMPLE_IDLE;
+  std::vector<int16_t> resample_buffer_;
+  size_t resample_length_ = 0;
+  size_t resample_target_ = 0;
+  // A pattern started (Play, or a loop or chain boundary) in this block.
+  bool pattern_started_ = false;
+  void RecordResample(const float* out_l, const float* out_r);
+  // What a track's voice plays: its sample when it is on the Sample engine.
+  const SampleData* VoiceSample(const float* params) const;
   TrackVoice voices_[kNumTracks];
   static const int kChordVoices = 4;
   TrackVoice chord_voices_[kChordVoices];

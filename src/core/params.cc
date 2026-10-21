@@ -31,6 +31,10 @@ const char* const kEngineNames[kNumEngines] = {
   "Bass Drum",
   "Snare Drum",
   "Hi-Hat",
+  "Sample",
+  "Scrub",
+  "Spray",
+  "Burst",
 };
 
 const float kLfoPeriods[kNumLfoRates] = {
@@ -200,6 +204,10 @@ float FilterDecayToSeconds(float value) {
 
 float GateToSeconds(float value) {
   return 0.001f * powf(2.0f, 9.0f * value);
+}
+
+float GrainReleaseToSeconds(float value) {
+  return 0.005f * powf(1600.0f, value);
 }
 
 float CloudsPitchToSemitones(float value) {

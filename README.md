@@ -4,7 +4,9 @@ Open-source groovebox with 8 tracks, a step sequencer and performance controls. 
 [Mutable Instruments](https://github.com/pichenettes/eurorack) DSP:
 
 - **Plaits**: one voice per track (8 tracks, 24 engines: analog and synthetic drums, modal,
-  FM…);
+  FM…), plus a **Sample** engine playing WAV files (start, length, reverse, loop, per-step
+  sample choice, slices) and three granular engines on the same samples (Scrub, Spray,
+  Burst), with resampling of the whole mix;
 - **Grids**: algorithmic rhythms on the X/Y pad;
 - **Marbles**: random rhythms with a "deja vu" loop, written into the steps;
 - **Peaks**: envelope and bouncing-ball modulation sources;
@@ -39,7 +41,9 @@ Press **Play**, select a track with its pad and press the steps. The project is 
 
 ## Limitations
 
-- There is no sampler: the *Sample* button position is used as the Clouds *Freeze* button.
+- The *Sample* button position is used as the Clouds *Freeze* button (Shift + Freeze resamples
+  a loop); samples are imported by dropping WAV files on the window (desktop and browser, not
+  yet Android).
 
 ## License
 

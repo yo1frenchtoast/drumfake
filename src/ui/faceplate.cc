@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 
+#include "audio/sample_loader.h"
 #include "core/presets.h"
+#include "core/sample_pool.h"
 #include "core/project_io.h"
 #include "core/scales.h"
 #include "imgui_internal.h"
@@ -202,7 +205,8 @@ void Faceplate::TrackPadUp(int track) {
 void Faceplate::LowerPadDown(int pad) {
   Project& project = engine_->project();
   int track = engine_->selected_track;
-  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS) {
+  if (held_step_ >= 0 && pad_mode_ != PADS_KEYS && pad_mode_ != PADS_CHORDS &&
+      pad_mode_ != PADS_SLICES) {
     // Held step: pads 1-4 set its repeats.
     if (pad < kMaxRatchets) {
       PushUndo();
@@ -214,6 +218,9 @@ void Faceplate::LowerPadDown(int pad) {
     return;
   }
   switch (pad_mode_) {
+    case PADS_SLICES:
+      PlaySlice(pad);
+      break;
     case PADS_SOUNDS: {
       int preset = preset_bank_ * 8 + pad;
       ApplyPreset(preset, &project.sounds[track]);
@@ -246,6 +253,46 @@ void Faceplate::LowerPadDown(int pad) {
       }
       break;
   }
+}
+
+const SampleSlices* Faceplate::TrackSlices() const {
+  const TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+  if (Discrete(sound.params[P_ENGINE], kNumEngines) != kSampleEngine) {
+    return nullptr;
+  }
+  return &engine_->project().slices[SampleSlot(sound.params[P_AUX])];
+}
+
+void Faceplate::PlaySlice(int pad) {
+  const int track = engine_->selected_track;
+  const SampleSlices* slices = TrackSlices();
+  if (!slices || slices->count == 0) {
+    Toast("No slices: Browse > Samples, then Slices 4/8/16/32 or Auto");
+    return;
+  }
+  const int slice = slice_bank_ * 8 + pad;
+  if (slice >= slices->count) {
+    Toast("Slice " + std::to_string(slice + 1) + ": the sample has " +
+          std::to_string(slices->count));
+    return;
+  }
+  const float colour = ColourOfSlice(slice, slices->count);
+  if (view_ == VIEW_SLICES && slices == &engine_->project().slices[slice_edit_slot_]) {
+    selected_slice_ = slice;  // The editor follows the pads.
+  }
+  if (held_step_ >= 0) {
+    // Held step: it plays this slice.
+    PushUndo();
+    Step& step = pattern().tracks[track].steps[held_step_];
+    step.on = true;
+    step.locks[P_COLOUR] = colour;
+    Toast("Step " + std::to_string(held_step_ + 1) + ": slice " + std::to_string(slice + 1));
+    return;
+  }
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = colour;
+  engine_->LiveTriggerLocked(track, shift_held_ ? 1.0f : 0.8f, locks);
 }
 
 void Faceplate::LowerPadUp(int pad) {
@@ -532,8 +579,15 @@ void Faceplate::Draw() {
   // Fonts are rasterized at 28 px; ImGui widgets on the screen use ~11 px.
   ImGui::SetWindowFontScale(11.0f * scale / 28.0f);
 
-  std::lock_guard<std::mutex> lock(engine_->mutex());
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    DrawPanel();
+  }
+  DoFileWork();
+}
 
+// Everything drawn under the engine lock.
+void Faceplate::DrawPanel() {
   double now = ImGui::GetTime();
   for (int t = 0; t < kNumTracks; ++t) {
     uint32_t count = engine_->trigger_count[t].load(std::memory_order_relaxed);
@@ -566,6 +620,56 @@ void Faceplate::Draw() {
     // frame after its press); drop them if the button is no longer drawn.
     it = t.fingers <= 0 && (!pending || t.idle_frames > 3) ? button_touches_.erase(it) : ++it;
   }
+}
+
+void Faceplate::DoFileWork() {
+  // A finished resampling: saved and added to the pool, outside the lock.
+  std::vector<int16_t> recording;
+  bool recorded;
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    recorded = engine_->TakeResample(&recording);
+  }
+  if (recorded) {
+    int slot;
+    std::string message;
+    AddRecordedSample(engine_, project_path_, std::move(recording), &slot, &message);
+    fprintf(stderr, "%s\n", message.c_str());
+    Toast(message);
+  }
+  if (reload_samples_) {
+    reload_samples_ = false;
+    std::vector<std::string> problems;
+    LoadProjectSamples(engine_, project_path_, &problems);
+    if (!problems.empty()) {
+      for (const std::string& problem : problems) {
+        fprintf(stderr, "%s\n", problem.c_str());
+      }
+      Toast(std::to_string(problems.size()) + " sample(s) missing: " + problems.front());
+    }
+  }
+  std::vector<PendingImport> imports;
+  imports.swap(pending_imports_);
+  for (const PendingImport& import : imports) {
+    std::string message;
+    bool imported = ImportSample(engine_, project_path_, import.path, import.track, &message);
+    fprintf(stderr, "Import %s: %s\n", imported ? "done" : "failed", message.c_str());
+    Toast(message);
+  }
+}
+
+void Faceplate::DropFile(const std::string& path, ImVec2 position) {
+  std::lock_guard<std::mutex> lock(engine_->mutex());
+  int track = engine_->selected_track;
+  ImVec2 panel = ToPanel(position);
+  for (const TouchTarget& t : touch_targets_) {
+    if (t.kind == TOUCH_TRACK_PAD && panel.x >= t.min.x && panel.x < t.max.x &&
+        panel.y >= t.min.y && panel.y < t.max.y) {
+      track = t.index;
+    }
+  }
+  engine_->selected_track = track;
+  pending_imports_.push_back({ path, track });
 }
 
 // --- Multitouch ------------------------------------------------------------------
@@ -888,11 +992,25 @@ void Faceplate::DrawTopLeft() {
   hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
               "Mutes cleared");
   cell(5, &min, &max);
-  if (Button(c, "##keys", min, max, "Keys", "", ICON_NONE, pad_mode_ == PADS_KEYS,
-             colors::kAccent).pressed) {
-    // First press: Keys mode and its page; next presses show or hide the page.
-    keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
-    pad_mode_ = PADS_KEYS;
+  // Shift + Keys: Slices mode (pads play the slices of the track's sample);
+  // Shift + Slices: the next 8 slices; Keys alone goes back to the keyboard.
+  const bool slices_mode = pad_mode_ == PADS_SLICES;
+  if (Button(c, "##keys", min, max, slices_mode ? "Slices" : "Keys", "", ICON_NONE,
+             pad_mode_ == PADS_KEYS || slices_mode, colors::kAccent).pressed) {
+    if (shift_held_) {
+      shift_used_ = true;
+      const SampleSlices* slices = TrackSlices();
+      const int banks = slices && slices->count > 0 ? (slices->count + 7) / 8 : 1;
+      slice_bank_ = slices_mode ? (slice_bank_ + 1) % banks : 0;
+      pad_mode_ = PADS_SLICES;
+      keys_page_ = false;
+      Toast("Slices " + std::to_string(slice_bank_ * 8 + 1) + "-" +
+            std::to_string(slice_bank_ * 8 + 8));
+    } else {
+      // First press: Keys mode and its page; next presses show or hide the page.
+      keys_page_ = pad_mode_ == PADS_KEYS ? !keys_page_ : true;
+      pad_mode_ = PADS_KEYS;
+    }
   }
 
   // Shift (or Alt on the keyboard): held, the steps become options and the
@@ -920,8 +1038,8 @@ void Faceplate::DrawTopLeft() {
            colors::kLabelDim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
            false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, shift_latched_ ? "pad: select   A-D: extend   Spice: vary   Steps: live   (locked)"
-                          : "pad: select   A-D: extend   Spice: vary   Steps: live", false);
+           colors::kLabelDim, shift_latched_ ? "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices  (locked)"
+                          : "pad: select  A-D: extend  Spice: vary  Steps: live  Keys: slices", false);
   }
   UpdateRepeat();
 }
@@ -1304,6 +1422,21 @@ void Faceplate::DrawScreenSection() {
                               -kMaxMicroTiming, kMaxMicroTiming);
     } else if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
       ChangeKey(keys_field_, steps);
+    } else if (view_ == VIEW_SLICES) {
+      NudgeSlice(steps / (400.0f * slice_zoom_));
+    } else if (view_ == VIEW_BROWSE && browse_samples_) {
+      // Next or previous filled slot of the pool.
+      const Project& project = engine_->project();
+      int slot = OnSampleEngine() ? SampleSlot(sound.params[P_AUX]) : -1;
+      for (int moved = 0, tries = 0; moved < std::abs(steps) && tries < kNumSampleSlots * 2; ++tries) {
+        slot = (slot + (steps > 0 ? 1 : -1) + kNumSampleSlots) % kNumSampleSlots;
+        if (!project.samples[slot].empty()) {
+          ++moved;
+        }
+      }
+      if (slot >= 0 && !project.samples[slot].empty()) {
+        PlaceSample(track, slot);
+      }
     } else if (view_ == VIEW_BROWSE) {
       browse_index_ = (browse_index_ + steps + kNumPresets * 4) % kNumPresets;
       ApplyPreset(browse_index_, &sound);
@@ -1356,10 +1489,27 @@ void Faceplate::DrawScreenSection() {
     }
   }
   // Sample freezes Clouds' recording buffer (effective when Clouds is wet).
-  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze,
-                    colors::kAccent).pressed) {
-    engine_->clouds_freeze = !engine_->clouds_freeze;
-    Toast(engine_->clouds_freeze ? "Clouds frozen" : "Clouds live");
+  // Shift + Freeze: resample one loop of the pattern into a new sample (or cancel).
+  const bool resampling = engine_->resample_state() == Engine::RESAMPLE_ARMED ||
+      engine_->resample_state() == Engine::RESAMPLE_RECORDING;
+  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze || resampling,
+                    resampling ? colors::kRed : colors::kAccent).pressed) {
+    if (shift_held_) {
+      shift_used_ = true;
+      if (resampling) {
+        std::vector<int16_t> buffer;
+        engine_->CancelResample(&buffer);
+        Toast("Resampling cancelled");
+      } else if (engine_->resample_state() == Engine::RESAMPLE_IDLE) {
+        std::vector<int16_t> buffer(static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+        engine_->ArmResample(&buffer);
+        Toast(engine_->playing() ? "Resampling from the next start of the pattern"
+                                 : "Resampling from Play: one loop of the pattern");
+      }
+    } else {
+      engine_->clouds_freeze = !engine_->clouds_freeze;
+      Toast(engine_->clouds_freeze ? "Clouds frozen" : "Clouds live");
+    }
   }
 
   // 2x4 LEDs: playing page (top) and edited page (bottom).
@@ -1475,11 +1625,13 @@ void Faceplate::DrawSoundKnobs() {
       }
     }
     // Short parameter name under each knob.
-    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim,
-           page_param_info(page_, k).short_name, true, true);
+    const char* short_name;
+    const char* long_name;
+    std::string value_text;
+    KnobLabel(k, value, &short_name, &long_name, &value_text);
+    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim, short_name, true, true);
     if (in.hovered || in.active || grabbed) {
-      DrawKnobReadout(center, 22, page_param_info(page_, k).name,
-                      FormatValue(page_param_info(page_, k).format, value));
+      DrawKnobReadout(center, 22, long_name, value_text);
     }
   }
 }
@@ -2146,6 +2298,12 @@ void Faceplate::DrawPads() {
     switch (pad_mode_) {
       case PADS_SOUNDS: function = preset_name(preset_bank_ * 8 + i); break;
       case PADS_REPEATS: function = kRepeatNames[i]; break;
+      case PADS_SLICES: {
+        const SampleSlices* slices = TrackSlices();
+        int slice = slice_bank_ * 8 + i;
+        function = slices && slice < slices->count ? "Slice " + std::to_string(slice + 1) : "-";
+        break;
+      }
       case PADS_CHORDS: {
         if (shift_held_) {
           function = std::string("Root ") +
@@ -2192,6 +2350,8 @@ void Faceplate::DrawScreen(ImVec2 min, ImVec2 max) {
     DrawKeysView(min, max);
   } else if (view_ == VIEW_BROWSE) {
     DrawBrowseView(min, max);
+  } else if (view_ == VIEW_SLICES) {
+    DrawSliceEditor(min, max);
   } else {
     DrawMainView(min, max);
   }
@@ -2231,7 +2391,14 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
     seen_midi_activity_ = activity;
     midi_flash_time_ = ImGui::GetTime();
   }
-  if (engine_->snapshot_armed()) {
+  if (engine_->resample_state() == Engine::RESAMPLE_ARMED) {
+    c.Text(max.x - 218, min.y + 5, 8, colors::kRed, "LOOP ARMED", false, true);
+  } else if (engine_->resample_state() == Engine::RESAMPLE_RECORDING) {
+    char loop[32];
+    snprintf(loop, sizeof(loop), "LOOP REC %d%%",
+             static_cast<int>(engine_->resample_progress.load() * 100.0f));
+    c.Text(max.x - 218, min.y + 5, 8, colors::kRed, loop, false, true);
+  } else if (engine_->snapshot_armed()) {
     c.Text(max.x - 218, min.y + 5, 8, colors::kAmber, "SNAPSHOT", false, true);
   } else if (engine_->panel()) {
     c.Text(max.x - 190, min.y + 5, 8, colors::kAmber, "PANEL", false, true);
@@ -2255,17 +2422,24 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
   for (int k = 0; k < kKnobsPerPage; ++k) {
     bool unused;
     float value = *KnobTarget(k, &unused);
-    const ParamInfo& info = page_param_info(page_, k);
+    const char* short_name;
+    const char* long_name;
+    std::string value_text;
+    KnobLabel(k, value, &short_name, &long_name, &value_text);
     float x = min.x + 4 + (k % 4) * cell;
     float y = min.y + 56 + (k / 4) * 31.0f;
-    c.Text(x + 2, y, 9, colors::kScreenDim, info.short_name, false);
-    c.Text(x + 2, y + 10, 11, colors::kScreenText, FormatValue(info.format, value).c_str(), false, true);
+    c.Text(x + 2, y, 9, colors::kScreenDim, short_name, false);
+    c.Text(x + 2, y + 10, 11, colors::kScreenText, value_text.c_str(), false, true);
     dl->AddRectFilled(c.P(x + 2, y + 25), c.P(x + cell - 6, y + 27), IM_COL32(40, 55, 60, 255));
     dl->AddRectFilled(c.P(x + 2, y + 25), c.P(x + 2 + (cell - 8) * value, y + 27),
                       colors::kScreenAccent);
   }
 
-  DrawScope(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  if (page_ == PAGE_SOUND && OnSampleEngine()) {
+    DrawSampleOverview(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  } else {
+    DrawScope(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  }
   snprintf(text, sizeof(text), "CPU %d%%", static_cast<int>(engine_->cpu_load.load() * 100.0f));
   c.Text(max.x - 50, max.y - 30, 8, colors::kScreenDim, text, false);
   float level = std::min(1.0f, engine_->master_peak.load());
@@ -2523,6 +2697,7 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
     if (LoadProject(project_path_, &project, &error)) {
       engine_->DropSnapshot();
       engine_->ReloadKit();
+      reload_samples_ = true;
       Toast("Project reloaded");
     } else {
       Toast(error);
@@ -2757,8 +2932,27 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
   const Canvas& c = canvas_;
   int track = engine_->selected_track;
   char text[48];
-  snprintf(text, sizeof(text), "SOUNDS  >  TRACK %c", 'A' + track);
-  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+  // Two lists: the factory sounds and the project's samples.
+  const char* const kTabs[2] = { "SOUNDS", "SAMPLES" };
+  float tab_x = min.x + 6;
+  for (int t = 0; t < 2; ++t) {
+    bool current = browse_samples_ == (t == 1);
+    float width = t == 0 ? 50.0f : 56.0f;
+    char id[16];
+    snprintf(id, sizeof(id), "##btab%d", t);
+    if (HitBox(c, id, ImVec2(tab_x - 2, min.y + 2), ImVec2(tab_x + width, min.y + 16)).pressed) {
+      browse_samples_ = t == 1;
+    }
+    c.Text(tab_x, min.y + 4, 10.5f, current ? colors::kScreenAccent : colors::kScreenDim, kTabs[t],
+           false, true);
+    tab_x += width + 8;
+  }
+  snprintf(text, sizeof(text), ">  TRACK %c", 'A' + track);
+  c.Text(tab_x + 4, min.y + 4, 10.5f, colors::kScreenDim, text, false, true);
+  if (browse_samples_) {
+    DrawSampleBrowser(min, max);
+    return;
+  }
   float row = (max.y - min.y - 24) / 8.0f;
   float column = (max.x - min.x - 12) * 0.5f;
   for (int i = 0; i < kNumPresets; ++i) {
@@ -2778,6 +2972,575 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
       ApplyPreset(i, &engine_->project().sounds[track]);
       engine_->LiveTrigger(track, 0.8f, 0);
     }
+  }
+}
+
+// --- Sampler ------------------------------------------------------------------------
+
+bool Faceplate::OnSampleEngine() const {
+  const TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+  return IsSampleEngine(Discrete(sound.params[P_ENGINE], kNumEngines));
+}
+
+void Faceplate::KnobLabel(int k, float value, const char** short_name, const char** name,
+                          std::string* text) const {
+  const ParamInfo& info = page_param_info(page_, k);
+  *short_name = info.short_name;
+  *name = info.name;
+  *text = FormatValue(info.format, value);
+  if (page_ != PAGE_SOUND || !OnSampleEngine()) {
+    return;
+  }
+  char buffer[48];
+  const int engine = Discrete(
+      engine_->project().sounds[engine_->selected_track].params[P_ENGINE], kNumEngines);
+  if (IsGrainEngine(engine)) {
+    // See audio/grain_player.h for the ranges.
+    const bool burst = engine == kBurstEngine;
+    switch (P_ENGINE + k) {
+      case P_HARMONICS:
+        if (engine == kScrubEngine) {
+          *short_name = "Scan";
+          *name = "Scan speed";
+          float speed = value < 0.5f ? value * 2.0f : 1.0f + (value - 0.5f) * 6.0f;
+          snprintf(buffer, sizeof(buffer), speed < 0.005f ? "Frozen" : "x%.2f", speed);
+          *text = buffer;
+        } else {
+          *short_name = "Pos";
+          *name = "Position";
+        }
+        break;
+      case P_TIMBRE:
+        *short_name = "Dens";
+        *name = "Density";
+        snprintf(buffer, sizeof(buffer), "%.0f/s", 2.0f * powf(100.0f, value));
+        *text = buffer;
+        break;
+      case P_MORPH:
+      case P_COLOUR:
+        if ((P_ENGINE + k == P_MORPH) != burst) {
+          *short_name = *name = "Chaos";
+        } else {
+          *short_name = burst ? "Shape" : "Size";
+          *name = burst ? "Shape" : "Grain size";
+          float ms = burst ? 5.0f * powf(40.0f, value) : 10.0f * powf(50.0f, value);
+          snprintf(buffer, sizeof(buffer), "%.0fms", ms);
+          *text = buffer;
+        }
+        break;
+      case P_DECAY: {
+        *short_name = "Rel";
+        *name = "Release";
+        float seconds = GrainReleaseToSeconds(value);
+        snprintf(buffer, sizeof(buffer), seconds < 1.0f ? "%.0fms" : "%.2fs",
+                 seconds < 1.0f ? seconds * 1000.0f : seconds);
+        *text = buffer;
+        break;
+      }
+      default:
+        break;
+    }
+    if (P_ENGINE + k != P_AUX) {
+      return;
+    }
+  }
+  switch (P_ENGINE + k) {
+    case P_HARMONICS:
+      *short_name = *name = "Start";
+      break;
+    case P_TIMBRE: {
+      *short_name = "Len";
+      *name = "Length";
+      int length = static_cast<int>(std::lround((value * 2.0f - 1.0f) * 100.0f));
+      snprintf(buffer, sizeof(buffer), length < 0 ? "%d%% rev" : "%d%%", std::abs(length));
+      *text = buffer;
+      break;
+    }
+    case P_MORPH:
+      *short_name = *name = "Loop";
+      if (value <= 0.02f) {
+        *text = "Off";
+      }
+      break;
+    case P_DECAY:
+      *short_name = "Rel";
+      *name = "Release";
+      *text = value >= 0.98f ? "Full" : FormatValue(FORMAT_FILTER_DECAY, value);
+      break;
+    case P_COLOUR: {
+      *short_name = "Slce";
+      *name = "Slice";
+      const SampleSlices* slices = TrackSlices();
+      int count = slices ? slices->count : 0;
+      int slice = SliceOfColour(value, count);
+      if (count == 0) {
+        *text = "-";
+      } else if (slice < 0) {
+        *text = "Whole";
+      } else {
+        snprintf(buffer, sizeof(buffer), "%d/%d", slice + 1, count);
+        *text = buffer;
+      }
+      break;
+    }
+    case P_AUX: {
+      *short_name = "Smpl";
+      *name = "Sample";
+      int slot = SampleSlot(value);
+      const std::string& file = engine_->project().samples[slot];
+      snprintf(buffer, sizeof(buffer), "%d %s", slot + 1,
+               file.empty() ? "empty" : std::filesystem::path(file).stem().string().c_str());
+      *text = buffer;
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void Faceplate::PlaceSample(int track, int slot) {
+  TrackSound& sound = engine_->project().sounds[track];
+  if (IsSampleEngine(Discrete(sound.params[P_ENGINE], kNumEngines))) {
+    // Already playing a sample: keep its settings, change the sample.
+    sound.params[P_AUX] = SampleSlotToAux(slot);
+    sound.name = std::filesystem::path(engine_->project().samples[slot]).stem().string().substr(0, 16);
+  } else {
+    ApplySampleDefaults(&sound, slot, engine_->project().samples[slot]);
+  }
+  engine_->LiveTrigger(track, 0.8f, 0);
+}
+
+void Faceplate::DrawSampleBrowser(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  const Project& project = engine_->project();
+  const int track = engine_->selected_track;
+  // The filled slots, in order.
+  std::vector<int> slots;
+  for (int i = 0; i < kNumSampleSlots; ++i) {
+    if (!project.samples[i].empty()) {
+      slots.push_back(i);
+    }
+  }
+  const int pages = std::max(1, static_cast<int>((slots.size() + 15) / 16));
+  browse_sample_page_ = std::clamp(browse_sample_page_, 0, pages - 1);
+  if (slots.empty()) {
+    c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f - 8, 10, colors::kScreenDim,
+           "No samples yet: drop WAV files on a pad", true);
+    return;
+  }
+  const int current = OnSampleEngine() ? SampleSlot(project.sounds[track].params[P_AUX]) : -1;
+  float row = (max.y - min.y - 34) / 8.0f;
+  float column = (max.x - min.x - 12) * 0.5f;
+  char text[64];
+  for (int k = 0; k < 16; ++k) {
+    size_t index = static_cast<size_t>(browse_sample_page_ * 16 + k);
+    if (index >= slots.size()) {
+      break;
+    }
+    int slot = slots[index];
+    ImVec2 a(min.x + 6 + (k / 8) * column, min.y + 20 + (k % 8) * row);
+    ImVec2 b(a.x + column - 4, a.y + row - 1);
+    char id[16];
+    snprintf(id, sizeof(id), "##sample%d", slot);
+    Interaction in = HitBox(c, id, a, b);
+    if (slot == current || in.hovered) {
+      c.draw_list->AddRectFilled(c.P(a), c.P(b), slot == current ? WithAlpha(colors::kAccent, 90)
+                                                                  : IM_COL32(60, 80, 90, 120));
+    }
+    const SampleData* data = engine_->sample(slot);
+    snprintf(text, sizeof(text), "%3d  %s%s", slot + 1,
+             std::filesystem::path(project.samples[slot]).stem().string().c_str(),
+             data ? "" : "  (missing)");
+    c.Text(a.x + 4, a.y + 1, 9, data ? colors::kScreenText : colors::kScreenDim, text, false);
+    if (in.pressed) {
+      PlaceSample(track, slot);
+    }
+  }
+  // Slicing the selected track's sample.
+  const SampleSlices* track_slices = TrackSlices();
+  if (track_slices && engine_->sample(current)) {
+    const int slot = current;
+    SampleSlices& slices = engine_->project().slices[slot];
+    ImGui::SetCursorScreenPos(c.P(min.x + 6, max.y - 14));
+    snprintf(text, sizeof(text), "Slices %d:", slices.count);
+    ImGui::TextUnformatted(text);
+    int made = -1;
+    for (int count : { 4, 8, 16, 32 }) {
+      ImGui::SameLine();
+      char label[24];
+      snprintf(label, sizeof(label), "%d##slice%d", count, count);
+      if (ImGui::SmallButton(label)) {
+        EqualSlices(count, &slices);
+        made = count;
+        auto_sliced_slot_ = -1;
+      }
+    }
+    ImGui::SameLine();
+    // Auto: a slice at each attack; the sensitivity keeps the strongest share
+    // (moving it slices again, to choose by ear).
+    bool redo = false;
+    if (ImGui::SmallButton("Auto")) {
+      redo = true;
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(c.S(52));
+    float percent = auto_sensitivity_ * 100.0f;
+    if (ImGui::SliderFloat("##sens", &percent, 5.0f, 100.0f, "Sens %.0f%%")) {
+      auto_sensitivity_ = percent / 100.0f;
+      redo = auto_sliced_slot_ == slot;
+    }
+    if (redo) {
+      made = DetectSlices(*engine_->sample(slot), &slices, auto_sensitivity_);
+      auto_sliced_slot_ = slot;
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear")) {
+      slices.Clear();
+      auto_sliced_slot_ = -1;
+      Toast("Slices cleared");
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Edit")) {
+      view_ = VIEW_SLICES;
+      slice_edit_slot_ = slot;
+      selected_slice_ = 0;
+      slice_zoom_ = 1.0f;
+      slice_center_ = 0.5f;
+      dragging_slice_ = -1;
+    }
+    if (made >= 0) {
+      // The track plays the whole sample until a slice is picked.
+      engine_->project().sounds[track].params[P_COLOUR] = 0.0f;
+      Toast(std::to_string(made) + " slices: Shift + Keys plays them, Col picks one");
+    }
+  }
+  if (pages > 1) {
+    snprintf(text, sizeof(text), "page %d/%d", browse_sample_page_ + 1, pages);
+    ImGui::SetCursorScreenPos(c.P(max.x - 120, max.y - 14));
+    if (ImGui::SmallButton("<")) {
+      browse_sample_page_ = (browse_sample_page_ + pages - 1) % pages;
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(">")) {
+      browse_sample_page_ = (browse_sample_page_ + 1) % pages;
+    }
+  }
+}
+
+void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  const int track = engine_->selected_track;
+  // While playing, the values after locks and modulations; otherwise the sound's.
+  float params[kNumLockable];
+  for (int p = 0; p < kNumLockable; ++p) {
+    params[p] = engine_->playing()
+        ? engine_->effective_param[track][p].load(std::memory_order_relaxed)
+        : engine_->project().sounds[track].params[p];
+  }
+  const SampleData* sample = engine_->sample(SampleSlot(params[P_AUX]));
+  dl->AddRect(c.P(min), c.P(max), IM_COL32(40, 55, 60, 255));
+  if (!sample || sample->frames.empty()) {
+    c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, 9, colors::kScreenDim,
+           "Empty slot: drop a WAV file on the pad", true);
+    return;
+  }
+  const int columns = std::max(1, static_cast<int>(max.x - min.x));
+  if (sample != overview_sample_ || sample->frames.size() != overview_frames_ ||
+      static_cast<int>(overview_.size()) != columns) {
+    overview_sample_ = sample;
+    overview_frames_ = sample->frames.size();
+    overview_.assign(static_cast<size_t>(columns), 0.0f);
+    const size_t n = sample->frames.size();
+    for (int x = 0; x < columns; ++x) {
+      size_t begin = n * static_cast<size_t>(x) / static_cast<size_t>(columns);
+      size_t end = std::max(begin + 1, n * static_cast<size_t>(x + 1) / static_cast<size_t>(columns));
+      int peak = 0;
+      for (size_t i = begin; i < end && i < n; ++i) {
+        peak = std::max(peak, std::abs(static_cast<int>(sample->frames[i])));
+      }
+      overview_[static_cast<size_t>(x)] = peak / 32768.0f;
+    }
+  }
+  const float mid = (min.y + max.y) * 0.5f;
+  const float half = (max.y - min.y) * 0.5f - 1.0f;
+  // The part played: the whole sample, or the slice Colour picks.
+  const SampleSlices& slices = engine_->project().slices[SampleSlot(params[P_AUX])];
+  const int slice = Discrete(params[P_ENGINE], kNumEngines) == kSampleEngine
+      ? SliceOfColour(params[P_COLOUR], slices.count) : -1;
+  const float region_start = slice >= 0 ? slices.start(slice) : 0.0f;
+  const float region_length = slice >= 0 ? slices.end(slice) - region_start : 1.0f;
+  const float start = region_start + params[P_HARMONICS] * region_length;
+  const float end = std::clamp(start + (params[P_TIMBRE] * 2.0f - 1.0f) * region_length,
+                               region_start, region_start + region_length);
+  const int engine = Discrete(params[P_ENGINE], kNumEngines);
+  const float lo = std::min(start, end);
+  const float hi = std::max(start, end);
+  for (int x = 0; x < columns; ++x) {
+    float position = static_cast<float>(x) / columns;
+    // The grain engines can read anywhere.
+    bool played = engine != kSampleEngine || (position >= lo && position <= hi);
+    float h = std::max(0.5f, overview_[static_cast<size_t>(x)] * half);
+    dl->AddLine(c.P(min.x + x, mid - h), c.P(min.x + x, mid + h),
+                played ? colors::kScreenAccent : WithAlpha(colors::kScreenDim, 110), c.S(1));
+  }
+  auto marker = [&](float position, ImU32 color) {
+    float x = min.x + position * (max.x - min.x);
+    dl->AddLine(c.P(x, min.y), c.P(x, max.y), color, c.S(1.5f));
+  };
+  for (int k = 1; k < slices.count; ++k) {
+    float x = min.x + slices.start(k) * (max.x - min.x);
+    dl->AddLine(c.P(x, min.y + 2), c.P(x, max.y - 2), WithAlpha(colors::kScreenText, 70), c.S(1));
+  }
+  if (engine == kSampleEngine) {
+    marker(start, IM_COL32(120, 230, 120, 255));
+    marker(end, colors::kRed);
+    if (params[P_MORPH] > 0.02f) {
+      marker(start + (end - start) * params[P_MORPH], colors::kAmber);
+    }
+  } else if (engine != kScrubEngine) {
+    marker(params[P_HARMONICS], IM_COL32(120, 230, 120, 255));  // Where the grains come from.
+  }
+  char text[48];
+  snprintf(text, sizeof(text), "%.2fs%s", sample->seconds(),
+           engine == kSampleEngine && end < start ? "  rev" : "");
+  c.Text(min.x + 3, min.y + 2, 8, colors::kScreenText, text, false);
+}
+
+void Faceplate::PreviewSlice(int slice) {
+  const int track = engine_->selected_track;
+  const TrackSound& sound = engine_->project().sounds[track];
+  const SampleSlices& slices = engine_->project().slices[slice_edit_slot_];
+  // Heard when the selected track plays this sample on the Sample engine.
+  if (Discrete(sound.params[P_ENGINE], kNumEngines) != kSampleEngine ||
+      SampleSlot(sound.params[P_AUX]) != slice_edit_slot_ || slice >= slices.count) {
+    return;
+  }
+  float locks[kNumLockable];
+  std::fill(locks, locks + kNumLockable, NAN);
+  locks[P_COLOUR] = ColourOfSlice(slice, slices.count);
+  // Heard, not recorded.
+  bool recording = engine_->recording;
+  engine_->recording = false;
+  engine_->LiveTriggerLocked(track, 0.8f, locks);
+  engine_->recording = recording;
+}
+
+void Faceplate::NudgeSlice(float delta) {
+  const SampleData* sample = engine_->sample(slice_edit_slot_);
+  if (!sample || selected_slice_ <= 0) {
+    return;
+  }
+  SampleSlices& slices = engine_->project().slices[slice_edit_slot_];
+  const float n = static_cast<float>(sample->frames.size());
+  float target = slices.start(selected_slice_) + delta;
+  int frame = NearestZeroCrossing(*sample, static_cast<int>(target * n), 24);
+  // A nudge always moves, even when the crossing found is behind.
+  float snapped = frame / n;
+  if ((delta > 0.0f && snapped <= slices.start(selected_slice_)) ||
+      (delta < 0.0f && snapped >= slices.start(selected_slice_))) {
+    snapped = target;
+  }
+  float moved = MoveSlice(&slices, selected_slice_, snapped);
+  // Keep the moved start in view.
+  float span = 1.0f / slice_zoom_;
+  if (moved < slice_center_ - span * 0.45f || moved > slice_center_ + span * 0.45f) {
+    slice_center_ = moved;
+  }
+}
+
+void Faceplate::DrawSliceEditor(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  Project& project = engine_->project();
+  const int slot = slice_edit_slot_;
+  const SampleData* sample = slot >= 0 ? engine_->sample(slot) : nullptr;
+  if (!sample || sample->frames.size() < 64) {
+    view_ = VIEW_BROWSE;
+    return;
+  }
+  SampleSlices& slices = project.slices[slot];
+  if (slices.count == 0) {
+    slices.count = 1;  // Editing an unsliced sample: one slice, the whole of it.
+    slices.starts[0] = 0.0f;
+  }
+  selected_slice_ = std::clamp(selected_slice_, 0, slices.count - 1);
+  const size_t n = sample->frames.size();
+
+  char text[96];
+  snprintf(text, sizeof(text), "SLICES  %s   %d/%d",
+           std::filesystem::path(project.samples[slot]).stem().string().c_str(),
+           selected_slice_ + 1, slices.count);
+  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+  c.Text(max.x - 6 - 170, min.y + 5, 8, colors::kScreenDim,
+         "drag: move  double-click: add  right-click: remove", false);
+
+  // The visible part of the sample.
+  const ImVec2 a(min.x + 6, min.y + 20);
+  const ImVec2 b(max.x - 6, max.y - 20);
+  slice_zoom_ = std::clamp(slice_zoom_, 1.0f, 256.0f);
+  const float span = 1.0f / slice_zoom_;
+  slice_center_ = std::clamp(slice_center_, span * 0.5f, 1.0f - span * 0.5f);
+  const float v0 = slice_center_ - span * 0.5f;
+  auto x_of = [&](float position) { return a.x + (position - v0) / span * (b.x - a.x); };
+  auto position_of = [&](float x) {
+    return std::clamp(v0 + (x - a.x) / (b.x - a.x) * span, 0.0f, 1.0f);
+  };
+
+  // Peaks of 64-frame blocks, once per sample.
+  const size_t kBlock = 64;
+  if (sample != slice_peaks_sample_ || n != slice_peaks_frames_) {
+    slice_peaks_sample_ = sample;
+    slice_peaks_frames_ = n;
+    slice_peaks_.assign((n + kBlock - 1) / kBlock, 0.0f);
+    for (size_t i = 0; i < n; ++i) {
+      float v = std::abs(static_cast<int>(sample->frames[i])) / 32768.0f;
+      slice_peaks_[i / kBlock] = std::max(slice_peaks_[i / kBlock], v);
+    }
+  }
+  dl->AddRectFilled(c.P(a), c.P(b), IM_COL32(16, 24, 27, 255));
+  // The selected slice.
+  dl->AddRectFilled(c.P(std::max(a.x, x_of(slices.start(selected_slice_))), a.y),
+                    c.P(std::min(b.x, x_of(slices.end(selected_slice_))), b.y),
+                    WithAlpha(colors::kAccent, 40));
+  const float mid = (a.y + b.y) * 0.5f;
+  const float half = (b.y - a.y) * 0.5f - 1.0f;
+  const int columns = std::max(1, static_cast<int>(b.x - a.x));
+  for (int x = 0; x < columns; ++x) {
+    size_t f0 = static_cast<size_t>((v0 + span * x / columns) * n);
+    size_t f1 = std::max(f0 + 1, static_cast<size_t>((v0 + span * (x + 1) / columns) * n));
+    float peak = 0.0f;
+    if (f1 - f0 >= kBlock) {
+      for (size_t k = f0 / kBlock; k < std::min(slice_peaks_.size(), f1 / kBlock + 1); ++k) {
+        peak = std::max(peak, slice_peaks_[k]);
+      }
+    } else {
+      for (size_t i = f0; i < f1 && i < n; ++i) {
+        peak = std::max(peak, std::abs(static_cast<int>(sample->frames[i])) / 32768.0f);
+      }
+    }
+    float h = std::max(0.5f, peak * half);
+    dl->AddLine(c.P(a.x + x, mid - h), c.P(a.x + x, mid + h), colors::kScreenAccent, c.S(1));
+  }
+  // Markers, numbered.
+  for (int k = 0; k < slices.count; ++k) {
+    float x = x_of(slices.start(k));
+    if (x < a.x - 1 || x > b.x + 1) {
+      continue;
+    }
+    bool selected = k == selected_slice_;
+    dl->AddLine(c.P(x, a.y), c.P(x, b.y), selected ? colors::kAmber : WithAlpha(colors::kScreenText, 150),
+                c.S(selected ? 2.0f : 1.0f));
+    snprintf(text, sizeof(text), "%d", k + 1);
+    c.Text(x + 2, a.y + 1, 7.5f, selected ? colors::kAmber : colors::kScreenDim, text, false);
+  }
+
+  // Mouse or finger on the waveform.
+  Interaction in = HitBox(c, "##slicewave", a, b);
+  ImGuiIO& io = ImGui::GetIO();
+  const float mouse_x = (io.MousePos.x - canvas_.origin.x) / canvas_.scale;
+  const float grab = 4.0f;  // Panel units around a marker.
+  auto marker_near = [&]() {
+    int best = -1;
+    float best_distance = grab;
+    for (int k = 1; k < slices.count; ++k) {
+      float d = std::fabs(x_of(slices.start(k)) - mouse_x);
+      if (d <= best_distance) {
+        best = k;
+        best_distance = d;
+      }
+    }
+    return best;
+  };
+  auto snapped = [&](float position) {
+    return NearestZeroCrossing(*sample, static_cast<int>(position * n), 48) / static_cast<float>(n);
+  };
+  if (in.right_clicked || in.long_pressed) {
+    int k = marker_near();
+    if (k > 0 && RemoveSlice(&slices, k)) {
+      selected_slice_ = k - 1;
+      dragging_slice_ = -1;
+      Toast("Slice " + std::to_string(k + 1) + " removed");
+    }
+  } else if (in.double_clicked) {
+    int k = AddSlice(&slices, snapped(position_of(mouse_x)));
+    if (k >= 0) {
+      selected_slice_ = k;
+      Toast("Slice added: " + std::to_string(slices.count) + " slices");
+      PreviewSlice(k);
+    }
+  } else if (in.pressed) {
+    int k = marker_near();
+    if (k > 0) {
+      dragging_slice_ = k;
+      selected_slice_ = k;
+    } else {
+      selected_slice_ = SliceAt(slices, position_of(mouse_x));
+      PreviewSlice(selected_slice_);
+    }
+  }
+  if (in.active && dragging_slice_ > 0 && dragging_slice_ < slices.count) {
+    MoveSlice(&slices, dragging_slice_, snapped(position_of(mouse_x)));
+  }
+  if (!in.active && dragging_slice_ > 0) {
+    PreviewSlice(dragging_slice_);
+    dragging_slice_ = -1;
+  }
+  if (in.hovered && io.MouseWheel != 0.0f) {
+    // Zoom around the pointer.
+    float anchor = position_of(mouse_x);
+    slice_zoom_ = std::clamp(slice_zoom_ * (io.MouseWheel > 0.0f ? 1.5f : 1.0f / 1.5f), 1.0f, 256.0f);
+    slice_center_ = anchor;
+  }
+
+  // Buttons.
+  ImGui::SetCursorScreenPos(c.P(min.x + 6, max.y - 15));
+  if (ImGui::SmallButton("<")) {
+    selected_slice_ = std::max(0, selected_slice_ - 1);
+    slice_center_ = slices.start(selected_slice_) + span * 0.25f;
+    PreviewSlice(selected_slice_);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton(">")) {
+    selected_slice_ = std::min(slices.count - 1, selected_slice_ + 1);
+    slice_center_ = slices.start(selected_slice_) + span * 0.25f;
+    PreviewSlice(selected_slice_);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Add")) {
+    // Splits the selected slice in the middle.
+    float middle = (slices.start(selected_slice_) + slices.end(selected_slice_)) * 0.5f;
+    int k = AddSlice(&slices, snapped(middle));
+    if (k >= 0) {
+      selected_slice_ = k;
+      PreviewSlice(k);
+    } else {
+      Toast(slices.count >= kMaxSlices ? "48 slices at most" : "Slice too short to split");
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Remove") && selected_slice_ > 0) {
+    RemoveSlice(&slices, selected_slice_);
+    --selected_slice_;
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("-")) {
+    slice_zoom_ = std::max(1.0f, slice_zoom_ / 2.0f);
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("+")) {
+    slice_zoom_ = std::min(256.0f, slice_zoom_ * 2.0f);
+    slice_center_ = slices.start(selected_slice_) + 0.25f / slice_zoom_;
+  }
+  ImGui::SameLine();
+  snprintf(text, sizeof(text), "x%.0f  %.3fs", slice_zoom_,
+           slices.start(selected_slice_) * static_cast<float>(n) / kSampleFileRate);
+  ImGui::TextUnformatted(text);
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Done")) {
+    view_ = VIEW_BROWSE;
   }
 }
 
