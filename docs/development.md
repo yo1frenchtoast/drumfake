@@ -12,7 +12,7 @@ shims/                 minimal AVR headers so grids/resources.cc compiles on a d
 patches/               header overrides that shadow the submodule (see patches/README.md)
 src/core/              model and logic with no UI or audio device: params, steps, patterns,
                        kits, song, scales, JSON I/O, Grids and Marbles ports, MIDI parser
-src/audio/             TrackVoice, SamplePlayer, MasterFx, CloudsFx, ModSources, Engine,
+src/audio/             TrackVoice, SamplePlayer, GrainPlayer, MasterFx, CloudsFx, ModSources, Engine,
                        sample loading, WAV renderer
 src/ui/                ImGui faceplate, widgets, multitouch layer
 src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android),
@@ -141,6 +141,9 @@ core/sample_file    WAV decoding to mono 16-bit 48 kHz (windowed-sinc resampling
 core/sample_pool    Project::samples (128 slots naming files of samples/), copying files in,
                     loading the pool (SamplePoolLoad), the slot of a sound (SampleSlot = Aux)
 audio/sample_player Start / Length (bipolar, backwards) / Loop / release, Hermite interpolation
+audio/grain_player  Scrub / Spray / Burst: up to 16 windowed grains, chaos from a per-voice
+                    xorshift sequence (seeded by TrackVoice::Init), so renders are repeatable
+audio/sample_read.h the Hermite read shared by both players
 audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engine glue)
 ```
 

@@ -564,6 +564,14 @@ void TestEngineCountMigration() {
   CHECK(Discrete(kit[0].params[P_ENGINE], kNumEngines) == 21);
   CHECK(Discrete(kit[1].params[P_ENGINE], kNumEngines) == 23);
 
+  // Saved with the Sample engine as the 25th and last engine: it stays the Sample engine.
+  nlohmann::json sample_sound = { { "name", "Smp" }, { "params", { DiscreteToNormalized(24, 25) } } };
+  nlohmann::json with_sampler = { { "version", 3 }, { "engine_count", 25 }, { "sounds", { sample_sound } } };
+  std::ofstream(dir / "sampler.json") << with_sampler.dump();
+  CHECK(LoadProject((dir / "sampler.json").string(), project.get(), &error));
+  CHECK(Discrete(project->sounds[0].params[P_ENGINE], kNumEngines) == kSampleEngine);
+  CHECK(LoadProject((dir / "old.json").string(), project.get(), &error));
+
   // Saved now, the Sample engine stays the Sample engine.
   project->sounds[3].params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
   project->patterns[0].kit[3] = project->sounds[3];
@@ -778,6 +786,138 @@ void TestSamplePlayer() {
         CHECK(std::isfinite(voice->last_block()[i]));
       }
     }
+  }
+}
+
+double Rms(const std::vector<float>& v, double from_seconds, double to_seconds) {
+  size_t a = static_cast<size_t>(from_seconds * kSampleRate);
+  size_t b = std::min(v.size(), static_cast<size_t>(to_seconds * kSampleRate));
+  double sum = 0.0;
+  for (size_t i = a; i < b; ++i) {
+    sum += static_cast<double>(v[i]) * v[i];
+  }
+  return b > a ? std::sqrt(sum / static_cast<double>(b - a)) : 0.0;
+}
+
+TrackSound GrainSound(int engine) {
+  TrackSound s = SampleSound();
+  s.params[P_ENGINE] = DiscreteToNormalized(engine, kNumEngines);
+  s.params[P_HARMONICS] = 0.5f;
+  s.params[P_TIMBRE] = 0.5f;   // 20 grains per second.
+  s.params[P_MORPH] = 0.0f;    // No chaos (Burst: the shortest shape).
+  s.params[P_COLOUR] = 0.5f;   // 70 ms grains (Burst: chaos, set below).
+  s.params[P_DECAY] = 0.5f;
+  return s;
+}
+
+void TestGrainEngines() {
+  // 2 s: silence, then a 1 kHz sine from 1 s.
+  auto half = std::make_shared<SampleData>();
+  half->frames.assign(96000, 0);
+  for (int i = 48000; i < 96000; ++i) {
+    half->frames[static_cast<size_t>(i)] =
+        static_cast<int16_t>(16384.0f * sinf(2.0f * 3.14159265f * 1000.0f * i / 48000.0f));
+  }
+  auto sine = std::make_shared<SampleData>();
+  sine->frames.resize(96000);
+  for (int i = 0; i < 96000; ++i) {
+    sine->frames[static_cast<size_t>(i)] =
+        static_cast<int16_t>(16384.0f * sinf(2.0f * 3.14159265f * 1000.0f * i / 48000.0f));
+  }
+
+  // Spray reads around its position: the sine half sounds, the silent half does not.
+  TrackSound spray = GrainSound(kSprayEngine);
+  spray.params[P_HARMONICS] = 0.75f;
+  auto out = PlaySample(half.get(), spray, 48000);
+  CHECK(Rms(out, 0.1, 1.0) > 0.05);
+  spray.params[P_HARMONICS] = 0.2f;
+  out = PlaySample(half.get(), spray, 48000);
+  CHECK(Rms(out, 0.0, 1.0) < 1e-4);
+
+  // The grains follow the note: an octave up, 2 kHz inside the first grain.
+  TrackSound pitched = GrainSound(kSprayEngine);
+  pitched.params[P_HARMONICS] = 0.0f;
+  pitched.params[P_TIMBRE] = 0.0f;  // 2 grains per second...
+  pitched.params[P_COLOUR] = 1.0f;  // ...of 500 ms.
+  out = PlaySample(sine.get(), pitched, 24000, 12);
+  int crossings = 0;
+  for (size_t i = 4801; i < 19200; ++i) {
+    crossings += out[i - 1] < 0.0f && out[i] >= 0.0f;
+  }
+  CHECK(std::abs(crossings - 600) <= 4);
+
+  // Scrub: frozen at the start, it stays in the silence; at the sample's own
+  // speed, it reaches the sine after a second.
+  TrackSound scrub = GrainSound(kScrubEngine);
+  scrub.params[P_HARMONICS] = 0.0f;
+  out = PlaySample(half.get(), scrub, 96000);
+  CHECK(Rms(out, 0.0, 2.0) < 1e-4);
+  scrub.params[P_HARMONICS] = 0.5f;
+  out = PlaySample(half.get(), scrub, 96000);
+  CHECK(Rms(out, 0.0, 0.85) < 1e-4);
+  CHECK(Rms(out, 1.2, 1.9) > 0.05);
+
+  // Burst: the energy is at the start, then it dies away.
+  TrackSound burst = GrainSound(kBurstEngine);
+  burst.params[P_HARMONICS] = 0.1f;
+  burst.params[P_TIMBRE] = 0.7f;
+  burst.params[P_MORPH] = 0.2f;
+  burst.params[P_COLOUR] = 0.0f;
+  out = PlaySample(sine.get(), burst, 48000);
+  CHECK(Rms(out, 0.0, 0.05) > 0.05);
+  CHECK(Rms(out, 0.5, 1.0) < 1e-3);
+
+  // Release after the gate.
+  TrackSound short_release = GrainSound(kSprayEngine);
+  short_release.params[P_DECAY] = 0.2f;  // About 22 ms.
+  out = PlaySample(sine.get(), short_release, 48000, 0, 4800);
+  CHECK(Rms(out, 0.02, 0.1) > 0.05);
+  CHECK(Rms(out, 0.5, 1.0) < 1e-4);
+
+  // Repeatable, finite and bounded even at full chaos, density and size.
+  for (int engine : { kScrubEngine, kSprayEngine, kBurstEngine }) {
+    TrackSound wild = GrainSound(engine);
+    for (int p : { P_HARMONICS, P_TIMBRE, P_MORPH, P_COLOUR, P_DECAY }) {
+      wild.params[p] = 1.0f;
+    }
+    auto first = PlaySample(sine.get(), wild, 24000, 7);
+    auto second = PlaySample(sine.get(), wild, 24000, 7);
+    CHECK(first == second);
+    bool finite = true;
+    float peak = 0.0f;
+    for (float v : first) {
+      finite = finite && std::isfinite(v);
+      peak = std::max(peak, std::fabs(v));
+    }
+    CHECK(finite);
+    CHECK(peak > 0.01f && peak < 4.0f);
+    out = PlaySample(nullptr, wild, 2400);
+    CHECK(std::all_of(out.begin(), out.end(), [](float v) { return v == 0.0f; }));
+  }
+
+  // Through the engine, without allocating.
+  auto engine = MakeEngine();
+  auto data = std::shared_ptr<const SampleData>(sine);
+  engine->SwapSample(0, &data);
+  for (int t = 0; t < 3; ++t) {
+    engine->project().sounds[t] = GrainSound(kScrubEngine + t);
+    engine->project().sounds[t].params[P_AUX] = SampleSlotToAux(0);
+    engine->project().sounds[t].params[P_GATE] = 1.0f;
+    engine->project().patterns[0].tracks[t].steps[0].on = true;
+  }
+  engine->Play();
+  std::vector<float> buffer(2 * 256);
+  long before = g_allocations.load();
+  float peak[3] = {};
+  for (int i = 0; i < 400; ++i) {
+    engine->Render(buffer.data(), 256);
+    for (int t = 0; t < 3; ++t) {
+      peak[t] = std::max(peak[t], engine->track_peak[t].load());
+    }
+  }
+  CHECK(g_allocations.load() == before);
+  for (int t = 0; t < 3; ++t) {
+    CHECK(peak[t] > 0.01f);
   }
 }
 
@@ -2176,6 +2316,7 @@ int main() {
   TestSamplePool();
   TestSamplePlayer();
   TestSampleTracks();
+  TestGrainEngines();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

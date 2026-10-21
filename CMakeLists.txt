@@ -85,6 +85,7 @@ add_library(drumfake_core STATIC
   src/core/sample_pool.cc
   src/audio/clouds_fx.cc
   src/audio/mod_sources.cc
+  src/audio/grain_player.cc
   src/audio/sample_player.cc
   src/audio/sample_loader.cc
   src/audio/track_voice.cc

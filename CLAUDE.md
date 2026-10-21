@@ -11,7 +11,7 @@ from an existing machine.
 - `shims/`: minimal AVR headers so `grids/resources.cc` compiles on the desktop.
 - `src/core/`: model (params, steps, patterns, per-pattern kits, song, scales), JSON I/O,
   Grids port, MIDI parser, sample files and pool. No UI or audio device code.
-- `src/audio/`: `TrackVoice` (Plaits or `SamplePlayer` + filter/drive/crush/choke), `MasterFx`, `Engine`
+- `src/audio/`: `TrackVoice` (Plaits, `SamplePlayer` or `GrainPlayer` + filter/drive/crush/choke), `MasterFx`, `Engine`
   (sequencer, clock, MIDI handling), `ModSources` (Peaks envelope + bouncing ball per track),
   `CloudsFx` (Clouds on the master mix).
   The `resources.h` of plaits, rings, peaks, marbles and clouds define the same macros: never

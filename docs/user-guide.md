@@ -132,8 +132,8 @@ the pattern.
 | **Filter** | Cutoff, Resonance, Mode (low, band, high pass), Filter Env amount and decay, Drive, Crush, Gate length. |
 | **Track** | Volume, Pan, Reverb and Delay sends, Pitch / Timbre / Morph envelope amounts, Choke group. |
 
-The first 24 engines are those of Plaits; the last one, **Sample**, plays a sample (see
-[Sampler](#sampler)). Tracks in the same **Choke group** cut each other off (for an open and a
+The first 24 engines are those of Plaits; the last four play a sample of the project: **Sample**,
+and the granular **Scrub**, **Spray** and **Burst** (see [Sampler](#sampler)). Tracks in the same **Choke group** cut each other off (for an open and a
 closed hi-hat).
 
 ### Sampler
@@ -163,6 +163,19 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
 
   The screen shows the sample (in place of the scope) with **Start** (green), the end of **Len**
   (red) and the **Loop** point (amber); while playing, they follow locks and modulations.
+- **Granular engines.** Turn the encoder past *Sample* to play the same sample as a stream of
+  short grains (up to 16 at once). They use the same slot (Smpl) and Pitch, and their sound lasts
+  as long as the gate (*Gate* on the Filter page, or the step's own gate), then fades over **Rel**
+  (5 ms to 8 s). **Chaos** makes each grain start a little elsewhere, last longer or shorter and
+  drift in pitch.
+
+  | Engine | Harm | Timb | Mrph | Col |
+  |---|---|---|---|---|
+  | **Scrub**: grains scanning through the sample, from its beginning on every note | **Scan** speed: 0 freezes, the middle is the sample's own speed, fully up 4 times faster (the pitch stays) | **Dens**: 2 to 200 grains per second | **Chaos** | **Size**: 10 to 500 ms |
+  | **Spray**: a cloud of grains around a position | **Pos** in the sample | Dens | Chaos (up to a fifth of the sample around Pos) | Size |
+  | **Burst**: percussive bursts of grains, for hits | Pos | Dens | **Shape**: short and tight to long (grain size and length of the burst) | Chaos |
+
+  The screen marks *Pos* in green on Spray and Burst.
 - **Per step**: every one of these knobs can be locked on a step, including **Smpl**, so one
   track can play a different sample on each step (a whole kit on one track), and a modulation
   can move Start or change the sample.

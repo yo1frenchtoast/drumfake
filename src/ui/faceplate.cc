@@ -2873,7 +2873,7 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
 
 bool Faceplate::OnSampleEngine() const {
   const TrackSound& sound = engine_->project().sounds[engine_->selected_track];
-  return Discrete(sound.params[P_ENGINE], kNumEngines) == kSampleEngine;
+  return IsSampleEngine(Discrete(sound.params[P_ENGINE], kNumEngines));
 }
 
 void Faceplate::KnobLabel(int k, float value, const char** short_name, const char** name,
@@ -2886,6 +2886,58 @@ void Faceplate::KnobLabel(int k, float value, const char** short_name, const cha
     return;
   }
   char buffer[48];
+  const int engine = Discrete(
+      engine_->project().sounds[engine_->selected_track].params[P_ENGINE], kNumEngines);
+  if (IsGrainEngine(engine)) {
+    // See audio/grain_player.h for the ranges.
+    const bool burst = engine == kBurstEngine;
+    switch (P_ENGINE + k) {
+      case P_HARMONICS:
+        if (engine == kScrubEngine) {
+          *short_name = "Scan";
+          *name = "Scan speed";
+          float speed = value < 0.5f ? value * 2.0f : 1.0f + (value - 0.5f) * 6.0f;
+          snprintf(buffer, sizeof(buffer), speed < 0.005f ? "Frozen" : "x%.2f", speed);
+          *text = buffer;
+        } else {
+          *short_name = "Pos";
+          *name = "Position";
+        }
+        break;
+      case P_TIMBRE:
+        *short_name = "Dens";
+        *name = "Density";
+        snprintf(buffer, sizeof(buffer), "%.0f/s", 2.0f * powf(100.0f, value));
+        *text = buffer;
+        break;
+      case P_MORPH:
+      case P_COLOUR:
+        if ((P_ENGINE + k == P_MORPH) != burst) {
+          *short_name = *name = "Chaos";
+        } else {
+          *short_name = burst ? "Shape" : "Size";
+          *name = burst ? "Shape" : "Grain size";
+          float ms = burst ? 5.0f * powf(40.0f, value) : 10.0f * powf(50.0f, value);
+          snprintf(buffer, sizeof(buffer), "%.0fms", ms);
+          *text = buffer;
+        }
+        break;
+      case P_DECAY: {
+        *short_name = "Rel";
+        *name = "Release";
+        float seconds = GrainReleaseToSeconds(value);
+        snprintf(buffer, sizeof(buffer), seconds < 1.0f ? "%.0fms" : "%.2fs",
+                 seconds < 1.0f ? seconds * 1000.0f : seconds);
+        *text = buffer;
+        break;
+      }
+      default:
+        break;
+    }
+    if (P_ENGINE + k != P_AUX) {
+      return;
+    }
+  }
   switch (P_ENGINE + k) {
     case P_HARMONICS:
       *short_name = *name = "Start";
@@ -2926,8 +2978,8 @@ void Faceplate::KnobLabel(int k, float value, const char** short_name, const cha
 
 void Faceplate::PlaceSample(int track, int slot) {
   TrackSound& sound = engine_->project().sounds[track];
-  if (Discrete(sound.params[P_ENGINE], kNumEngines) == kSampleEngine) {
-    // Already a sample: keep its settings, change the sample.
+  if (IsSampleEngine(Discrete(sound.params[P_ENGINE], kNumEngines))) {
+    // Already playing a sample: keep its settings, change the sample.
     sound.params[P_AUX] = SampleSlotToAux(slot);
     sound.name = std::filesystem::path(engine_->project().samples[slot]).stem().string().substr(0, 16);
   } else {
@@ -3036,11 +3088,13 @@ void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
   const float half = (max.y - min.y) * 0.5f - 1.0f;
   const float start = params[P_HARMONICS];
   const float end = std::clamp(start + (params[P_TIMBRE] * 2.0f - 1.0f), 0.0f, 1.0f);
+  const int engine = Discrete(params[P_ENGINE], kNumEngines);
   const float lo = std::min(start, end);
   const float hi = std::max(start, end);
   for (int x = 0; x < columns; ++x) {
     float position = static_cast<float>(x) / columns;
-    bool played = position >= lo && position <= hi;
+    // The grain engines can read anywhere.
+    bool played = engine != kSampleEngine || (position >= lo && position <= hi);
     float h = std::max(0.5f, overview_[static_cast<size_t>(x)] * half);
     dl->AddLine(c.P(min.x + x, mid - h), c.P(min.x + x, mid + h),
                 played ? colors::kScreenAccent : WithAlpha(colors::kScreenDim, 110), c.S(1));
@@ -3049,13 +3103,18 @@ void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
     float x = min.x + position * (max.x - min.x);
     dl->AddLine(c.P(x, min.y), c.P(x, max.y), color, c.S(1.5f));
   };
-  marker(start, IM_COL32(120, 230, 120, 255));
-  marker(end, colors::kRed);
-  if (params[P_MORPH] > 0.02f) {
-    marker(start + (end - start) * params[P_MORPH], colors::kAmber);
+  if (engine == kSampleEngine) {
+    marker(start, IM_COL32(120, 230, 120, 255));
+    marker(end, colors::kRed);
+    if (params[P_MORPH] > 0.02f) {
+      marker(start + (end - start) * params[P_MORPH], colors::kAmber);
+    }
+  } else if (engine != kScrubEngine) {
+    marker(params[P_HARMONICS], IM_COL32(120, 230, 120, 255));  // Where the grains come from.
   }
   char text[48];
-  snprintf(text, sizeof(text), "%.2fs%s", sample->seconds(), end < start ? "  rev" : "");
+  snprintf(text, sizeof(text), "%.2fs%s", sample->seconds(),
+           engine == kSampleEngine && end < start ? "  rev" : "");
   c.Text(min.x + 3, min.y + 2, 8, colors::kScreenText, text, false);
 }
 

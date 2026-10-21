@@ -8,10 +8,11 @@
 
 namespace drumfake {
 
-void TrackVoice::Init() {
+void TrackVoice::Init(uint32_t seed) {
   stmlib::BufferAllocator allocator(ram_block_, sizeof(ram_block_));
   voice_.Init(&allocator);
   sample_player_.Init();
+  grain_player_.Init(seed);
   filter_.Init();
   crusher_.Init();
   gate_remaining_ = 0;
@@ -45,6 +46,7 @@ void TrackVoice::Choke() {
 
 void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buses,
                         const SampleData* sample) {
+  const int engine = Discrete(params[P_ENGINE], kNumEngines);
   // Gate. Plaits detects a trigger on a rising edge, so when a note is
   // retriggered while its gate is still high, the gate goes low for one block.
   if (gate_pending_ && !last_trigger_high_) {
@@ -55,7 +57,11 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
     gate_pending_ = false;
     filter_envelope_ = 1.0f;
     choke_gain_ = choke_target_ = 1.0f;
-    sample_player_.Start();
+    if (engine == kSampleEngine) {
+      sample_player_.Start();
+    } else if (IsGrainEngine(engine)) {
+      grain_player_.Start();
+    }
   } else if (gate_pending_) {
     gate_remaining_ = 0;
   }
@@ -63,7 +69,6 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   gate_remaining_ -= std::min(gate_remaining_, kBlockSize);
   last_trigger_high_ = gate_high;
 
-  const int engine = Discrete(params[P_ENGINE], kNumEngines);
   plaits::Patch patch;
   patch.engine = std::min(engine, kNumPlaitsEngines - 1);
   patch.note = PitchToNote(params[P_PITCH]);
@@ -87,6 +92,9 @@ void TrackVoice::Render(const float* params, float extra_delay_send, Buses* buse
   if (engine == kSampleEngine) {
     sample_player_.Render(sample, params, PitchToNote(params[P_PITCH]) + note_offset_, gate_high,
                           mono_);
+  } else if (IsGrainEngine(engine)) {
+    grain_player_.Render(sample, engine, params, PitchToNote(params[P_PITCH]) + note_offset_,
+                         gate_high, mono_);
   } else {
     plaits::Voice::Frame frames[kBlockSize];
     voice_.Render(patch, modulations, frames, kBlockSize);

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "audio/sample_read.h"
 #include "core/params.h"
 
 namespace drumfake {
@@ -13,28 +14,6 @@ const int kFadeIn = 24;               // 0.5 ms declick when Start is not the be
 const double kEndFade = 96.0;         // 2 ms fade before the end of a one-shot.
 const double kMaxCrossfade = 480.0;   // 10 ms across the loop point.
 const double kMinLoop = 64.0;         // Shortest loop, in frames.
-
-// 4-point Hermite interpolation at position `p` (0 to n - 1).
-inline float Read(const int16_t* d, int n, double p) {
-  if (p <= 0.0) {
-    return d[0] / 32768.0f;
-  }
-  if (p >= n - 1) {
-    return d[n - 1] / 32768.0f;
-  }
-  int i = static_cast<int>(p);
-  float t = static_cast<float>(p - i);
-  float xm1 = d[std::max(i - 1, 0)];
-  float x0 = d[i];
-  float x1 = d[std::min(i + 1, n - 1)];
-  float x2 = d[std::min(i + 2, n - 1)];
-  float c = (x1 - xm1) * 0.5f;
-  float v = x0 - x1;
-  float w = c + v;
-  float a = w + v + (x2 - x0) * 0.5f;
-  float b = w + a;
-  return ((((a * t) - b) * t + c) * t + x0) / 32768.0f;
-}
 
 }  // namespace
 
@@ -101,10 +80,10 @@ void SamplePlayer::Render(const SampleData* sample, const float* params, float n
       }
       played_ = loop_from + std::fmod(played_ - loop_from, loop_length);
     }
-    float s = Read(d, n, start + direction * played_);
+    float s = ReadSample(d, n, start + direction * played_);
     if (looping && played_ > length - crossfade) {
       float w = static_cast<float>((played_ - (length - crossfade)) / crossfade);
-      s += (Read(d, n, start + direction * (played_ - loop_length)) - s) * w;
+      s += (ReadSample(d, n, start + direction * (played_ - loop_length)) - s) * w;
     } else if (!looping && played_ > length - kEndFade) {
       s *= static_cast<float>((length - played_) / kEndFade);
     }

@@ -56,12 +56,12 @@ Engine::~Engine() { }
 void Engine::Init() {
   project_->Init();
   for (int i = 0; i < kChordVoices; ++i) {
-    chord_voices_[i].Init();
+    chord_voices_[i].Init(static_cast<uint32_t>(101 + i));
     chord_owner_[i] = 0;
     chord_started_[i] = 0;
   }
   for (int i = 0; i < kNumTracks; ++i) {
-    voices_[i].Init();
+    voices_[i].Init(static_cast<uint32_t>(1 + i));
     track_step[i] = -1;
     trigger_count[i] = 0;
     track_peak[i] = 0.0f;
@@ -456,7 +456,7 @@ const SampleData* Engine::sample(int slot) const {
 }
 
 const SampleData* Engine::VoiceSample(const float* params) const {
-  if (Discrete(params[P_ENGINE], kNumEngines) != kSampleEngine) {
+  if (!IsSampleEngine(Discrete(params[P_ENGINE], kNumEngines))) {
     return nullptr;
   }
   return samples_[SampleSlot(params[P_AUX])].get();

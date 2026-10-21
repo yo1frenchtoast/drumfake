@@ -5,7 +5,7 @@ Open-source groovebox with 8 tracks, a step sequencer and performance controls. 
 
 - **Plaits**: one voice per track (8 tracks, 24 engines: analog and synthetic drums, modal,
   FM…), plus a **Sample** engine playing WAV files (start, length, reverse, loop, per-step
-  sample choice);
+  sample choice) and three granular engines on the same samples (Scrub, Spray, Burst);
 - **Grids**: algorithmic rhythms on the X/Y pad;
 - **Marbles**: random rhythms with a "deja vu" loop, written into the steps;
 - **Peaks**: envelope and bouncing-ball modulation sources;
