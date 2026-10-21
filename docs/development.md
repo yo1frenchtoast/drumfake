@@ -145,7 +145,8 @@ audio/grain_player  Scrub / Spray / Burst: up to 16 windowed grains, chaos from 
                     xorshift sequence (seeded by TrackVoice::Init), so renders are repeatable
 audio/sample_read.h the Hermite read shared by both players
 core/slicing        SampleSlices (up to 48 starts per pool slot, Project::slices, saved with
-                    the pool), equal slices, attack detection, Colour <-> slice mapping
+                    the pool), equal slices, attack detection (spectral flux of 1024-point
+                    frames, running-median threshold), Colour <-> slice mapping
 audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engine glue)
 ```
 

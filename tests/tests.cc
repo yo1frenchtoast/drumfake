@@ -970,6 +970,58 @@ void TestSlices() {
     double seconds = slices.start(k) * 2.0;
     CHECK(seconds <= kHits[k] + 1e-6 && seconds >= kHits[k] - 0.011);
   }
+  // Hits that barely raise the level over a sustained cymbal (as in a break with
+  // a ride): soft low kicks under steady bright inharmonic partials. The peak
+  // level rises by less than 2 times, so the level alone misses them.
+  const double kKicks[6] = { 0.1, 0.35, 0.6, 0.85, 1.1, 1.35 };
+  SampleData ride;
+  ride.frames.resize(72000);
+  int ride_peak = 0;
+  for (size_t i = 0; i < ride.frames.size(); ++i) {
+    double t = static_cast<double>(i) / 48000.0;
+    double v = 0.0;
+    for (int p = 0; p < 12; ++p) {
+      v += 0.02 * std::sin(2.0 * 3.14159265 * (3100.0 + 437.0 * p * (1.0 + 0.03 * p)) * t + p);
+    }
+    ride_peak = std::max(ride_peak, static_cast<int>(std::fabs(v) * 32767.0));
+    for (double k : kKicks) {
+      double age = t - k;
+      if (age >= 0.0 && age < 0.3) {
+        v += 0.15 * std::exp(-age / 0.06) * std::sin(2.0 * 3.14159265 * 60.0 * age);
+      }
+    }
+    ride.frames[i] = static_cast<int16_t>(std::clamp(v, -1.0, 1.0) * 32767.0);
+  }
+  int peak = 0;
+  for (int16_t v : ride.frames) {
+    peak = std::max(peak, std::abs(static_cast<int>(v)));
+  }
+  CHECK(peak < 2 * ride_peak);
+  CHECK(DetectSlices(ride, &slices) == 7);  // The start, then each kick.
+  for (int k = 1; k < 7 && k < slices.count; ++k) {
+    double error_ms = (slices.start(k) * 1.5 - kKicks[k - 1]) * 1000.0;
+    CHECK(error_ms > -6.0 && error_ms < 2.0);
+  }
+  // More attacks than slices: the strongest are kept, over the whole sample.
+  SampleData busy;
+  busy.frames.assign(48000 * 8, 0);
+  for (int hit = 0; hit < 80; ++hit) {  // Every 100 ms, every fourth one louder.
+    float level = hit % 4 == 0 ? 0.8f : 0.25f;
+    for (int i = 0; i < 2400; ++i) {
+      seed = seed * 1664525u + 1013904223u;
+      float noise = static_cast<float>(seed >> 9) / 4194304.0f - 1.0f;
+      busy.frames[static_cast<size_t>(hit * 4800 + i)] =
+          static_cast<int16_t>(noise * level * std::exp(-i / 400.0f) * 32767.0f);
+    }
+  }
+  CHECK(DetectSlices(busy, &slices) == kMaxSlices);
+  CHECK(slices.start(kMaxSlices - 1) > 0.9f);  // Up to the end, not the first 48 hits.
+  int loud = 0;
+  for (int k = 1; k < slices.count; ++k) {
+    double hit = slices.start(k) * 80.0;  // 80 hits over the sample.
+    loud += static_cast<int>(std::lround(hit)) % 4 == 0;
+  }
+  CHECK(loud == 19);  // All the loud hits after the first are among them.
   SampleData quiet;
   quiet.frames.assign(48000, 0);
   CHECK(DetectSlices(quiet, &slices) == 1 && slices.starts[0] == 0.0f);
