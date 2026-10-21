@@ -96,12 +96,14 @@ the pattern.
   pattern change. Without Poly, short tracks restart with the pattern.
 - **Tempo**: the *Tempo* knob, *TAP*, or *Edit* → *BPM*. With *Follow MIDI clock* on, the tempo
   comes from the outside (the screen shows `EXT`).
-- **Vary**: *Edit* → *Vary*, per pattern. It changes the pattern as it plays, without writing
+- **Vary**: *Shift* + *Spice*, per pattern (see [the X/Y pad](#the-xy-pad)). It changes the
+  pattern as it plays, without writing
   anything into the steps: hits get softer, some are dropped, soft ghost notes (an echo of the
   previous hit of the track) appear on empty steps, the timing loosens a little, a few hits
   become double ratchets, and decays get shorter. The amount sets how much of each, from off
   to the full table below. The variations are drawn once and repeat on every loop, so the groove
-  stays a groove; **Dice** draws new ones. The amount and the draw are saved with the pattern.
+  stays a groove; *Shift* + *Vary* (the Dice) draws new ones. The amount and the draw are saved
+  with the pattern.
 
   | At 100% | |
   |---|---|
@@ -240,6 +242,11 @@ pad with the [modulation matrix](#modulation)):
 | **FX** | X = DJ filter (low pass on the left, high pass on the right), Y = delay throw. |
 | **Looper** | Loops the sequencer for as long as you touch the pad. Y sets the length. |
 | **Macros** | Moves the two parameters assigned on the *Assign* page. |
+
+**Vary.** *Shift* + *Spice* turns the pad into the Vary slider of the current pattern: the
+*Spice* button reads *Vary* (amber LED), and sliding left or right sets the amount (the left edge
+turns it off). *Shift* + *Vary* draws new variations; *Spice* alone goes back to Grids, and any
+other mode leaves it. A locked Shift works too.
 
 **Hold.** FX, Looper and Macros only act while you touch the pad. To keep one going, press its
 lit mode button while a finger is on the pad (with a mouse: right click the pad where you want

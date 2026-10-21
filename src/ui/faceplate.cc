@@ -921,8 +921,8 @@ void Faceplate::DrawTopLeft() {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
            colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End", false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   (locked)"
-                          : "15: follow   16: poly   pad: select", false);
+           colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   Spice: vary   (locked)"
+                          : "15: follow   16: poly   pad: select   Spice: vary", false);
   }
   UpdateRepeat();
 }
@@ -949,16 +949,38 @@ void Faceplate::DrawXySection() {
     float x0 = layout::kLeftX0 + i * (w + layout::kGap);
     bool lit = !matrix_open_ && engine_->xy_mode == m.mode;
     ImU32 led = colors::kLedWhite;
-    if (m.mode == XY_GRIDS && engine_->grids_enabled) {
+    const bool vary_button = m.mode == XY_GRIDS && vary_open_;
+    if (vary_button) {
+      lit = true;
+      led = colors::kAmber;
+    } else if (m.mode == XY_GRIDS && engine_->grids_enabled) {
       lit = true;
       led = colors::kAccent;
     } else if (lit && xy_held_) {
       led = colors::kAmber;
     }
     Interaction in = Button(c, m.id, ImVec2(x0, layout::kFunctionRowY0),
-                            ImVec2(x0 + w, layout::kFunctionRowY1), m.label, "", m.icon,
-                            lit, led, true);
-    if (in.pressed) {
+                            ImVec2(x0 + w, layout::kFunctionRowY1),
+                            vary_button ? "Vary" : m.label, "", m.icon, lit, led, true);
+    if (in.pressed && m.mode == XY_GRIDS && (shift_held_ || vary_open_)) {
+      // Shift + Spice shows Vary on the pad; Shift + Vary draws new variations (Dice);
+      // Spice alone goes back to Grids.
+      if (!shift_held_) {
+        vary_open_ = false;
+      } else if (vary_open_) {
+        shift_used_ = true;
+        engine_->DiceVary();
+        Toast(pattern().vary > 0.0f ? "Vary: new variations"
+                                    : "Vary: new variations (slide right to hear them)");
+      } else {
+        shift_used_ = true;
+        vary_open_ = true;
+      }
+      xy_held_ = false;
+      engine_->xy_mode = XY_GRIDS;
+      matrix_open_ = false;
+    } else if (in.pressed) {
+      vary_open_ = false;
       if (m.mode == XY_GRIDS && engine_->xy_mode == XY_GRIDS) {
         engine_->grids_enabled = !engine_->grids_enabled;
         Toast(engine_->grids_enabled ? "Grids on (tracks A-C)" : "Grids off");
@@ -991,6 +1013,7 @@ void Faceplate::DrawXySection() {
       engine_->xy_touched = false;
       xy_touched_ = false;
       xy_held_ = false;
+      vary_open_ = false;
     }
   }
 
@@ -1009,6 +1032,10 @@ void Faceplate::DrawXySection() {
 
   if (matrix_open_) {
     DrawModMatrix(min, max);
+    return;
+  }
+  if (vary_open_) {
+    DrawVaryPad(min, max);
     return;
   }
 
@@ -1096,6 +1123,46 @@ void Faceplate::DrawXySection() {
   if (xy_held_ && !grids_mode) {
     strncat(text, "  HOLD", sizeof(text) - strlen(text) - 1);
   }
+  c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
+}
+
+// Vary on the Perform pad (Shift + Spice): the horizontal position sets the amount of
+// the current pattern, like a slider; Shift + Vary draws new variations (Dice).
+void Faceplate::DrawVaryPad(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  Interaction in = HitBox(c, "##vary", min, max, false);
+  touch_targets_.push_back({ TOUCH_XY, 0, 0, min, max });
+  engine_->xy_touched = false;
+  Pattern& p = pattern();
+  float x = -1.0f;
+  if (xy_touched_) {
+    x = xy_touch_x_;
+  } else if (in.active) {
+    ImVec2 a = c.P(min);
+    ImVec2 b = c.P(max);
+    x = ImClamp((ImGui::GetIO().MousePos.x - a.x) / (b.x - a.x), 0.0f, 1.0f);
+  }
+  if (x >= 0.0f) {
+    p.vary = x < 0.03f ? 0.0f : x;  // The left edge turns it off.
+  }
+
+  float fill = min.x + p.vary * (max.x - min.x);
+  if (p.vary > 0.0f) {
+    dl->AddRectFilled(c.P(min), c.P(fill, max.y), WithAlpha(colors::kAmber, 45), c.S(8),
+                      ImDrawFlags_RoundCornersLeft);
+    dl->AddLine(c.P(fill, min.y), c.P(fill, max.y), colors::kAmber, c.S(2));
+  }
+  char text[64];
+  if (p.vary > 0.0f) {
+    snprintf(text, sizeof(text), "VARY %d%%", static_cast<int>(p.vary * 100.0f + 0.5f));
+  } else {
+    snprintf(text, sizeof(text), "VARY OFF");
+  }
+  c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, 16,
+         p.vary > 0.0f ? colors::kAmber : colors::kLabelDim, text, true, true);
+  snprintf(text, sizeof(text), "P%02d  slide: amount   Shift + Vary: dice",
+           engine_->current_pattern() + 1);
   c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
 }
 
@@ -2402,20 +2469,8 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
   if (ImGui::Checkbox("Play song", &song)) {
     engine_->SetSongMode(song);
   }
-  ImGui::SetCursorScreenPos(c.P(x0 + 78, min.y + 62));
-  ImGui::Checkbox("Metronome", &engine_->metronome);
-  // Vary: variations while the pattern plays, redrawn by Dice.
   ImGui::SetCursorScreenPos(c.P(x1, min.y + 62));
-  ImGui::SetNextItemWidth(column - c.S(44));
-  float vary = p.vary * 100.0f;
-  if (ImGui::SliderFloat("##vary", &vary, 0.0f, 100.0f, vary > 0.0f ? "Vary %.0f%%" : "Vary off")) {
-    p.vary = vary / 100.0f;
-  }
-  ImGui::SetCursorScreenPos(c.P(x1 + (max.x - min.x - 20) * 0.5f - 40, min.y + 62));
-  if (ImGui::Button("Dice", ImVec2(c.S(40), 0))) {
-    engine_->DiceVary();
-    Toast(p.vary > 0.0f ? "New variations" : "New variations (raise Vary to hear them)");
-  }
+  ImGui::Checkbox("Metronome", &engine_->metronome);
   ImGui::PopItemWidth();
 
   ImGui::SetCursorScreenPos(c.P(x0, min.y + 86));
