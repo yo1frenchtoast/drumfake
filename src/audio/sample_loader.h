@@ -13,6 +13,10 @@
 
 namespace drumfake {
 
+// Sets `sound` to play `slot` (holding `file`): the Sample engine, the whole
+// sample once, at its own pitch, named after the file.
+void ApplySampleDefaults(TrackSound* sound, int slot, const std::string& file);
+
 // Loads every slot of the project's pool from the samples directory beside
 // `project_path`. `problems` gets one line per file that could not be loaded.
 void LoadProjectSamples(Engine* engine, const std::string& project_path,

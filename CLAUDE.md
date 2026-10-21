@@ -10,8 +10,8 @@ from an existing machine.
 - `third_party/eurorack` (unmodified submodule; never edit it), `third_party/SDL` (Android, web).
 - `shims/`: minimal AVR headers so `grids/resources.cc` compiles on the desktop.
 - `src/core/`: model (params, steps, patterns, per-pattern kits, song, scales), JSON I/O,
-  Grids port, MIDI parser. No UI or audio device code.
-- `src/audio/`: `TrackVoice` (Plaits + filter/drive/crush/choke), `MasterFx`, `Engine`
+  Grids port, MIDI parser, sample files and pool. No UI or audio device code.
+- `src/audio/`: `TrackVoice` (Plaits or `SamplePlayer` + filter/drive/crush/choke), `MasterFx`, `Engine`
   (sequencer, clock, MIDI handling), `ModSources` (Peaks envelope + bouncing ball per track),
   `CloudsFx` (Clouds on the master mix).
   The `resources.h` of plaits, rings, peaks, marbles and clouds define the same macros: never

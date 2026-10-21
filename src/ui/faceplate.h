@@ -129,6 +129,25 @@ class Faceplate {
   void DoFileWork();
   void DrawPanel();
 
+  // Sampler.
+  // Name, short name and value shown for knob `k` of the current page: on the
+  // Sound page, the Sample engine gives Harmonics, Timbre, Morph, Decay and Aux
+  // their own meaning.
+  void KnobLabel(int k, float value, const char** short_name, const char** name,
+                 std::string* text) const;
+  bool OnSampleEngine() const;
+  // Puts the selected track on `slot` (Browse > Samples).
+  void PlaceSample(int track, int slot);
+  void DrawSampleBrowser(ImVec2 min, ImVec2 max);
+  // The sample of the selected track, with Start, end of Length and Loop.
+  void DrawSampleOverview(ImVec2 min, ImVec2 max);
+  bool browse_samples_ = false;  // Browse shows the sample pool.
+  int browse_sample_page_ = 0;   // 16 slots per page.
+  // Overview of the last sample drawn: peak per column, rebuilt when it changes.
+  const SampleData* overview_sample_ = nullptr;
+  size_t overview_frames_ = 0;
+  std::vector<float> overview_;
+
   Page page_ = PAGE_SOUND;
   PadMode pad_mode_ = PADS_SOUNDS;
   ScreenView view_ = VIEW_MAIN;

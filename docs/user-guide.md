@@ -132,8 +132,42 @@ the pattern.
 | **Filter** | Cutoff, Resonance, Mode (low, band, high pass), Filter Env amount and decay, Drive, Crush, Gate length. |
 | **Track** | Volume, Pan, Reverb and Delay sends, Pitch / Timbre / Morph envelope amounts, Choke group. |
 
-The 24 engines are those of Plaits. Tracks in the same **Choke group** cut each other off (for
-an open and a closed hi-hat).
+The first 24 engines are those of Plaits; the last one, **Sample**, plays a sample (see
+[Sampler](#sampler)). Tracks in the same **Choke group** cut each other off (for an open and a
+closed hi-hat).
+
+### Sampler
+
+Any track can play a sample instead of a Plaits voice. It keeps everything else: the filter,
+drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys and Vary.
+
+- **Importing.** Drop WAV files on the window: on a pad A–H, the file goes to that track;
+  anywhere else, to the selected track. The file is copied into `samples/` beside the project,
+  takes a slot of the project's **pool** (128 slots, saved with the project) and the track
+  switches to the **Sample** engine, set to play the whole sample once at its own pitch.
+  Dropping the same file again reuses its slot.
+- **Files.** WAV, 8 to 32-bit or float, mono or stereo (mixed to mono), 8 to 192 kHz
+  (converted to 48 kHz), up to 60 seconds (longer files are cut, the message says so).
+- **Browse → Samples** lists the pool: tap a sample (or turn the encoder) to put it on the
+  selected track. A track already on the Sample engine keeps its settings and changes sample.
+- **The Sound page on the Sample engine:**
+
+  | Knob | On the Sample engine |
+  |---|---|
+  | Pitch | C4 plays the sample at its own speed; each semitone up plays it faster. |
+  | Start (Harm) | Where it starts, from the beginning (0%) to the end (100%). |
+  | Len (Timb) | How much of it plays after Start, up to all of it; below the middle (*rev*), it plays **backwards** from Start. The middle plays nothing. |
+  | Loop (Mrph) | *Off* plays once. Above, the part from this point to the end of Len loops while the note lasts (with a short crossfade): the higher, the shorter the loop. |
+  | Rel (Dcy) | Release after the gate closes (Gate on the Filter page). *Full* plays the sample to its end. |
+  | Smpl (Aux) | The slot of the pool. |
+
+  The screen shows the sample (in place of the scope) with **Start** (green), the end of **Len**
+  (red) and the **Loop** point (amber); while playing, they follow locks and modulations.
+- **Per step**: every one of these knobs can be locked on a step, including **Smpl**, so one
+  track can play a different sample on each step (a whole kit on one track), and a modulation
+  can move Start or change the sample.
+- A sample that cannot be loaded (file missing from `samples/`) leaves its slot silent and is
+  reported when the project opens; the rest of the project loads.
 
 ### Modulation
 
@@ -336,4 +370,7 @@ the options).
 
 ## 9. Limits
 
-- There is no sampler: the *Sample* button position is used as the Clouds *Freeze* button.
+- The *Sample* button position is used as the Clouds *Freeze* button; the sampler is the
+  **Sample** engine. Samples can be imported by dropping files on the desktop only for now.
+- The pool belongs to the project: a kit of the kit library that uses samples refers to slots of
+  the pool, not to files.

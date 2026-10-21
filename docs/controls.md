@@ -21,6 +21,8 @@ the [user guide](user-guide.md).
 | Last Step (held) / Poly / Shift (held) | right click or long press on Shift or Last Step locks it until a combination is used (or the button is pressed again) | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (acts on release) |
 | Back (↺) | closes Edit, Browse and other screens; releases the selected step | `Esc` |
+| WAV file dropped on the window | imports it onto the pad under it (A–H), or the selected track | |
+| Browse: Sounds / Samples | the factory sounds, or the project's sample pool; tap one (or turn the encoder) to load it on the selected track | |
 
 The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods**, **Envs**,
 **Clouds**, **Assign**.

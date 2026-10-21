@@ -12,7 +12,8 @@ shims/                 minimal AVR headers so grids/resources.cc compiles on a d
 patches/               header overrides that shadow the submodule (see patches/README.md)
 src/core/              model and logic with no UI or audio device: params, steps, patterns,
                        kits, song, scales, JSON I/O, Grids and Marbles ports, MIDI parser
-src/audio/             TrackVoice, MasterFx, CloudsFx, ModSources, Engine, WAV renderer
+src/audio/             TrackVoice, SamplePlayer, MasterFx, CloudsFx, ModSources, Engine,
+                       sample loading, WAV renderer
 src/ui/                ImGui faceplate, widgets, multitouch layer
 src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android),
                        Web MIDI (browser)
@@ -132,6 +133,28 @@ The display shows one view at a time (`ScreenView` in `faceplate.h`). Add a valu
 `DrawXxxView(min, max)` method, the dispatch in `DrawScreen()`, and a way to enter it (a button
 in `DrawEditView()` for example). The *Back* button returns to `VIEW_MAIN`. `DrawMarblesView()`
 and `DrawKitsView()` are short examples.
+
+### The sampler
+
+```
+core/sample_file    WAV decoding to mono 16-bit 48 kHz (windowed-sinc resampling), 60 s max
+core/sample_pool    Project::samples (128 slots naming files of samples/), copying files in,
+                    loading the pool (SamplePoolLoad), the slot of a sound (SampleSlot = Aux)
+audio/sample_player Start / Length (bipolar, backwards) / Loop / release, Hermite interpolation
+audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engine glue)
+```
+
+- The audio lives in `Engine::samples_` (`shared_ptr<const SampleData>` per slot). Every block,
+  `RenderBlock` hands each voice the sample of the slot in its effective params, so a sample
+  replaced while playing never dangles (the player clamps its position).
+- Samples are decoded **without** the lock, swapped in **under** it (`SwapSample`,
+  `SwapSamples`), and the previous ones released after it: never on the audio thread. The
+  faceplate draws under the lock, so it queues file work (imports, Reload saved) and does it in
+  `DoFileWork()` after drawing.
+- Engines are only ever added at the end of the list: projects and kit files record
+  `engine_count`, and loading remaps engine values and engine locks saved with another count
+  (`RemapEngine` in `project_io.cc`; older files had the 24 Plaits engines).
+- `TestSampleTracks` checks with a counting allocator that `Engine::Render` never allocates.
 
 ### Change the project file
 

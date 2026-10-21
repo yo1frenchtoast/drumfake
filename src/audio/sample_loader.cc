@@ -8,6 +8,17 @@
 
 namespace drumfake {
 
+void ApplySampleDefaults(TrackSound* sound, int slot, const std::string& file) {
+  sound->name = std::filesystem::path(file).stem().string().substr(0, 16);
+  sound->params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
+  sound->params[P_AUX] = SampleSlotToAux(slot);
+  sound->params[P_HARMONICS] = 0.0f;  // Start: the beginning.
+  sound->params[P_TIMBRE] = 1.0f;     // Length: all of it, forwards.
+  sound->params[P_MORPH] = 0.0f;      // No loop.
+  sound->params[P_DECAY] = 1.0f;      // Plays to the end.
+  sound->params[P_PITCH] = NoteToNormalizedPitch(kSampleRootNote);
+}
+
 void LoadProjectSamples(Engine* engine, const std::string& project_path,
                         std::vector<std::string>* problems) {
   auto project = std::make_unique<Project>();
@@ -55,15 +66,7 @@ bool ImportSample(Engine* engine, const std::string& project_path, const std::st
     }
     project.samples[slot] = file;
     engine->SwapSample(slot, &previous);
-    TrackSound& sound = project.sounds[track];
-    sound.name = name.substr(0, 16);
-    sound.params[P_ENGINE] = DiscreteToNormalized(kSampleEngine, kNumEngines);
-    sound.params[P_AUX] = SampleSlotToAux(slot);
-    sound.params[P_HARMONICS] = 0.0f;  // Start: the beginning.
-    sound.params[P_TIMBRE] = 1.0f;     // Length: all of it, forwards.
-    sound.params[P_MORPH] = 0.0f;      // No loop.
-    sound.params[P_DECAY] = 1.0f;      // Plays to the end.
-    sound.params[P_PITCH] = NoteToNormalizedPitch(kSampleRootNote);
+    ApplySampleDefaults(&project.sounds[track], slot, file);
   }
   char text[160];
   snprintf(text, sizeof(text), "%s on track %c (slot %d, %.1fs%s)", name.c_str(), 'A' + track,

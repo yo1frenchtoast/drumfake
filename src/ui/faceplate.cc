@@ -1,12 +1,13 @@
 #include "ui/faceplate.h"
 
-#include "audio/sample_loader.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 
+#include "audio/sample_loader.h"
 #include "core/presets.h"
+#include "core/sample_pool.h"
 #include "core/project_io.h"
 #include "core/scales.h"
 #include "imgui_internal.h"
@@ -1348,6 +1349,19 @@ void Faceplate::DrawScreenSection() {
                               -kMaxMicroTiming, kMaxMicroTiming);
     } else if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
       ChangeKey(keys_field_, steps);
+    } else if (view_ == VIEW_BROWSE && browse_samples_) {
+      // Next or previous filled slot of the pool.
+      const Project& project = engine_->project();
+      int slot = OnSampleEngine() ? SampleSlot(sound.params[P_AUX]) : -1;
+      for (int moved = 0, tries = 0; moved < std::abs(steps) && tries < kNumSampleSlots * 2; ++tries) {
+        slot = (slot + (steps > 0 ? 1 : -1) + kNumSampleSlots) % kNumSampleSlots;
+        if (!project.samples[slot].empty()) {
+          ++moved;
+        }
+      }
+      if (slot >= 0 && !project.samples[slot].empty()) {
+        PlaceSample(track, slot);
+      }
     } else if (view_ == VIEW_BROWSE) {
       browse_index_ = (browse_index_ + steps + kNumPresets * 4) % kNumPresets;
       ApplyPreset(browse_index_, &sound);
@@ -1519,11 +1533,13 @@ void Faceplate::DrawSoundKnobs() {
       }
     }
     // Short parameter name under each knob.
-    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim,
-           page_param_info(page_, k).short_name, true, true);
+    const char* short_name;
+    const char* long_name;
+    std::string value_text;
+    KnobLabel(k, value, &short_name, &long_name, &value_text);
+    c.Text(center.x, center.y + 38, 8.5f, colors::kLabelDim, short_name, true, true);
     if (in.hovered || in.active || grabbed) {
-      DrawKnobReadout(center, 22, page_param_info(page_, k).name,
-                      FormatValue(page_param_info(page_, k).format, value));
+      DrawKnobReadout(center, 22, long_name, value_text);
     }
   }
 }
@@ -2299,17 +2315,24 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
   for (int k = 0; k < kKnobsPerPage; ++k) {
     bool unused;
     float value = *KnobTarget(k, &unused);
-    const ParamInfo& info = page_param_info(page_, k);
+    const char* short_name;
+    const char* long_name;
+    std::string value_text;
+    KnobLabel(k, value, &short_name, &long_name, &value_text);
     float x = min.x + 4 + (k % 4) * cell;
     float y = min.y + 56 + (k / 4) * 31.0f;
-    c.Text(x + 2, y, 9, colors::kScreenDim, info.short_name, false);
-    c.Text(x + 2, y + 10, 11, colors::kScreenText, FormatValue(info.format, value).c_str(), false, true);
+    c.Text(x + 2, y, 9, colors::kScreenDim, short_name, false);
+    c.Text(x + 2, y + 10, 11, colors::kScreenText, value_text.c_str(), false, true);
     dl->AddRectFilled(c.P(x + 2, y + 25), c.P(x + cell - 6, y + 27), IM_COL32(40, 55, 60, 255));
     dl->AddRectFilled(c.P(x + 2, y + 25), c.P(x + 2 + (cell - 8) * value, y + 27),
                       colors::kScreenAccent);
   }
 
-  DrawScope(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  if (page_ == PAGE_SOUND && OnSampleEngine()) {
+    DrawSampleOverview(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  } else {
+    DrawScope(ImVec2(min.x + 6, min.y + 121), ImVec2(max.x - 56, max.y - 4));
+  }
   snprintf(text, sizeof(text), "CPU %d%%", static_cast<int>(engine_->cpu_load.load() * 100.0f));
   c.Text(max.x - 50, max.y - 30, 8, colors::kScreenDim, text, false);
   float level = std::min(1.0f, engine_->master_peak.load());
@@ -2802,8 +2825,27 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
   const Canvas& c = canvas_;
   int track = engine_->selected_track;
   char text[48];
-  snprintf(text, sizeof(text), "SOUNDS  >  TRACK %c", 'A' + track);
-  c.Text(min.x + 6, min.y + 4, 10.5f, colors::kScreenAccent, text, false, true);
+  // Two lists: the factory sounds and the project's samples.
+  const char* const kTabs[2] = { "SOUNDS", "SAMPLES" };
+  float tab_x = min.x + 6;
+  for (int t = 0; t < 2; ++t) {
+    bool current = browse_samples_ == (t == 1);
+    float width = t == 0 ? 50.0f : 56.0f;
+    char id[16];
+    snprintf(id, sizeof(id), "##btab%d", t);
+    if (HitBox(c, id, ImVec2(tab_x - 2, min.y + 2), ImVec2(tab_x + width, min.y + 16)).pressed) {
+      browse_samples_ = t == 1;
+    }
+    c.Text(tab_x, min.y + 4, 10.5f, current ? colors::kScreenAccent : colors::kScreenDim, kTabs[t],
+           false, true);
+    tab_x += width + 8;
+  }
+  snprintf(text, sizeof(text), ">  TRACK %c", 'A' + track);
+  c.Text(tab_x + 4, min.y + 4, 10.5f, colors::kScreenDim, text, false, true);
+  if (browse_samples_) {
+    DrawSampleBrowser(min, max);
+    return;
+  }
   float row = (max.y - min.y - 24) / 8.0f;
   float column = (max.x - min.x - 12) * 0.5f;
   for (int i = 0; i < kNumPresets; ++i) {
@@ -2824,6 +2866,196 @@ void Faceplate::DrawBrowseView(ImVec2 min, ImVec2 max) {
       engine_->LiveTrigger(track, 0.8f, 0);
     }
   }
+}
+
+// --- Sampler ------------------------------------------------------------------------
+
+bool Faceplate::OnSampleEngine() const {
+  const TrackSound& sound = engine_->project().sounds[engine_->selected_track];
+  return Discrete(sound.params[P_ENGINE], kNumEngines) == kSampleEngine;
+}
+
+void Faceplate::KnobLabel(int k, float value, const char** short_name, const char** name,
+                          std::string* text) const {
+  const ParamInfo& info = page_param_info(page_, k);
+  *short_name = info.short_name;
+  *name = info.name;
+  *text = FormatValue(info.format, value);
+  if (page_ != PAGE_SOUND || !OnSampleEngine()) {
+    return;
+  }
+  char buffer[48];
+  switch (P_ENGINE + k) {
+    case P_HARMONICS:
+      *short_name = *name = "Start";
+      break;
+    case P_TIMBRE: {
+      *short_name = "Len";
+      *name = "Length";
+      int length = static_cast<int>(std::lround((value * 2.0f - 1.0f) * 100.0f));
+      snprintf(buffer, sizeof(buffer), length < 0 ? "%d%% rev" : "%d%%", std::abs(length));
+      *text = buffer;
+      break;
+    }
+    case P_MORPH:
+      *short_name = *name = "Loop";
+      if (value <= 0.02f) {
+        *text = "Off";
+      }
+      break;
+    case P_DECAY:
+      *short_name = "Rel";
+      *name = "Release";
+      *text = value >= 0.98f ? "Full" : FormatValue(FORMAT_FILTER_DECAY, value);
+      break;
+    case P_AUX: {
+      *short_name = "Smpl";
+      *name = "Sample";
+      int slot = SampleSlot(value);
+      const std::string& file = engine_->project().samples[slot];
+      snprintf(buffer, sizeof(buffer), "%d %s", slot + 1,
+               file.empty() ? "empty" : std::filesystem::path(file).stem().string().c_str());
+      *text = buffer;
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void Faceplate::PlaceSample(int track, int slot) {
+  TrackSound& sound = engine_->project().sounds[track];
+  if (Discrete(sound.params[P_ENGINE], kNumEngines) == kSampleEngine) {
+    // Already a sample: keep its settings, change the sample.
+    sound.params[P_AUX] = SampleSlotToAux(slot);
+    sound.name = std::filesystem::path(engine_->project().samples[slot]).stem().string().substr(0, 16);
+  } else {
+    ApplySampleDefaults(&sound, slot, engine_->project().samples[slot]);
+  }
+  engine_->LiveTrigger(track, 0.8f, 0);
+}
+
+void Faceplate::DrawSampleBrowser(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  const Project& project = engine_->project();
+  const int track = engine_->selected_track;
+  // The filled slots, in order.
+  std::vector<int> slots;
+  for (int i = 0; i < kNumSampleSlots; ++i) {
+    if (!project.samples[i].empty()) {
+      slots.push_back(i);
+    }
+  }
+  const int pages = std::max(1, static_cast<int>((slots.size() + 15) / 16));
+  browse_sample_page_ = std::clamp(browse_sample_page_, 0, pages - 1);
+  if (slots.empty()) {
+    c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f - 8, 10, colors::kScreenDim,
+           "No samples yet: drop WAV files on a pad", true);
+    return;
+  }
+  const int current = OnSampleEngine() ? SampleSlot(project.sounds[track].params[P_AUX]) : -1;
+  float row = (max.y - min.y - 34) / 8.0f;
+  float column = (max.x - min.x - 12) * 0.5f;
+  char text[64];
+  for (int k = 0; k < 16; ++k) {
+    size_t index = static_cast<size_t>(browse_sample_page_ * 16 + k);
+    if (index >= slots.size()) {
+      break;
+    }
+    int slot = slots[index];
+    ImVec2 a(min.x + 6 + (k / 8) * column, min.y + 20 + (k % 8) * row);
+    ImVec2 b(a.x + column - 4, a.y + row - 1);
+    char id[16];
+    snprintf(id, sizeof(id), "##sample%d", slot);
+    Interaction in = HitBox(c, id, a, b);
+    if (slot == current || in.hovered) {
+      c.draw_list->AddRectFilled(c.P(a), c.P(b), slot == current ? WithAlpha(colors::kAccent, 90)
+                                                                  : IM_COL32(60, 80, 90, 120));
+    }
+    const SampleData* data = engine_->sample(slot);
+    snprintf(text, sizeof(text), "%3d  %s%s", slot + 1,
+             std::filesystem::path(project.samples[slot]).stem().string().c_str(),
+             data ? "" : "  (missing)");
+    c.Text(a.x + 4, a.y + 1, 9, data ? colors::kScreenText : colors::kScreenDim, text, false);
+    if (in.pressed) {
+      PlaceSample(track, slot);
+    }
+  }
+  if (pages > 1) {
+    snprintf(text, sizeof(text), "page %d/%d", browse_sample_page_ + 1, pages);
+    ImGui::SetCursorScreenPos(c.P(max.x - 120, max.y - 14));
+    if (ImGui::SmallButton("<")) {
+      browse_sample_page_ = (browse_sample_page_ + pages - 1) % pages;
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(">")) {
+      browse_sample_page_ = (browse_sample_page_ + 1) % pages;
+    }
+  }
+}
+
+void Faceplate::DrawSampleOverview(ImVec2 min, ImVec2 max) {
+  const Canvas& c = canvas_;
+  ImDrawList* dl = c.draw_list;
+  const int track = engine_->selected_track;
+  // While playing, the values after locks and modulations; otherwise the sound's.
+  float params[kNumLockable];
+  for (int p = 0; p < kNumLockable; ++p) {
+    params[p] = engine_->playing()
+        ? engine_->effective_param[track][p].load(std::memory_order_relaxed)
+        : engine_->project().sounds[track].params[p];
+  }
+  const SampleData* sample = engine_->sample(SampleSlot(params[P_AUX]));
+  dl->AddRect(c.P(min), c.P(max), IM_COL32(40, 55, 60, 255));
+  if (!sample || sample->frames.empty()) {
+    c.Text((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, 9, colors::kScreenDim,
+           "Empty slot: drop a WAV file on the pad", true);
+    return;
+  }
+  const int columns = std::max(1, static_cast<int>(max.x - min.x));
+  if (sample != overview_sample_ || sample->frames.size() != overview_frames_ ||
+      static_cast<int>(overview_.size()) != columns) {
+    overview_sample_ = sample;
+    overview_frames_ = sample->frames.size();
+    overview_.assign(static_cast<size_t>(columns), 0.0f);
+    const size_t n = sample->frames.size();
+    for (int x = 0; x < columns; ++x) {
+      size_t begin = n * static_cast<size_t>(x) / static_cast<size_t>(columns);
+      size_t end = std::max(begin + 1, n * static_cast<size_t>(x + 1) / static_cast<size_t>(columns));
+      int peak = 0;
+      for (size_t i = begin; i < end && i < n; ++i) {
+        peak = std::max(peak, std::abs(static_cast<int>(sample->frames[i])));
+      }
+      overview_[static_cast<size_t>(x)] = peak / 32768.0f;
+    }
+  }
+  const float mid = (min.y + max.y) * 0.5f;
+  const float half = (max.y - min.y) * 0.5f - 1.0f;
+  const float start = params[P_HARMONICS];
+  const float end = std::clamp(start + (params[P_TIMBRE] * 2.0f - 1.0f), 0.0f, 1.0f);
+  const float lo = std::min(start, end);
+  const float hi = std::max(start, end);
+  for (int x = 0; x < columns; ++x) {
+    float position = static_cast<float>(x) / columns;
+    bool played = position >= lo && position <= hi;
+    float h = std::max(0.5f, overview_[static_cast<size_t>(x)] * half);
+    dl->AddLine(c.P(min.x + x, mid - h), c.P(min.x + x, mid + h),
+                played ? colors::kScreenAccent : WithAlpha(colors::kScreenDim, 110), c.S(1));
+  }
+  auto marker = [&](float position, ImU32 color) {
+    float x = min.x + position * (max.x - min.x);
+    dl->AddLine(c.P(x, min.y), c.P(x, max.y), color, c.S(1.5f));
+  };
+  marker(start, IM_COL32(120, 230, 120, 255));
+  marker(end, colors::kRed);
+  if (params[P_MORPH] > 0.02f) {
+    marker(start + (end - start) * params[P_MORPH], colors::kAmber);
+  }
+  char text[48];
+  snprintf(text, sizeof(text), "%.2fs%s", sample->seconds(), end < start ? "  rev" : "");
+  c.Text(min.x + 3, min.y + 2, 8, colors::kScreenText, text, false);
 }
 
 // --- Keyboard ----------------------------------------------------------------------
