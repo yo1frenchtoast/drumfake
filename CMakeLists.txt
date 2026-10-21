@@ -76,6 +76,7 @@ add_library(drumfake_core STATIC
   src/core/params.cc
   src/core/presets.cc
   src/core/scales.cc
+  src/core/settings.cc
   src/core/project.cc
   src/core/project_io.cc
   src/core/grids_gen.cc
@@ -161,6 +162,7 @@ if(ANDROID OR EMSCRIPTEN OR DRUMFAKE_GUI)
     src/app.cc
     src/io/midi_common.cc
     src/ui/widgets.cc
+    src/ui/theme.cc
     src/ui/faceplate.cc)
   if(ANDROID)
     list(APPEND APP_SOURCES src/io/midi_android.cc)

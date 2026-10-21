@@ -14,7 +14,7 @@ src/core/              model and logic with no UI or audio device: params, steps
                        kits, song, scales, JSON I/O, Grids and Marbles ports, MIDI parser
 src/audio/             TrackVoice, SamplePlayer, GrainPlayer, MasterFx, CloudsFx, ModSources, Engine,
                        sample loading, WAV renderer
-src/ui/                ImGui faceplate, widgets, multitouch layer
+src/ui/                ImGui faceplate, widgets, multitouch layer, themes (theme.h)
 src/io/                MIDI input: RtMidi/ALSA (desktop), Java MidiManager + JNI (Android),
                        Web MIDI (browser)
 src/app.cc, main.cc    window and audio device setup, command line
@@ -168,6 +168,21 @@ audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engin
   (`TakeResample`) in `DoFileWork()` and `AddRecordedSample` writes it and adds it to the pool.
 - In the browser, SDL writes dropped files to its virtual file system and sends the same
   `SDL_EVENT_DROP_FILE`: imports work unchanged and land in `/persist/samples`.
+
+### Themes
+
+Every colour of the faceplate comes from the current `Theme` (`src/ui/theme.h`): `theme().accent`,
+`theme().pad_face`… There is no colour literal left in the panel's drawing except shadows (black
+with alpha) and the green Start marker. A theme also sets the knobs' colours per `KnobStyle`
+and whether each track has its own colour (`TrackColour(track)`, the accent otherwise).
+
+- Adding a colour: a field in `Theme`, a value in **every** theme of `theme.cc`.
+- **Classic must stay pixel-identical** to the original look: compare `--theme classic
+  --screenshot` before and after a change touching colours.
+- The screen stays dark in every theme; its accent and widgets follow the theme
+  (`ApplyImGuiStyle()`, again after `SetTheme`).
+- The chosen theme is a setting of the machine (`core/settings`, `settings.json` beside the
+  project), not of the project.
 
 ### Change the project file
 
