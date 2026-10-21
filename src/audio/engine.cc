@@ -95,6 +95,7 @@ void Engine::Init() {
   cpu_load = 0.0f;
   midi_activity = 0;
   midi_input_ports = 0;
+  resample_progress = 0.0f;
   clock_ticks_ = -1;
   last_tick_time_ = -1.0;
   tick_interval_ = 0.0;
@@ -136,6 +137,7 @@ void Engine::Play() {
     queued_pattern_ = -1;
   }
   playing_ = true;
+  pattern_started_ = true;
   clock_ticks_ = -1;  // With an external clock, wait for its first tick.
   position_ = 0.0;
   beat_position_ = 0.0;
@@ -462,6 +464,53 @@ const SampleData* Engine::VoiceSample(const float* params) const {
   return samples_[SampleSlot(params[P_AUX])].get();
 }
 
+void Engine::ArmResample(std::vector<int16_t>* buffer) {
+  resample_buffer_.swap(*buffer);
+  resample_state_ = resample_buffer_.empty() ? RESAMPLE_IDLE : RESAMPLE_ARMED;
+  resample_length_ = 0;
+  resample_progress.store(0.0f, std::memory_order_relaxed);
+}
+
+void Engine::CancelResample(std::vector<int16_t>* buffer) {
+  buffer->swap(resample_buffer_);
+  resample_state_ = RESAMPLE_IDLE;
+}
+
+bool Engine::TakeResample(std::vector<int16_t>* frames) {
+  if (resample_state_ != RESAMPLE_DONE) {
+    return false;
+  }
+  frames->swap(resample_buffer_);
+  frames->resize(resample_length_);  // Shrinks only: on the UI thread, after the swap.
+  resample_state_ = RESAMPLE_IDLE;
+  return true;
+}
+
+void Engine::RecordResample(const float* out_l, const float* out_r) {
+  const bool started = pattern_started_;
+  pattern_started_ = false;
+  if (resample_state_ == RESAMPLE_ARMED && started && playing_) {
+    const Pattern& pattern = project_->patterns[current_pattern_];
+    resample_state_ = RESAMPLE_RECORDING;
+    resample_length_ = 0;
+    resample_target_ = std::min(resample_buffer_.size(),
+                                static_cast<size_t>(pattern.length) * SamplesPerStep());
+  }
+  if (resample_state_ != RESAMPLE_RECORDING) {
+    return;
+  }
+  for (size_t i = 0; i < kBlockSize && resample_length_ < resample_target_; ++i) {
+    float mono = std::clamp(0.5f * (out_l[i] + out_r[i]), -1.0f, 1.0f);
+    resample_buffer_[resample_length_++] = static_cast<int16_t>(std::lround(mono * 32767.0f));
+  }
+  resample_progress.store(static_cast<float>(resample_length_) / std::max<size_t>(1, resample_target_),
+                          std::memory_order_relaxed);
+  // Done at the end of the loop, or when the transport stops.
+  if (resample_length_ >= resample_target_ || !playing_) {
+    resample_state_ = RESAMPLE_DONE;
+  }
+}
+
 void Engine::DiceVary() {
   Pattern& pattern = project_->patterns[current_pattern_];
   pattern.vary_seed = Hash((static_cast<uint64_t>(pattern.vary_seed) << 32) ^
@@ -781,6 +830,7 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
     }
     // End of the pattern: chain to the next one.
     pattern_start_ = boundary;
+    pattern_started_ = true;
     int previous_pattern = current_pattern_;
     if (queued_pattern_ >= 0) {
       ChangePattern(queued_pattern_);
@@ -1013,6 +1063,7 @@ void Engine::RenderBlock(float* out_l, float* out_r) {
   master_fx_->Process(project_->master, tempo(), project_->volume,
                       dj_filter, &buses_, out_l, out_r);
   clouds_fx_->Process(out_l, out_r, kBlockSize, project_->clouds, clouds_freeze);
+  RecordResample(out_l, out_r);
   RenderClick(out_l, out_r);
 
   float peak = master_peak.load(std::memory_order_relaxed) * 0.98f;

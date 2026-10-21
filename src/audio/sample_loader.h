@@ -29,6 +29,12 @@ void LoadProjectSamples(Engine* engine, const std::string& project_path,
 bool ImportSample(Engine* engine, const std::string& project_path, const std::string& source,
                   int track, std::string* message);
 
+// Saves a recording (resampling: mono, 48 kHz) as "Resample NNN.wav" in the
+// samples directory and puts it in the first free slot of the pool (no track
+// changes). `slot` gets the slot.
+bool AddRecordedSample(Engine* engine, const std::string& project_path,
+                       std::vector<int16_t> frames, int* slot, std::string* message);
+
 }  // namespace drumfake
 
 #endif  // DRUMFAKE_AUDIO_SAMPLE_LOADER_H_

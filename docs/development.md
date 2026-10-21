@@ -160,6 +160,13 @@ audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engin
   `engine_count`, and loading remaps engine values and engine locks saved with another count
   (`RemapEngine` in `project_io.cc`; older files had the 24 Plaits engines).
 - `TestSampleTracks` checks with a counting allocator that `Engine::Render` never allocates.
+- Resampling: the UI thread allocates the buffer and hands it over (`ArmResample`);
+  `RecordResample` (in `RenderBlock`, after Clouds, before the metronome) starts on the block where
+  a pattern starts (`pattern_started_`: Play, or a loop or chain boundary) and stops after one loop
+  of that pattern or when the transport stops. The faceplate takes the recording back
+  (`TakeResample`) in `DoFileWork()` and `AddRecordedSample` writes it and adds it to the pool.
+- In the browser, SDL writes dropped files to its virtual file system and sends the same
+  `SDL_EVENT_DROP_FILE`: imports work unchanged and land in `/persist/samples`.
 
 ### Change the project file
 

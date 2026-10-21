@@ -620,6 +620,20 @@ void Faceplate::DrawPanel() {
 }
 
 void Faceplate::DoFileWork() {
+  // A finished resampling: saved and added to the pool, outside the lock.
+  std::vector<int16_t> recording;
+  bool recorded;
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    recorded = engine_->TakeResample(&recording);
+  }
+  if (recorded) {
+    int slot;
+    std::string message;
+    AddRecordedSample(engine_, project_path_, std::move(recording), &slot, &message);
+    fprintf(stderr, "%s\n", message.c_str());
+    Toast(message);
+  }
   if (reload_samples_) {
     reload_samples_ = false;
     std::vector<std::string> problems;
@@ -1470,10 +1484,27 @@ void Faceplate::DrawScreenSection() {
     }
   }
   // Sample freezes Clouds' recording buffer (effective when Clouds is wet).
-  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze,
-                    colors::kAccent).pressed) {
-    engine_->clouds_freeze = !engine_->clouds_freeze;
-    Toast(engine_->clouds_freeze ? "Clouds frozen" : "Clouds live");
+  // Shift + Freeze: resample one loop of the pattern into a new sample (or cancel).
+  const bool resampling = engine_->resample_state() == Engine::RESAMPLE_ARMED ||
+      engine_->resample_state() == Engine::RESAMPLE_RECORDING;
+  if (screen_button(1, "##sample", "Freeze", ICON_SAMPLE, engine_->clouds_freeze || resampling,
+                    resampling ? colors::kRed : colors::kAccent).pressed) {
+    if (shift_held_) {
+      shift_used_ = true;
+      if (resampling) {
+        std::vector<int16_t> buffer;
+        engine_->CancelResample(&buffer);
+        Toast("Resampling cancelled");
+      } else if (engine_->resample_state() == Engine::RESAMPLE_IDLE) {
+        std::vector<int16_t> buffer(static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+        engine_->ArmResample(&buffer);
+        Toast(engine_->playing() ? "Resampling from the next start of the pattern"
+                                 : "Resampling from Play: one loop of the pattern");
+      }
+    } else {
+      engine_->clouds_freeze = !engine_->clouds_freeze;
+      Toast(engine_->clouds_freeze ? "Clouds frozen" : "Clouds live");
+    }
   }
 
   // 2x4 LEDs: playing page (top) and edited page (bottom).
@@ -2353,7 +2384,14 @@ void Faceplate::DrawMainView(ImVec2 min, ImVec2 max) {
     seen_midi_activity_ = activity;
     midi_flash_time_ = ImGui::GetTime();
   }
-  if (engine_->snapshot_armed()) {
+  if (engine_->resample_state() == Engine::RESAMPLE_ARMED) {
+    c.Text(max.x - 218, min.y + 5, 8, colors::kRed, "LOOP ARMED", false, true);
+  } else if (engine_->resample_state() == Engine::RESAMPLE_RECORDING) {
+    char loop[32];
+    snprintf(loop, sizeof(loop), "LOOP REC %d%%",
+             static_cast<int>(engine_->resample_progress.load() * 100.0f));
+    c.Text(max.x - 218, min.y + 5, 8, colors::kRed, loop, false, true);
+  } else if (engine_->snapshot_armed()) {
     c.Text(max.x - 218, min.y + 5, 8, colors::kAmber, "SNAPSHOT", false, true);
   } else if (engine_->panel()) {
     c.Text(max.x - 190, min.y + 5, 8, colors::kAmber, "PANEL", false, true);

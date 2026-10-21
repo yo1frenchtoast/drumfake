@@ -1069,6 +1069,104 @@ void TestSlices() {
   fs::remove_all(dir);
 }
 
+void TestResampling() {
+  // A kick on every beat of a 16-step pattern (6000 samples per step).
+  auto make = []() {
+    auto engine = MakeEngine();
+    for (int s = 0; s < 16; s += 4) {
+      engine->project().patterns[0].tracks[0].steps[s].on = true;
+    }
+    return engine;
+  };
+  std::vector<float> output(2 * kBlockSize);
+  auto render = [&output](Engine* engine, size_t frames) {
+    for (size_t done = 0; done < frames; done += kBlockSize) {
+      engine->Render(output.data(), kBlockSize);
+    }
+  };
+  const size_t kLoop = 16 * kSamplesPerStep;
+  const size_t kBuffer = static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate);
+
+  // Armed while stopped: nothing until Play, then exactly one loop from its start.
+  auto engine = make();
+  std::vector<int16_t> buffer(kBuffer);
+  engine->ArmResample(&buffer);
+  CHECK(buffer.empty() && engine->resample_state() == Engine::RESAMPLE_ARMED);
+  render(engine.get(), 20000);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_ARMED);
+  engine->Play();
+  long before = g_allocations.load();
+  render(engine.get(), kLoop / 2);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_RECORDING);
+  CHECK_NEAR(engine->resample_progress.load(), 0.5, 0.01);
+  render(engine.get(), kLoop / 2 + 1000);
+  CHECK(g_allocations.load() == before);  // Recording never allocates.
+  CHECK(engine->resample_state() == Engine::RESAMPLE_DONE);
+  std::vector<int16_t> frames;
+  CHECK(engine->TakeResample(&frames));
+  CHECK(engine->resample_state() == Engine::RESAMPLE_IDLE);
+  CHECK(frames.size() == kLoop);
+  auto loudest = [&](size_t from, size_t to) {
+    int peak = 0;
+    for (size_t i = from; i < to && i < frames.size(); ++i) {
+      peak = std::max(peak, std::abs(static_cast<int>(frames[i])));
+    }
+    return peak;
+  };
+  CHECK(loudest(0, 1200) > 2000);                      // The first kick, right at the start.
+  CHECK(loudest(4 * kSamplesPerStep, 4 * kSamplesPerStep + 1200) > 2000);  // The second.
+  CHECK(!engine->TakeResample(&frames));
+
+  // Armed while playing: it waits for the next start of the pattern.
+  engine = make();
+  engine->Play();
+  render(engine.get(), 5 * kSamplesPerStep);
+  buffer.assign(kBuffer, 0);
+  engine->ArmResample(&buffer);
+  render(engine.get(), 10 * kSamplesPerStep + kSamplesPerStep / 2);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_ARMED);
+  render(engine.get(), kSamplesPerStep);
+  CHECK(engine->resample_state() == Engine::RESAMPLE_RECORDING);
+  render(engine.get(), kLoop);
+  CHECK(engine->TakeResample(&frames));
+  CHECK(frames.size() == kLoop);
+  CHECK(loudest(0, 1200) > 2000);  // Starts on the pattern's first kick.
+
+  // Cancelling gives the buffer back; stopping keeps what was recorded.
+  buffer.assign(kBuffer, 0);
+  engine->ArmResample(&buffer);
+  engine->CancelResample(&buffer);
+  CHECK(buffer.size() == kBuffer && engine->resample_state() == Engine::RESAMPLE_IDLE);
+  engine = make();
+  engine->ArmResample(&buffer);
+  engine->Play();
+  render(engine.get(), kLoop / 4);
+  engine->Stop();
+  render(engine.get(), 1200);
+  CHECK(engine->TakeResample(&frames));
+  CHECK(frames.size() > kLoop / 4 - 100 && frames.size() < kLoop / 4 + 100);
+
+  // The recording becomes a sample of the pool, in a file of its own.
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "drumfake_resampling";
+  fs::remove_all(dir);
+  const std::string project_path = (dir / "project.json").string();
+  std::vector<int16_t> recorded = frames;
+  int slot = -1;
+  std::string message;
+  CHECK(AddRecordedSample(engine.get(), project_path, recorded, &slot, &message));
+  CHECK(slot == 0 && engine->project().samples[0] == "Resample 001.wav");
+  CHECK(engine->sample(0) && engine->sample(0)->frames == frames);
+  SampleData reread;
+  std::string error;
+  CHECK(LoadWav((dir / "samples" / "Resample 001.wav").string(), &reread, &error));
+  CHECK(reread.frames == frames);
+  CHECK(AddRecordedSample(engine.get(), project_path, frames, &slot, &message));
+  CHECK(slot == 1 && engine->project().samples[1] == "Resample 002.wav");
+  CHECK(!AddRecordedSample(engine.get(), project_path, {}, &slot, &message));
+  fs::remove_all(dir);
+}
+
 void TestSampleTracks() {
   namespace fs = std::filesystem;
   // A step plays the sample of its slot through the engine.
@@ -2466,6 +2564,7 @@ int main() {
   TestSampleTracks();
   TestGrainEngines();
   TestSlices();
+  TestResampling();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();

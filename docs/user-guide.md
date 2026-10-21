@@ -141,7 +141,8 @@ closed hi-hat).
 Any track can play a sample instead of a Plaits voice. It keeps everything else: the filter,
 drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys and Vary.
 
-- **Importing.** Drop WAV files on the window: on a pad A–H, the file goes to that track;
+- **Importing.** Drop WAV files on the window (desktop, or the page in a browser): on a pad
+  A–H, the file goes to that track;
   anywhere else, to the selected track. The file is copied into `samples/` beside the project,
   takes a slot of the project's **pool** (128 slots, saved with the project) and the track
   switches to the **Sample** engine, set to play the whole sample once at its own pitch.
@@ -174,6 +175,12 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
   - With a step held, a Slices pad sets the slice that step plays.
   - **Col (Slce)** picks a slice for the whole track, and can be locked per step: chop a break
     and play its slices in another order.
+- **Resampling.** **Shift + Freeze** records one loop of the current pattern, everything you hear
+  (without the metronome), into a new sample of the pool (`Resample 001.wav`…): from the next
+  start of the pattern when playing, or from *Play*. The screen shows `LOOP ARMED`, then
+  `LOOP REC` and how much is done; the Freeze button lights red. **Shift + Freeze** again
+  cancels; stopping keeps what was recorded. Nothing changes on the tracks: pick the new sample
+  in *Browse → Samples* (it loops cleanly on the pattern's length; slice it to chop it again).
 - **Granular engines.** Turn the encoder past *Sample* to play the same sample as a stream of
   short grains (up to 16 at once). They use the same slot (Smpl) and Pitch, and their sound lasts
   as long as the gate (*Gate* on the Filter page, or the step's own gate), then fades over **Rel**
@@ -394,7 +401,8 @@ the options).
 
 ## 9. Limits
 
-- The *Sample* button position is used as the Clouds *Freeze* button; the sampler is the
-  **Sample** engine. Samples can be imported by dropping files on the desktop only for now.
+- The *Sample* button position is used as the Clouds *Freeze* button (Shift + Freeze resamples);
+  the sampler is the **Sample** engine. Samples are imported by dropping files, on the desktop
+  and in the browser; not yet on Android.
 - The pool belongs to the project: a kit of the kit library that uses samples refers to slots of
   the pool, not to files.
