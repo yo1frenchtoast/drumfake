@@ -81,6 +81,7 @@ add_library(drumfake_core STATIC
   src/core/grids_gen.cc
   src/core/marbles_gen.cc
   src/core/midi_parser.cc
+  src/core/sample_file.cc
   src/audio/clouds_fx.cc
   src/audio/mod_sources.cc
   src/audio/track_voice.cc

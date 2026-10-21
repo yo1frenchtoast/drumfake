@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -15,6 +16,7 @@
 #include "core/midi_parser.h"
 #include "core/presets.h"
 #include "core/project_io.h"
+#include "core/sample_file.h"
 #include "core/scales.h"
 #include "grids/resources.h"
 #include <nlohmann/json.hpp>
@@ -294,6 +296,210 @@ void TestVary() {
     }
   }
   CHECK(ghosts > 0);
+}
+
+// A WAV file in memory. `samples` are interleaved, in [-1, 1]. `tag` 0xfffe writes a
+// WAVE_FORMAT_EXTENSIBLE header whose sub-format is `sub_tag`. `before_data` is
+// inserted between the format and data chunks.
+std::vector<uint8_t> MakeWav(int tag, int channels, int rate, int bits,
+                             const std::vector<float>& samples,
+                             const std::vector<uint8_t>& before_data = {}, int sub_tag = 1) {
+  std::vector<uint8_t> out;
+  auto u16 = [&](uint32_t v) { out.push_back(v & 0xff); out.push_back((v >> 8) & 0xff); };
+  auto u32 = [&](uint32_t v) { u16(v & 0xffff); u16(v >> 16); };
+  auto tag4 = [&](const char* t) { out.insert(out.end(), t, t + 4); };
+  const bool extensible = tag == 0xfffe;
+  const int bytes = bits / 8;
+  tag4("RIFF");
+  u32(0);  // Patched below.
+  tag4("WAVE");
+  tag4("fmt ");
+  u32(extensible ? 40 : 16);
+  u16(tag);
+  u16(channels);
+  u32(rate);
+  u32(rate * channels * bytes);
+  u16(channels * bytes);
+  u16(bits);
+  if (extensible) {
+    u16(22);    // Extension size.
+    u16(bits);  // Valid bits.
+    u32(0);     // Channel mask.
+    u16(sub_tag);
+    static const uint8_t kGuidTail[14] = { 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00,
+                                           0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 };
+    out.insert(out.end(), kGuidTail, kGuidTail + 14);
+  }
+  out.insert(out.end(), before_data.begin(), before_data.end());
+  tag4("data");
+  u32(static_cast<uint32_t>(samples.size() * bytes));
+  const bool is_float = tag == 3 || (extensible && sub_tag == 3);
+  for (float s : samples) {
+    if (is_float && bits == 32) {
+      uint32_t u;
+      memcpy(&u, &s, 4);
+      u32(u);
+    } else if (is_float) {
+      double d = s;
+      uint64_t u;
+      memcpy(&u, &d, 8);
+      u32(static_cast<uint32_t>(u));
+      u32(static_cast<uint32_t>(u >> 32));
+    } else if (bits == 8) {
+      out.push_back(static_cast<uint8_t>(std::lround(128.0f + s * 127.0f)));
+    } else {
+      int64_t v = std::llround(static_cast<double>(s) * ((1ll << (bits - 1)) - 1));
+      for (int b = 0; b < bytes; ++b) {
+        out.push_back(static_cast<uint8_t>((v >> (8 * b)) & 0xff));
+      }
+    }
+  }
+  uint32_t riff = static_cast<uint32_t>(out.size() - 8);
+  for (int b = 0; b < 4; ++b) {
+    out[4 + b] = static_cast<uint8_t>(riff >> (8 * b));
+  }
+  return out;
+}
+
+std::vector<float> Sine(int frames, int channels, int rate, float frequency, float amplitude) {
+  std::vector<float> s(static_cast<size_t>(frames) * channels);
+  for (int f = 0; f < frames; ++f) {
+    for (int c = 0; c < channels; ++c) {
+      s[static_cast<size_t>(f) * channels + c] =
+          amplitude * sinf(2.0f * 3.14159265f * frequency * f / rate);
+    }
+  }
+  return s;
+}
+
+int CountRisingZeroCrossings(const std::vector<int16_t>& frames, size_t begin, size_t end) {
+  int count = 0;
+  for (size_t i = begin + 1; i < end; ++i) {
+    count += frames[i - 1] < 0 && frames[i] >= 0;
+  }
+  return count;
+}
+
+void TestWavDecoding() {
+  SampleData sample;
+  std::string error;
+
+  // 16-bit mono at 48 kHz: kept as it is.
+  std::vector<float> ramp = { 0.0f, 0.25f, -0.5f, 0.999f, -1.0f };
+  auto wav = MakeWav(1, 1, 48000, 16, ramp);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == ramp.size());
+  for (size_t i = 0; i < ramp.size() && i < sample.frames.size(); ++i) {
+    CHECK_NEAR(sample.frames[i] / 32767.0, ramp[i], 2.0 / 32767.0);
+  }
+  CHECK(sample.source_rate == 48000 && sample.source_channels == 1 && sample.source_bits == 16);
+  CHECK(!sample.truncated);
+
+  // Every encoding, stereo mixed down to mono: (0.5 + -0.25) / 2.
+  struct Encoding { int tag; int bits; int sub_tag; };
+  const Encoding kEncodings[] = {
+    { 1, 8, 1 }, { 1, 16, 1 }, { 1, 24, 1 }, { 1, 32, 1 }, { 3, 32, 1 }, { 3, 64, 1 },
+    { 0xfffe, 24, 1 }, { 0xfffe, 32, 3 },
+  };
+  for (const Encoding& e : kEncodings) {
+    std::vector<float> stereo;
+    for (int f = 0; f < 32; ++f) {
+      stereo.push_back(0.5f);
+      stereo.push_back(-0.25f);
+    }
+    wav = MakeWav(e.tag, 2, 48000, e.bits, stereo, {}, e.sub_tag);
+    CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+    CHECK(sample.frames.size() == 32);
+    CHECK_NEAR(sample.frames.empty() ? 0.0 : sample.frames[10] / 32767.0, 0.125,
+               e.bits == 8 ? 0.01 : 1e-3);
+    CHECK(sample.source_float == (e.tag == 3 || e.sub_tag == 3));
+  }
+
+  // Unknown chunks before the data, one of odd size (padded to even): skipped.
+  std::vector<uint8_t> extra = { 'J', 'U', 'N', 'K', 4, 0, 0, 0, 1, 2, 3, 4,
+                                 'L', 'I', 'S', 'T', 3, 0, 0, 0, 'a', 'b', 'c', 0 };
+  wav = MakeWav(1, 1, 48000, 16, ramp, extra);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == ramp.size());
+  CHECK_NEAR(sample.frames.size() > 2 ? sample.frames[2] / 32767.0 : 0.0, -0.5, 1e-3);
+
+  // 44.1 kHz to 48 kHz: the length scales, a 1 kHz tone keeps its pitch and level.
+  wav = MakeWav(1, 2, 44100, 24, Sine(44100, 2, 44100, 1000.0f, 0.8f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(std::llabs(static_cast<long long>(sample.frames.size()) - 48000) <= 1);
+  if (sample.frames.size() >= 48000) {
+    CHECK(std::abs(CountRisingZeroCrossings(sample.frames, 100, 47900) - 996) <= 2);
+    int16_t peak = 0;
+    for (size_t i = 1000; i < 47000; ++i) {
+      peak = std::max<int16_t>(peak, static_cast<int16_t>(std::abs(sample.frames[i])));
+    }
+    CHECK_NEAR(peak / 32767.0, 0.8, 0.02);
+  }
+
+  // 96 kHz to 48 kHz: a 30 kHz tone (above the new Nyquist) is filtered out, not
+  // folded back to 18 kHz; a 5 kHz tone passes.
+  auto rms = [](const std::vector<int16_t>& f) {
+    double sum = 0.0;
+    for (size_t i = 2000; i + 2000 < f.size(); ++i) {
+      sum += static_cast<double>(f[i]) * f[i];
+    }
+    return std::sqrt(sum / static_cast<double>(f.size() - 4000)) / 32767.0;
+  };
+  wav = MakeWav(3, 1, 96000, 32, Sine(96000, 1, 96000, 30000.0f, 0.7f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(std::llabs(static_cast<long long>(sample.frames.size()) - 48000) <= 1);
+  CHECK(rms(sample.frames) < 0.01);
+  wav = MakeWav(3, 1, 96000, 32, Sine(96000, 1, 96000, 5000.0f, 0.7f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK_NEAR(rms(sample.frames), 0.7 / std::sqrt(2.0), 0.01);
+
+  // Longer than the limit: cut after kMaxSampleSeconds.
+  const int kLongFrames = static_cast<int>((kMaxSampleSeconds + 2.0f) * 8000);
+  wav = MakeWav(1, 1, 8000, 8, std::vector<float>(kLongFrames, 0.1f));
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.truncated);
+  CHECK(sample.frames.size() == static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+
+  // A file cut short keeps the frames it has.
+  wav = MakeWav(1, 1, 48000, 16, std::vector<float>(1000, 0.3f));
+  wav.resize(wav.size() - 2 * 400 - 1);
+  CHECK(DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(sample.frames.size() == 599);
+
+  // Errors.
+  const uint8_t kText[] = "hello, this is not a wave file";
+  CHECK(!DecodeWav(kText, sizeof(kText), &sample, &error));
+  CHECK(error == "not a WAV file");
+  wav = MakeWav(2, 1, 48000, 16, ramp);  // ADPCM.
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 48000, 12, ramp);
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 4000, 16, ramp);
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 0, 48000, 16, {});
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  wav = MakeWav(1, 1, 48000, 16, ramp);
+  wav.resize(36);  // Format chunk, no data chunk.
+  CHECK(!DecodeWav(wav.data(), wav.size(), &sample, &error));
+  CHECK(error == "no audio data");
+  CHECK(!LoadWav("/nonexistent/drumfake.wav", &sample, &error));
+
+  // Damaged files never crash: every truncation, and random corruption.
+  wav = MakeWav(0xfffe, 2, 44100, 24, Sine(300, 2, 44100, 440.0f, 0.5f), extra);
+  for (size_t length = 0; length <= wav.size(); ++length) {
+    DecodeWav(wav.data(), length, &sample, &error);
+  }
+  uint32_t seed = 12345;
+  for (int i = 0; i < 2000; ++i) {
+    std::vector<uint8_t> damaged = wav;
+    for (int k = 0; k < 4; ++k) {
+      seed = seed * 1664525u + 1013904223u;
+      damaged[(seed >> 8) % damaged.size()] = static_cast<uint8_t>(seed >> 24);
+    }
+    if (DecodeWav(damaged.data(), damaged.size(), &sample, &error)) {
+      CHECK(sample.frames.size() <= static_cast<size_t>(kMaxSampleSeconds * kSampleFileRate));
+    }
+  }
 }
 
 void TestPatternExtend() {
@@ -1612,6 +1818,7 @@ int main() {
   TestChoke();
   TestVary();
   TestPatternExtend();
+  TestWavDecoding();
   TestGridsPlayback();
   TestProjectRoundTrip();
   TestFullRender();
