@@ -920,11 +920,11 @@ void Faceplate::DrawTopLeft() {
       (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
   if (shift_held_) {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
-           colors::kLabelDim, "Steps 1-5: division   13: metronome   14: At End   A-D: extend",
+           colors::kLabelDim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
            false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           colors::kLabelDim, shift_latched_ ? "15: follow   16: poly   pad: select   Spice: vary   (locked)"
-                          : "15: follow   16: poly   pad: select   Spice: vary", false);
+           colors::kLabelDim, shift_latched_ ? "pad: select   A-D: extend   Spice: vary   Steps: live   (locked)"
+                          : "pad: select   A-D: extend   Spice: vary   Steps: live", false);
   }
   UpdateRepeat();
 }
@@ -1591,6 +1591,14 @@ void Faceplate::DrawSequencer() {
                       colors::kAccent).pressed) {
     patterns_mode_ = false;
     song_edit_ = false;
+    // Shift + Steps: the steps follow the playing page again (after a page was
+    // chosen by hand), turning Follow back on if it was off.
+    if (shift_held_) {
+      shift_used_ = true;
+      follow_enabled_ = true;
+      follow_playhead_ = true;
+      Toast("Steps follow the playing page");
+    }
   }
 
   // During playback the steps follow the page playing on the selected track,

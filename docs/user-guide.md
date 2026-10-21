@@ -29,7 +29,8 @@ edit of the current pattern, up to 32 times.
 
 A pattern has up to 64 steps, shown 16 at a time: pages **A|16**, **B|32**, **C|48**, **D|64**.
 During playback the steps follow the page played by the selected track. Choosing a page by
-hand freezes the display until the next Play.
+hand freezes the display until the next Play, or until *Shift* + *Steps*, which makes the steps
+follow the playing page again (and turns Follow back on if it was off).
 
 - **Length.** *Edit* → *Length* sets the pattern length. *Last Step* held, then a step or a
   page, sets it without opening Edit.
