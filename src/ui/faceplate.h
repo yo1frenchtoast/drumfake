@@ -161,6 +161,11 @@ class Faceplate {
   int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
+  // Hold: the FX, Looper or Macros pad keeps acting at this position after it is
+  // released (lit mode button pressed while touching the pad, or right click on it).
+  bool xy_held_ = false;
+  float xy_hold_x_ = 0.5f;
+  float xy_hold_y_ = 0.5f;
   bool long_press_fired_ = false;  // The held step already got its long press.
   // Erase held (button or Delete key): touching a knob then clears that
   // parameter's locks on the track, instead of the usual Erase on release.

@@ -952,6 +952,8 @@ void Faceplate::DrawXySection() {
     if (m.mode == XY_GRIDS && engine_->grids_enabled) {
       lit = true;
       led = colors::kAccent;
+    } else if (lit && xy_held_) {
+      led = colors::kAmber;
     }
     Interaction in = Button(c, m.id, ImVec2(x0, layout::kFunctionRowY0),
                             ImVec2(x0 + w, layout::kFunctionRowY1), m.label, "", m.icon,
@@ -960,6 +962,19 @@ void Faceplate::DrawXySection() {
       if (m.mode == XY_GRIDS && engine_->xy_mode == XY_GRIDS) {
         engine_->grids_enabled = !engine_->grids_enabled;
         Toast(engine_->grids_enabled ? "Grids on (tracks A-C)" : "Grids off");
+      } else if (m.mode == engine_->xy_mode && !matrix_open_) {
+        // The lit button holds the pad where it is touched, or releases the hold.
+        if (engine_->xy_touched && !xy_held_) {
+          xy_held_ = true;
+          xy_hold_x_ = engine_->xy_x;
+          xy_hold_y_ = engine_->xy_y;
+          Toast(std::string(m.label) + " held");
+        } else if (xy_held_) {
+          xy_held_ = false;
+          Toast(std::string(m.label) + " released");
+        }
+      } else {
+        xy_held_ = false;
       }
       engine_->xy_mode = m.mode;
       matrix_open_ = false;
@@ -975,6 +990,7 @@ void Faceplate::DrawXySection() {
       matrix_open_ = !matrix_open_;
       engine_->xy_touched = false;
       xy_touched_ = false;
+      xy_held_ = false;
     }
   }
 
@@ -1021,15 +1037,37 @@ void Faceplate::DrawXySection() {
     x = engine_->grids_x;
     y = engine_->grids_y;
   } else {
-    engine_->xy_touched = active;
+    // A right click holds the pad at the clicked point (the mouse cannot press the
+    // mode button while it touches the pad), or releases the hold.
+    if (in.right_clicked) {
+      xy_held_ = !xy_held_;
+      ImVec2 a = c.P(min);
+      ImVec2 b = c.P(max);
+      xy_hold_x_ = ImClamp((io.MousePos.x - a.x) / (b.x - a.x), 0.0f, 1.0f);
+      xy_hold_y_ = ImClamp(1.0f - (io.MousePos.y - a.y) / (b.y - a.y), 0.0f, 1.0f);
+      Toast(xy_held_ ? "Pad held" : "Pad released");
+    }
+    if (xy_held_) {
+      // Touching a held pad moves the held point.
+      if (active) {
+        xy_hold_x_ = x;
+        xy_hold_y_ = y;
+      }
+      x = xy_hold_x_;
+      y = xy_hold_y_;
+    }
+    engine_->xy_touched = active || xy_held_;
     engine_->xy_x = x;
     engine_->xy_y = y;
   }
 
-  bool show_cursor = grids_mode || active;
+  bool show_cursor = grids_mode || active || xy_held_;
   if (show_cursor) {
     ImVec2 p(min.x + x * (max.x - min.x), max.y - y * (max.y - min.y));
     ImU32 color = grids_mode && !engine_->grids_enabled ? colors::kLabelDim : colors::kAccent;
+    if (xy_held_ && !grids_mode) {
+      color = colors::kAmber;
+    }
     dl->AddLine(c.P(p.x, min.y), c.P(p.x, max.y), WithAlpha(color, 70), c.S(1));
     dl->AddLine(c.P(min.x, p.y), c.P(max.x, p.y), WithAlpha(color, 70), c.S(1));
     dl->AddCircleFilled(c.P(p), c.S(10), WithAlpha(color, 80));
@@ -1047,12 +1085,16 @@ void Faceplate::DrawXySection() {
       break;
     case XY_LOOPER: {
       static const char* const kLoopNames[] = { "1/32", "1/16", "1/8", "1/4", "1/2", "1 bar" };
-      snprintf(text, sizeof(text), "LOOPER  %s", active ? kLoopNames[Discrete(y, 6)] : "touch to loop");
+      snprintf(text, sizeof(text), "LOOPER  %s",
+               active || xy_held_ ? kLoopNames[Discrete(y, 6)] : "touch to loop");
       break;
     }
     case XY_MACROS:
       snprintf(text, sizeof(text), "MACROS  (Assign page)");
       break;
+  }
+  if (xy_held_ && !grids_mode) {
+    strncat(text, "  HOLD", sizeof(text) - strlen(text) - 1);
   }
   c.Text(min.x + 10, max.y - 18, 9, colors::kLabelDim, text, false);
 }
@@ -2360,8 +2402,20 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
   if (ImGui::Checkbox("Play song", &song)) {
     engine_->SetSongMode(song);
   }
-  ImGui::SetCursorScreenPos(c.P(x1, min.y + 62));
+  ImGui::SetCursorScreenPos(c.P(x0 + 78, min.y + 62));
   ImGui::Checkbox("Metronome", &engine_->metronome);
+  // Vary: variations while the pattern plays, redrawn by Dice.
+  ImGui::SetCursorScreenPos(c.P(x1, min.y + 62));
+  ImGui::SetNextItemWidth(column - c.S(44));
+  float vary = p.vary * 100.0f;
+  if (ImGui::SliderFloat("##vary", &vary, 0.0f, 100.0f, vary > 0.0f ? "Vary %.0f%%" : "Vary off")) {
+    p.vary = vary / 100.0f;
+  }
+  ImGui::SetCursorScreenPos(c.P(x1 + (max.x - min.x - 20) * 0.5f - 40, min.y + 62));
+  if (ImGui::Button("Dice", ImVec2(c.S(40), 0))) {
+    engine_->DiceVary();
+    Toast(p.vary > 0.0f ? "New variations" : "New variations (raise Vary to hear them)");
+  }
   ImGui::PopItemWidth();
 
   ImGui::SetCursorScreenPos(c.P(x0, min.y + 86));

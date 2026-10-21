@@ -77,6 +77,8 @@ void Pattern::Clear() {
   swing = 0.5f;
   division = kDefaultDivision;
   poly = false;
+  vary = 0.0f;
+  vary_seed = 1;
 }
 
 void Pattern::CopyPages(int source, int destination) {

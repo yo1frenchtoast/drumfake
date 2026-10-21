@@ -66,6 +66,7 @@ void Engine::Init() {
     track_peak[i] = 0.0f;
     track_gate[i] = false;
     last_trigger_sample[i] = -1;
+    last_trigger_velocity[i] = 0.0f;
     active_lock_mask[i] = 0;
     skip_step_[i] = -1;
     for (int p = 0; p < kNumLockable; ++p) {
@@ -390,6 +391,59 @@ bool Engine::RollProbability(int64_t step, int track, float probability) const {
   return static_cast<float>(h) / 4294967296.0f < probability;
 }
 
+bool Engine::VaryStep(const Pattern& pattern, int track, int s, const Step& stored,
+                      Step* out) const {
+  const float amount = pattern.vary;
+  // One draw per step, track and aspect: the variation repeats on every loop.
+  auto draw = [&](int aspect) {
+    uint64_t key = (static_cast<uint64_t>(pattern.vary_seed) << 32) ^
+        (static_cast<uint64_t>(track * kMaxSteps + s) * 8 + aspect);
+    return static_cast<float>(Hash(key)) / 4294967296.0f;
+  };
+  const TrackSequence& sequence = pattern.tracks[track];
+  if (!stored.on) {
+    // Ghost note: a soft echo of the previous hit of the track (none on an empty track).
+    if (draw(0) >= amount * 0.15f) {
+      return false;
+    }
+    const int length = pattern.track_length(track);
+    for (int back = 1; back < length; ++back) {
+      const Step& previous = sequence.steps[(s - back + length) % length];
+      if (previous.on) {
+        *out = previous;
+        out->velocity = previous.velocity * (0.25f + 0.2f * draw(1));
+        out->probability = 1.0f;
+        out->ratchets = 1;
+        out->micro = 0.0f;
+        out->slide = false;
+        return true;
+      }
+    }
+    return false;
+  }
+  if (draw(0) < amount * 0.3f) {
+    return false;  // Dropped hit.
+  }
+  *out = stored;
+  out->velocity = stored.velocity * (1.0f - 0.6f * amount * draw(1));
+  out->micro = std::clamp(stored.micro + amount * 0.08f * (2.0f * draw(2) - 1.0f),
+                          -kMaxMicroTiming, kMaxMicroTiming);
+  if (stored.ratchets == 1 && draw(3) < amount * 0.12f) {
+    out->ratchets = 2;
+  }
+  // Shorter decay, on the step's own lock when it has one.
+  float decay = stored.has_lock(P_DECAY) ? stored.locks[P_DECAY]
+                                         : project_->sounds[track].params[P_DECAY];
+  out->locks[P_DECAY] = decay * (1.0f - 0.5f * amount * draw(4));
+  return true;
+}
+
+void Engine::DiceVary() {
+  Pattern& pattern = project_->patterns[current_pattern_];
+  pattern.vary_seed = Hash((static_cast<uint64_t>(pattern.vary_seed) << 32) ^
+                           static_cast<uint64_t>(sample_counter_)) | 1;
+}
+
 int Engine::TrackStep(const Pattern& pattern, int track, int64_t n) const {
   // In poly mode, tracks only realign on Play and on pattern changes; they
   // keep cycling on their own length when the pattern loops.
@@ -544,6 +598,7 @@ void Engine::FireTrack(int track, float velocity, int note, const float* locks,
   mods_[track].Trigger();
   trigger_count[track].fetch_add(1, std::memory_order_relaxed);
   last_trigger_sample[track] = sample_counter_;
+  last_trigger_velocity[track].store(velocity, std::memory_order_relaxed);
 }
 
 void Engine::FireChord(int track, float velocity, int note, const int8_t* extras, int count,
@@ -629,10 +684,19 @@ void Engine::ProcessWindow(double start, double end, bool allow_pattern_change) 
         if (base_in_window) {
           track_step[t] = s;
         }
-        const Step& step = pattern.tracks[t].steps[s];
-        if (!step.on || !TrackAudible(t)) {
+        const Step& stored = pattern.tracks[t].steps[s];
+        Step varied;
+        if (!TrackAudible(t)) {
           continue;
         }
+        if (pattern.vary > 0.0f) {
+          if (!VaryStep(pattern, t, s, stored, &varied)) {
+            continue;
+          }
+        } else if (!stored.on) {
+          continue;
+        }
+        const Step& step = pattern.vary > 0.0f ? varied : stored;
         if (!RollProbability(n, t, step.probability)) {
           continue;
         }

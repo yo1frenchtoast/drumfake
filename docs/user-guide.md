@@ -96,6 +96,21 @@ the pattern.
   pattern change. Without Poly, short tracks restart with the pattern.
 - **Tempo**: the *Tempo* knob, *TAP*, or *Edit* → *BPM*. With *Follow MIDI clock* on, the tempo
   comes from the outside (the screen shows `EXT`).
+- **Vary**: *Edit* → *Vary*, per pattern. It changes the pattern as it plays, without writing
+  anything into the steps: hits get softer, some are dropped, soft ghost notes (an echo of the
+  previous hit of the track) appear on empty steps, the timing loosens a little, a few hits
+  become double ratchets, and decays get shorter. The amount sets how much of each, from off
+  to the full table below. The variations are drawn once and repeat on every loop, so the groove
+  stays a groove; **Dice** draws new ones. The amount and the draw are saved with the pattern.
+
+  | At 100% | |
+  |---|---|
+  | Velocity | down to 40% of the step's |
+  | Dropped hits | up to 30% of them |
+  | Ghost notes | on up to 15% of the empty steps (not on an empty track), at 25–45% of the velocity |
+  | Timing | ±8% of a step |
+  | Ratchets | up to 12% of the single hits play twice |
+  | Decay | down to half (the step's lock or the knob) |
 
 ## 3. Sound design
 
@@ -225,6 +240,12 @@ pad with the [modulation matrix](#modulation)):
 | **FX** | X = DJ filter (low pass on the left, high pass on the right), Y = delay throw. |
 | **Looper** | Loops the sequencer for as long as you touch the pad. Y sets the length. |
 | **Macros** | Moves the two parameters assigned on the *Assign* page. |
+
+**Hold.** FX, Looper and Macros only act while you touch the pad. To keep one going, press its
+lit mode button while a finger is on the pad (with a mouse: right click the pad where you want
+it). The point turns amber and *HOLD* shows on the pad: it stays there after you let go, and
+touching the pad moves it. Press the lit button again (or right click the pad) to release it;
+changing mode or opening the Matrix also releases it. A held Looper keeps looping.
 
 ### Pads 1–8
 

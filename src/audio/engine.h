@@ -133,6 +133,9 @@ class Engine {
   float xy_x = 0.5f;
   float xy_y = 0.5f;
 
+  // Vary: draws new variations for the current pattern (the "Dice").
+  void DiceVary();
+
   // Writes one bar of the current Grids output into tracks A-C.
   // Loads `kit` (the 8 sounds) as the sounds playing; with `all_patterns`,
   // also as the kit of every pattern.
@@ -166,8 +169,9 @@ class Engine {
   std::atomic<uint32_t> active_lock_mask[kNumTracks];
   std::atomic<float> effective_param[kNumTracks][kNumLockable];
 
-  // For tests: sample time of the last trigger on each track.
+  // For tests: sample time and velocity of the last trigger on each track.
   std::atomic<int64_t> last_trigger_sample[kNumTracks];
+  std::atomic<float> last_trigger_velocity[kNumTracks];
 
  private:
   void RenderBlock(float* out_l, float* out_r);
@@ -187,6 +191,9 @@ class Engine {
   void RenderClick(float* out_l, float* out_r);
   int TrackStep(const Pattern& pattern, int track, int64_t n) const;
   bool RollProbability(int64_t step, int track, float probability) const;
+  // Applies the pattern's Vary to step `s` of `track` (`stored`). Returns false
+  // when the step does not play; otherwise `out` is the step to play.
+  bool VaryStep(const Pattern& pattern, int track, int s, const Step& stored, Step* out) const;
   // Length of a step of the current pattern, in 16th notes (its division),
   // and durations in samples.
   double StepLength() const;

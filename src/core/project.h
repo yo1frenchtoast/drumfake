@@ -79,6 +79,12 @@ struct Pattern {
   // Polyrhythm: tracks with their own length keep cycling across pattern
   // loops instead of restarting with the pattern.
   bool poly;
+  // Vary: variations applied while the pattern plays, never written into its
+  // steps (velocity, dropped and ghost hits, timing, extra ratchets, decay).
+  // `vary` is the amount (0 = none); each step's variation is drawn from
+  // `vary_seed`, so it is the same on every loop until the next Dice.
+  float vary;
+  uint32_t vary_seed;
 
   void Clear();
   bool IsEmpty() const;

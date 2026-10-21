@@ -146,6 +146,8 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
       { "length", pattern.length },
       { "swing", pattern.swing },
       { "poly", pattern.poly },
+      { "vary", pattern.vary },
+      { "vary_seed", pattern.vary_seed },
       { "division", pattern.division },
       { "kit", KitToJson(pattern.kit) },
     };
@@ -247,6 +249,8 @@ bool LoadProject(const std::string& path, Project* project, std::string* error) 
         Pattern& pattern = loaded.patterns[i];
         pattern.length = std::max(1, std::min(kMaxSteps, jp.value("length", 16)));
         pattern.swing = std::max(0.5f, std::min(0.75f, jp.value("swing", 0.5f)));
+        pattern.vary = Clamp01(jp.value("vary", 0.0f));
+        pattern.vary_seed = jp.value("vary_seed", 1u);
         pattern.poly = jp.value("poly", false);
         pattern.division = std::max(0, std::min(kNumDivisions - 1,
                                                 jp.value("division", kDefaultDivision)));
