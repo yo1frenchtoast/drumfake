@@ -100,6 +100,15 @@ void Pattern::Extend(int track, int new_length) {
   }
 }
 
+void Pattern::SetLength(int track, int new_length) {
+  new_length = std::clamp(new_length, 1, kMaxSteps);
+  if (track < 0) {
+    length = new_length;
+  } else {
+    tracks[track].length = tracks[track].length == new_length ? 0 : new_length;
+  }
+}
+
 void Pattern::CopyPages(int source, int destination) {
   if (destination > source) {
     int period = (source + 1) * kStepsPerPage;

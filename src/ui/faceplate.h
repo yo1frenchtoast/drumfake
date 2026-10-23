@@ -107,6 +107,9 @@ class Faceplate {
   // `destination` (or copies one page onto an earlier one).
   void CopyPages(int source, int destination);
   void Erase();
+  // Last Step + step or page: the length of `track` (Poly), or of the pattern
+  // (`track` < 0), with a message.
+  void SetLastStep(int track, int length);
   // Closes Edit, Browse and the other screens, and releases the selected step.
   void GoBack();
   // Arms the snapshot of all sounds and settings, or restores the armed one.

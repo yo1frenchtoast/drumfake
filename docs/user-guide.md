@@ -47,7 +47,9 @@ hand freezes the display until the next Play, or until *Shift* + *Steps*, which 
 follow the playing page again (and turns Follow back on if it was off).
 
 - **Length.** *Edit* → *Length* sets the pattern length. *Last Step* held, then a step or a
-  page, sets it without opening Edit.
+  page, sets it without opening Edit: the new steps are empty (to repeat the pattern instead,
+  see *Extending*). With **Poly** on, in the *Steps* view, it sets the selected track's length
+  only; the same length again makes the track follow the pattern.
 - **Extending.** *Shift* + a page sets the length to 16, 32, 48 or 64 steps and, when it grows,
   repeats what is already there (locks included): a 16-step pattern and
   *Shift* + `B|32` gives the same 16 steps twice. A length that is not a whole page repeats on its

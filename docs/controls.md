@@ -63,7 +63,7 @@ These work with the button held down.
 | Shift | Mute or Solo | Clear all mutes or solos |
 | Shift | Panel (or right click, long press) | Arm the snapshot of all sounds and settings; while it is armed, a plain press of Panel restores it |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
-| Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |
+| Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64, with empty steps (Poly, Steps view: the selected track's) |
 | Shift | Steps | The steps follow the playing page again (after a page was chosen by hand) |
 | Shift | page A–D | Extend to 16, 32, 48 or 64 steps by repeating the pattern (Poly: the selected track in Steps view, the whole pattern in Patterns view) |
 | Copy | source page, then destination page | Copy a page, or repeat it up to the destination |

@@ -102,6 +102,11 @@ struct Pattern {
   // (tracks with their own length keep it); otherwise it is the length of that
   // track alone.
   void Extend(int track, int new_length);
+  // Last Step: sets the length to `new_length` steps without repeating (the
+  // steps past the old length play as they are). With `track` < 0 it is the
+  // pattern's length; otherwise the length of that track alone, and setting it
+  // to its current length again makes the track follow the pattern's.
+  void SetLength(int track, int new_length);
   int track_length(int track) const {
     int l = tracks[track].length;
     return l > 0 ? l : length;

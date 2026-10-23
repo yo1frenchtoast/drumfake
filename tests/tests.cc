@@ -1429,6 +1429,34 @@ void TestPatternExtend() {
   CHECK(!p.tracks[5].steps[7].on);
 }
 
+void TestPatternSetLength() {
+  Pattern p;
+  p.Clear();
+  p.tracks[0].steps[2].on = true;
+
+  // The pattern's length: the tracks that follow it grow with empty steps.
+  p.SetLength(-1, 32);
+  CHECK(p.length == 32);
+  CHECK(p.track_length(0) == 32 && p.track_length(4) == 32);
+  CHECK(!p.tracks[0].steps[18].on);
+
+  // One track (Poly, Last Step + page): the pattern and the other tracks keep theirs.
+  p.Clear();
+  p.poly = true;
+  p.SetLength(2, 32);
+  CHECK(p.length == 16);
+  CHECK(p.track_length(2) == 32);
+  CHECK(p.track_length(0) == 16 && p.track_length(7) == 16);
+  // The same length again: the track follows the pattern.
+  p.SetLength(2, 32);
+  CHECK(p.tracks[2].length == 0 && p.track_length(2) == 16);
+  // Out of range lengths are clamped.
+  p.SetLength(-1, 0);
+  CHECK(p.length == 1);
+  p.SetLength(1, kMaxSteps + 10);
+  CHECK(p.tracks[1].length == kMaxSteps);
+}
+
 void TestTrackLengthAndPatternChain() {
   auto engine = MakeEngine();
   Project& project = engine->project();
@@ -2689,6 +2717,7 @@ int main() {
   TestChoke();
   TestVary();
   TestPatternExtend();
+  TestPatternSetLength();
   TestWavDecoding();
   TestEngineCountMigration();
   TestSamplePool();

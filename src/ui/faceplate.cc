@@ -159,6 +159,17 @@ std::string TrackName(int track) {
 
 }  // namespace
 
+void Faceplate::SetLastStep(int track, int length) {
+  Pattern& p = pattern();
+  p.SetLength(track, length);
+  if (track < 0) {
+    Toast("Pattern: " + std::to_string(p.length) + " steps");
+  } else {
+    Toast(TrackName(track) + ": " + std::to_string(p.track_length(track)) + " steps" +
+          (p.tracks[track].length == 0 ? " (pattern)" : ""));
+  }
+}
+
 void Faceplate::TrackPadDown(int track) {
   // Held buttons turn the pads into targets.
   if (erase_.held) {
@@ -1847,10 +1858,10 @@ void Faceplate::DrawSequencer() {
     ShortcutHint("Z / X");
     if (page.pressed) {
       if (last_step_.held) {
+        // Like Last Step + step: in Poly mode and Steps view, the selected track's.
         PushUndo();
-        p.length = (i + 1) * kStepsPerPage;
         last_step_.Use();
-        Toast("Pattern length: " + std::to_string(p.length) + " steps");
+        SetLastStep(p.poly && !patterns_mode_ ? track : -1, (i + 1) * kStepsPerPage);
       } else if (shift_.held) {
         shift_.Use();
         PushUndo();
@@ -2064,17 +2075,7 @@ void Faceplate::DrawSequencer() {
       if (in.pressed) {
         PushUndo();
         last_step_.Use();
-        char message[64];
-        if (p.poly) {
-          TrackSequence& sequence = p.tracks[track];
-          sequence.length = sequence.length == index + 1 ? 0 : index + 1;
-          snprintf(message, sizeof(message), "Track %c: %d steps%s", 'A' + track,
-                   p.track_length(track), sequence.length == 0 ? " (pattern)" : "");
-        } else {
-          p.length = index + 1;
-          snprintf(message, sizeof(message), "Pattern: %d steps", p.length);
-        }
-        Toast(message);
+        SetLastStep(p.poly ? track : -1, index + 1);
       }
       continue;
     }
