@@ -85,6 +85,9 @@ struct Interaction {
   bool double_clicked = false;
   bool touch = false;          // Driven by a finger rather than a mouse.
   bool long_pressed = false;   // Finger held still for 0.5 s (this frame).
+  // A plain press: on the way down with a mouse; with a finger, when it lifts,
+  // unless it was held for a long press.
+  bool tapped = false;
   bool touch_active = false;   // Knob turned by a finger.
 };
 

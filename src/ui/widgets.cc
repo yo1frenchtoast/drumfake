@@ -95,6 +95,16 @@ Interaction HitBox(const Canvas& c, const char* id, ImVec2 min, ImVec2 max,
       }
     }
   }
+  // Whether this press already gave a long press, kept in the window's storage.
+  ImGuiStorage* storage = ImGui::GetStateStorage();
+  const ImGuiID item = ImGui::GetItemID();
+  if (result.pressed) {
+    storage->SetBool(item, false);
+  }
+  if (result.long_pressed) {
+    storage->SetBool(item, true);
+  }
+  result.tapped = result.touch ? result.clicked && !storage->GetBool(item) : result.pressed;
   return result;
 }
 

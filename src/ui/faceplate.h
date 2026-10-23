@@ -41,6 +41,22 @@ class Faceplate {
                     VIEW_SLICES };
   enum ClipboardKind { CLIP_NONE, CLIP_STEP, CLIP_TRACK, CLIP_PATTERN };
 
+  // A button that changes what the other controls do while it is held (Shift,
+  // Last Step, Copy, Erase, Solo, Mute). `used` notes that it took part in a
+  // combination, so that releasing it does not also do its own action. A
+  // latchable one is locked by a right click or a long press, until a
+  // combination is used or it is pressed again.
+  struct HoldButton {
+    bool held = false;
+    bool used = false;
+    bool latched = false;
+
+    void Use() { used = true; }
+    // Once per frame, with the button and a key that also holds it. Returns
+    // true when it is released without having been used (a tap).
+    bool Update(const Interaction& in, bool key_down, bool latchable);
+  };
+
   void DrawChrome();
   void DrawTopLeft();
   void DrawXySection();
@@ -86,6 +102,12 @@ class Faceplate {
   // `destination` (or copies one page onto an earlier one).
   void CopyPages(int source, int destination);
   void Erase();
+  // Closes Edit, Browse and the other screens, and releases the selected step.
+  void GoBack();
+  // Arms the snapshot of all sounds and settings, or restores the armed one.
+  void ToggleSnapshot();
+  // Shift + pad 1-8 in Keys and Chords modes: this note of the scale becomes the root.
+  void SetRootFromPad(int pad);
   void Undo();
   void PushUndo();
   void Save();
@@ -212,7 +234,6 @@ class Faceplate {
   bool track_pad_touched_[kNumTracks] = {};
   bool lower_pad_touched_[8] = {};
   bool xy_touched_ = false;
-  bool panel_long_fired_ = false;  // The finger on Panel has armed (or restored) the snapshot.
   bool matrix_open_ = false;  // The Perform pad shows the modulation matrix.
   bool vary_open_ = false;    // The Perform pad sets the pattern's Vary (Shift + Grids).
   int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
@@ -223,32 +244,23 @@ class Faceplate {
   bool xy_held_ = false;
   float xy_hold_x_ = 0.5f;
   float xy_hold_y_ = 0.5f;
-  bool long_press_fired_ = false;  // The held step already got its long press.
-  // Erase held (button or Delete key): touching a knob then clears that
-  // parameter's locks on the track, instead of the usual Erase on release.
-  bool shift_held_ = false;
-  bool shift_latched_ = false;  // Shift locked by a right click, until a combination.
-  bool shift_used_ = false;     // A Shift combination was used this frame.
+  // Shift (or Alt), Last Step (or L), Copy, Erase (or Delete): Erase held makes
+  // a knob clear that parameter's locks on the track, instead of the usual Erase
+  // on release.
+  HoldButton shift_;
+  HoldButton last_step_;
+  HoldButton copy_;
+  HoldButton erase_;
   bool step_held_by_finger_ = false;  // held_step_ lasts while the finger does.
-  bool erase_held_ = false;
-  bool erase_used_ = false;
-  // Last Step and Copy held, and whether a page button was used meanwhile.
-  bool last_step_held_ = false;
-  bool last_step_used_ = false;
-  bool last_step_latched_ = false;  // Last Step locked by a right click.
-  bool copy_held_ = false;
-  bool copy_used_ = false;
   int copy_source_page_ = -1;
   int copy_source_track_ = -1;
   // Erase + pads while playing: the pads held, and whether the gesture's
   // undo point was taken.
   bool erase_pad_held_[kNumTracks] = {};
   bool erase_wiping_ = false;
-  // Mute and Solo held, and whether a pad was used meanwhile.
-  bool mute_held_ = false;
-  bool mute_used_ = false;
-  bool solo_held_ = false;
-  bool solo_used_ = false;
+  // Mute and Solo: held with pads, or tapped to latch mute_mode_ / solo_mode_.
+  HoldButton mute_;
+  HoldButton solo_;
   // The steps follow the page playing (Shift + 15), until a page is chosen
   // by hand.
   bool follow_enabled_ = true;

@@ -97,6 +97,43 @@ void Faceplate::Toast(const std::string& message) {
 
 // --- Actions -------------------------------------------------------------------
 
+bool Faceplate::HoldButton::Update(const Interaction& in, bool key_down, bool latchable) {
+  if (latchable) {
+    if (latched && used) {
+      latched = false;
+    }
+    if (in.pressed) {
+      latched = false;
+    }
+    if (in.right_clicked || in.long_pressed) {
+      latched = !latched;
+    }
+  }
+  const bool now = in.active || key_down || latched;
+  if (now && !held) {
+    used = false;
+  }
+  const bool tap = !now && held && !used;
+  held = now;
+  return tap;
+}
+
+void Faceplate::GoBack() {
+  view_ = VIEW_MAIN;
+  held_step_ = -1;
+  song_edit_ = false;
+}
+
+void Faceplate::ToggleSnapshot() {
+  if (engine_->snapshot_armed()) {
+    engine_->RestoreSnapshot();
+    Toast("Snapshot restored");
+  } else {
+    engine_->ArmSnapshot();
+    Toast("Snapshot armed: press Panel to restore it");
+  }
+}
+
 void Faceplate::TogglePlay() {
   if (engine_->playing()) {
     engine_->Stop();
@@ -114,12 +151,17 @@ const int kOctaveDownPad = 6;
 const int kOctaveUpPad = 7;
 const int kKeyScaleShortcuts[kNumTracks] = { 10, 0, 1, 2, 5, 6, 9, 8 };
 
+// "Track A" to "Track H", for the messages.
+std::string TrackName(int track) {
+  return std::string("Track ") + static_cast<char>('A' + track);
+}
+
 }  // namespace
 
 void Faceplate::TrackPadDown(int track) {
   // Held buttons turn the pads into targets.
-  if (erase_held_) {
-    erase_used_ = true;
+  if (erase_.held) {
+    erase_.Use();
     if (!engine_->playing()) {
       // Stopped: erase the whole track.
       PushUndo();
@@ -127,7 +169,7 @@ void Faceplate::TrackPadDown(int track) {
       int length = sequence.length;
       sequence.Clear();
       sequence.length = length;
-      Toast(std::string("Track ") + static_cast<char>('A' + track) + " erased");
+      Toast(TrackName(track) + " erased");
     } else {
       // Playing: erase the steps of this track as the playhead passes, as
       // long as the pad is held.
@@ -139,8 +181,8 @@ void Faceplate::TrackPadDown(int track) {
     }
     return;
   }
-  if (copy_held_) {
-    copy_used_ = true;
+  if (copy_.held) {
+    copy_.Use();
     if (copy_source_track_ < 0) {
       copy_source_track_ = track;
       Toast(std::string("Copy track ") + static_cast<char>('A' + track) +
@@ -148,30 +190,33 @@ void Faceplate::TrackPadDown(int track) {
     } else if (track != copy_source_track_) {
       PushUndo();
       pattern().tracks[track] = pattern().tracks[copy_source_track_];
-      Toast(std::string("Track ") + static_cast<char>('A' + copy_source_track_) +
+      Toast(TrackName(copy_source_track_) +
             " copied to " + static_cast<char>('A' + track));
       copy_source_track_ = -1;
     }
     return;
   }
-  if (mute_held_ || mute_mode_) {
+  if (mute_.held || mute_mode_) {
     engine_->muted[track] = !engine_->muted[track];
-    mute_used_ = mute_used_ || mute_held_;
+    if (mute_.held) {
+      mute_.Use();
+    }
     return;
   }
-  if (solo_held_ || solo_mode_) {
+  if (solo_.held || solo_mode_) {
     engine_->soloed[track] = !engine_->soloed[track];
-    solo_used_ = solo_used_ || solo_held_;
+    if (solo_.held) {
+      solo_.Use();
+    }
     return;
   }
   if (pad_mode_ == PADS_KEYS || pad_mode_ == PADS_CHORDS) {
-    // Keys mode, laid out like the BeatStep Pro: the pads A-F are the black keys (none
-    // between E and F), G and H the octave down and up. In Chords mode they choose the
-    // kind of chord. With Shift they choose the scale in both. A right click selects a
-    // track.
+    // Keys mode: the pads A-F are the black keys (none between E and F), G and H the
+    // octave down and up. In Chords mode they choose the kind of chord. With Shift they
+    // choose the scale in both. A right click selects a track.
     Project& project = engine_->project();
-    if (shift_held_) {
-      shift_used_ = true;
+    if (shift_.held) {
+      shift_.Use();
       project.key_scale = kKeyScaleShortcuts[track];
       Toast(std::string("Scale: ") + scale(project.key_scale).name);
     } else if (pad_mode_ == PADS_CHORDS) {
@@ -188,8 +233,8 @@ void Faceplate::TrackPadDown(int track) {
     return;
   }
   engine_->selected_track = track;
-  if (shift_held_) {
-    shift_used_ = true;
+  if (shift_.held) {
+    shift_.Use();
     return;  // Shift + pad: select without playing.
   }
   track_pad_held_[track] = true;
@@ -226,7 +271,7 @@ void Faceplate::LowerPadDown(int pad) {
       int preset = preset_bank_ * 8 + pad;
       ApplyPreset(preset, &project.sounds[track]);
       engine_->LiveTrigger(track, 0.8f, 0);
-      Toast(std::string("Track ") + static_cast<char>('A' + track) + ": " + preset_name(preset));
+      Toast(TrackName(track) + ": " + preset_name(preset));
       break;
     }
     case PADS_REPEATS:
@@ -234,26 +279,28 @@ void Faceplate::LowerPadDown(int pad) {
       UpdateRepeat();
       break;
     case PADS_CHORDS:
-      if (shift_held_) {
-        shift_used_ = true;
-        // Shift + pad: this note becomes the root of the keyboard and of the chords.
-        project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
-        Toast(std::string("Root: ") + PitchClassName(project.key_root));
+      if (shift_.held) {
+        SetRootFromPad(pad);
       } else {
         PlayChord(pad);
       }
       break;
     case PADS_KEYS:
-      if (shift_held_) {
-        shift_used_ = true;
-        // Shift + key: this key becomes the root (the keyboard is transposed).
-        project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
-        Toast(std::string("Root: ") + PitchClassName(project.key_root));
+      if (shift_.held) {
+        SetRootFromPad(pad);
       } else {
         PlayKey(KeyNote(pad));
       }
       break;
   }
+}
+
+void Faceplate::SetRootFromPad(int pad) {
+  // The keyboard is transposed, and the chords follow.
+  Project& project = engine_->project();
+  shift_.Use();
+  project.key_root = (project.key_root + ScaleDegree(project.key_scale, pad)) % 12;
+  Toast(std::string("Root: ") + PitchClassName(project.key_root));
 }
 
 const SampleSlices* Faceplate::TrackSlices() const {
@@ -293,7 +340,7 @@ void Faceplate::PlaySlice(int pad) {
   float locks[kNumLockable];
   std::fill(locks, locks + kNumLockable, NAN);
   locks[P_COLOUR] = colour;
-  engine_->LiveTriggerLocked(track, shift_held_ ? 1.0f : 0.8f, locks);
+  engine_->LiveTriggerLocked(track, ImGui::GetIO().KeyShift ? 1.0f : 0.8f, locks);
 }
 
 void Faceplate::LowerPadUp(int pad) {
@@ -388,7 +435,7 @@ void Faceplate::Copy() {
   } else {
     clip_track_ = pattern().tracks[track];
     clipboard_kind_ = CLIP_TRACK;
-    Toast(std::string("Track ") + static_cast<char>('A' + track) + " copied");
+    Toast(TrackName(track) + " copied");
   }
 }
 
@@ -446,7 +493,7 @@ void Faceplate::Erase() {
     int length = pattern().tracks[track].length;
     pattern().tracks[track].Clear();
     pattern().tracks[track].length = length;
-    Toast(std::string("Track ") + static_cast<char>('A' + track) + " erased");
+    Toast(TrackName(track) + " erased");
   }
 }
 
@@ -963,43 +1010,35 @@ void Faceplate::DrawTopLeft() {
   // Shift + button clears all solos or mutes.
   cell(3, &min, &max);
   Interaction solo = Button(c, "##solo", min, max, "Solo", "", ICON_NONE,
-                            solo_mode_ || solo_held_, theme().amber);
+                            solo_mode_ || solo_.held, theme().amber);
   cell(4, &min, &max);
   Interaction mute = Button(c, "##mute", min, max, "Mute", "", ICON_NONE,
-                            mute_mode_ || mute_held_, theme().accent);
-  auto hold_button = [&](const Interaction& in, bool* held, bool* used, bool* mode,
+                            mute_mode_ || mute_.held, theme().accent);
+  auto hold_button = [&](const Interaction& in, HoldButton* button, bool* mode,
                          bool* other_mode, bool* tracks, const char* cleared) {
-    if (in.pressed) {
-      *used = false;
-      if (shift_held_) {
-        shift_used_ = true;
-        std::fill(tracks, tracks + kNumTracks, false);
-        *used = true;
-        Toast(cleared);
-      }
-    }
-    if (in.right_clicked) {
-      std::fill(tracks, tracks + kNumTracks, false);
-      Toast(cleared);
-    }
-    if (!in.active && *held && !*used) {
+    if (button->Update(in, false, false)) {
       *mode = !*mode;
       *other_mode = false;
     }
-    *held = in.active;
+    if (in.pressed && shift_.held) {
+      shift_.Use();
+      button->Use();
+    }
+    if ((in.pressed && shift_.held) || in.right_clicked) {
+      std::fill(tracks, tracks + kNumTracks, false);
+      Toast(cleared);
+    }
   };
-  hold_button(solo, &solo_held_, &solo_used_, &solo_mode_, &mute_mode_, engine_->soloed,
-              "Solos cleared");
-  hold_button(mute, &mute_held_, &mute_used_, &mute_mode_, &solo_mode_, engine_->muted,
-              "Mutes cleared");
+  hold_button(solo, &solo_, &solo_mode_, &mute_mode_, engine_->soloed, "Solos cleared");
+  hold_button(mute, &mute_, &mute_mode_, &solo_mode_, engine_->muted, "Mutes cleared");
   cell(5, &min, &max);
   // Shift + Keys: Slices mode (pads play the slices of the track's sample);
   // Shift + Slices: the next 8 slices; Keys alone goes back to the keyboard.
   const bool slices_mode = pad_mode_ == PADS_SLICES;
   if (Button(c, "##keys", min, max, slices_mode ? "Slices" : "Keys", "", ICON_NONE,
              pad_mode_ == PADS_KEYS || slices_mode, theme().accent).pressed) {
-    if (shift_held_) {
-      shift_used_ = true;
+    if (shift_.held) {
+      shift_.Use();
       const SampleSlices* slices = TrackSlices();
       const int banks = slices && slices->count > 0 ? (slices->count + 7) / 8 : 1;
       slice_bank_ = slices_mode ? (slice_bank_ + 1) % banks : 0;
@@ -1019,27 +1058,17 @@ void Faceplate::DrawTopLeft() {
   // until a combination is used or Shift is pressed again.
   Interaction shift = Button(c, "##shift", ImVec2(layout::kLeftX0, kShiftY0),
                              ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
-                             ICON_NONE, shift_held_, theme().shift, false,
+                             ICON_NONE, shift_.held, theme().shift, false,
                              theme().shift_face);
-  if (shift_latched_ && shift_used_) {
-    shift_latched_ = false;
-  }
-  shift_used_ = false;
-  if (shift.pressed) {
-    shift_latched_ = false;
-  }
-  if (shift.right_clicked || shift.long_pressed) {
-    shift_latched_ = !shift_latched_;
-  }
   ImGuiIO& io = ImGui::GetIO();
-  shift_held_ = shift.active || shift_latched_ ||
-      (!io.WantTextInput && (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)));
-  if (shift_held_) {
+  shift_.Update(shift, !io.WantTextInput &&
+                (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)), true);
+  if (shift_.held) {
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f - 6, 8,
            theme().label_dim, "1-5: division  13: metronome  14: At End  15: follow  16: poly",
            false);
     c.Text(layout::kLeftX0 + w3 + 14, (kShiftY0 + layout::kPadRow2Y1) * 0.5f + 6, 8,
-           theme().label_dim, shift_latched_ ? "pad: select  A-D: extend  Grids: vary  Steps: live  Keys: slices  (locked)"
+           theme().label_dim, shift_.latched ? "pad: select  A-D: extend  Grids: vary  Steps: live  Keys: slices  (locked)"
                           : "pad: select  A-D: extend  Grids: vary  Steps: live  Keys: slices", false);
   }
   UpdateRepeat();
@@ -1080,18 +1109,18 @@ void Faceplate::DrawXySection() {
     Interaction in = Button(c, m.id, ImVec2(x0, layout::kFunctionRowY0),
                             ImVec2(x0 + w, layout::kFunctionRowY1),
                             vary_button ? "Vary" : m.label, "", m.icon, lit, led, true);
-    if (in.pressed && m.mode == XY_GRIDS && (shift_held_ || vary_open_)) {
+    if (in.pressed && m.mode == XY_GRIDS && (shift_.held || vary_open_)) {
       // Shift + Grids shows Vary on the pad; Shift + Vary draws new variations;
       // Grids alone goes back to the drum map.
-      if (!shift_held_) {
+      if (!shift_.held) {
         vary_open_ = false;
       } else if (vary_open_) {
-        shift_used_ = true;
+        shift_.Use();
         engine_->RedrawVary();
         Toast(pattern().vary > 0.0f ? "Vary: new variations"
                                     : "Vary: new variations (slide right to hear them)");
       } else {
-        shift_used_ = true;
+        shift_.Use();
         vary_open_ = true;
       }
       xy_held_ = false;
@@ -1452,9 +1481,7 @@ void Faceplate::DrawScreenSection() {
   if (Button(c, "##back", ImVec2(encoder_x - 30, layout::kTopY0 + 106),
              ImVec2(encoder_x + 30, layout::kTopY0 + 134), "", "", ICON_BACK,
              false, 0).pressed) {
-    view_ = VIEW_MAIN;
-    held_step_ = -1;
-    song_edit_ = false;
+    GoBack();
   }
 
   // Buttons under the screen, with the 2x4 page LEDs between Freeze and
@@ -1495,8 +1522,8 @@ void Faceplate::DrawScreenSection() {
       engine_->resample_state() == Engine::RESAMPLE_RECORDING;
   if (screen_button(1, "##freeze", "Freeze", ICON_FREEZE, engine_->clouds_freeze || resampling,
                     resampling ? theme().red : theme().accent).pressed) {
-    if (shift_held_) {
-      shift_used_ = true;
+    if (shift_.held) {
+      shift_.Use();
       if (resampling) {
         std::vector<int16_t> buffer;
         engine_->CancelResample(&buffer);
@@ -1584,7 +1611,7 @@ void Faceplate::DrawSoundKnobs() {
       for (int s = 0; s < length && !decor.automated; ++s) {
         decor.automated = pattern().tracks[track].steps[s].has_lock(param);
       }
-      if (erase_held_) {
+      if (erase_.held) {
         decor.badge_color = theme().red;  // What Erase + this knob would clear.
       }
     }
@@ -1595,13 +1622,13 @@ void Faceplate::DrawSoundKnobs() {
     bool changed = Knob(c, id, center, 22, &value, default_value, KNOB_SILVER, true,
                         locked ? theme().accent : theme().knob_ring, &in,
                         held ? nullptr : &decor);
-    changed = changed && !erase_held_;
+    changed = changed && !erase_.held;
     bool grabbed = in.pressed || in.touch_active;
-    if (erase_held_) {
+    if (erase_.held) {
       // Erase + knob: clear this parameter's locks on the whole track. The
       // knob itself does not move.
       if (grabbed && param >= 0 && param < kNumLockable) {
-        erase_used_ = true;
+        erase_.Use();
         if (decor.automated) {
           PushUndo();
           int cleared = pattern().tracks[track].ClearLocks(param);
@@ -1743,8 +1770,8 @@ void Faceplate::DrawSequencer() {
     song_edit_ = false;
     // Shift + Steps: the steps follow the playing page again (after a page was
     // chosen by hand), turning Follow back on if it was off.
-    if (shift_held_) {
-      shift_used_ = true;
+    if (shift_.held) {
+      shift_.Use();
       follow_enabled_ = true;
       follow_playhead_ = true;
       Toast("Steps follow the playing page");
@@ -1759,7 +1786,7 @@ void Faceplate::DrawSequencer() {
   was_playing_ = engine_->playing();
   int track_step = engine_->track_step[track].load();
   if (engine_->playing() && follow_enabled_ && follow_playhead_ && track_step >= 0 &&
-      held_step_ < 0 && !last_step_held_ && !shift_held_ && !patterns_mode_ && !song_edit_) {
+      held_step_ < 0 && !last_step_.held && !shift_.held && !patterns_mode_ && !song_edit_) {
     view_page_ = track_step / kStepsPerPage;
   }
 
@@ -1773,28 +1800,28 @@ void Faceplate::DrawSequencer() {
     char id[16];
     snprintf(id, sizeof(id), "##page%d", i);
     bool in_pattern = i * kStepsPerPage < std::max(p.length, p.track_length(track)) ||
-        last_step_held_ || copy_held_ || shift_held_;
+        last_step_.held || copy_.held || shift_.held;
     ImU32 color = i == view_page_ ? theme().accent
         : (i == play_page ? theme().amber : theme().label_dim);
     bool lit = in_pattern && (i == view_page_ || i == play_page);
-    if (copy_held_ && i == copy_source_page_) {
+    if (copy_.held && i == copy_source_page_) {
       lit = true;
       color = theme().amber;
     }
     if (function_button(2 + i, id, kPageLabels[i], lit, color).pressed) {
-      if (last_step_held_) {
+      if (last_step_.held) {
         PushUndo();
         p.length = (i + 1) * kStepsPerPage;
-        last_step_used_ = true;
+        last_step_.Use();
         Toast("Pattern length: " + std::to_string(p.length) + " steps");
-      } else if (shift_held_) {
-        shift_used_ = true;
+      } else if (shift_.held) {
+        shift_.Use();
         PushUndo();
         const int new_length = (i + 1) * kStepsPerPage;
         if (p.poly && !patterns_mode_) {
           const int old_length = p.track_length(track);
           p.Extend(track, new_length);
-          Toast(std::string("Track ") + static_cast<char>('A' + track) + ": " +
+          Toast(TrackName(track) + ": " +
                 std::to_string(old_length) + " > " + std::to_string(new_length) + " steps");
         } else {
           const int old_length = p.length;
@@ -1802,8 +1829,8 @@ void Faceplate::DrawSequencer() {
           Toast("Pattern: " + std::to_string(old_length) + " > " +
                 std::to_string(new_length) + " steps");
         }
-      } else if (copy_held_) {
-        copy_used_ = true;
+      } else if (copy_.held) {
+        copy_.Use();
         if (copy_source_page_ < 0) {
           copy_source_page_ = i;
           Toast(std::string("Copy from ") + kPageLabels[i] + ": press the destination");
@@ -1830,28 +1857,14 @@ void Faceplate::DrawSequencer() {
   // Last Step (or L on the keyboard), held: the steps show the length and
   // pressing one sets the last step (of the pattern, or of the selected
   // track in Poly mode); a page button sets it to 16, 32, 48 or 64.
-  Interaction last = function_button(8, "##last", "Last Step", last_step_held_,
+  Interaction last = function_button(8, "##last", "Last Step", last_step_.held,
                                      theme().accent);
   // A right click (or a long press) locks it, until a step or a page is used or the
   // button is pressed again.
-  if (last_step_latched_ && last_step_used_) {
-    last_step_latched_ = false;
-  }
-  if (last.pressed) {
-    last_step_latched_ = false;
-  }
-  if (last.right_clicked || last.long_pressed) {
-    last_step_latched_ = !last_step_latched_;
-  }
-  bool last_now = last.active || last_step_latched_ ||
-      (!ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_L));
-  if (last_now && !last_step_held_) {
-    last_step_used_ = false;
-  }
-  if (!last_now && last_step_held_ && !last_step_used_) {
+  if (last_step_.Update(last, !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_L),
+                        true)) {
     Toast("Hold Last Step and press a step or a page");
   }
-  last_step_held_ = last_now;
 
   // Editing.
   // Panel: keep the sound playing across pattern changes.
@@ -1863,31 +1876,15 @@ void Faceplate::DrawSequencer() {
     const bool blink = armed && std::fmod(ImGui::GetTime(), 1.0) < 0.5;
     Interaction panel = function_button(9, "##panel", "Panel", engine_->panel() || blink,
                                         armed ? theme().amber : theme().accent);
-    if (panel.pressed) {
-      panel_long_fired_ = false;
+    if (panel.pressed && shift_.held) {
+      shift_.Use();
     }
-    if (panel.long_pressed) {
-      panel_long_fired_ = true;
-    }
-    // With a finger the plain press counts when it lifts, unless it was a long press.
-    const bool plain = !shift_held_ && (panel.touch ? panel.clicked && !panel_long_fired_
-                                                    : panel.pressed);
-    if (panel.pressed && shift_held_) {
-    shift_used_ = true;
-  }
-  if (panel.right_clicked || panel.long_pressed || (panel.pressed && shift_held_)) {
-      if (armed) {
-        engine_->RestoreSnapshot();
-        Toast("Snapshot restored");
-      } else {
-        engine_->ArmSnapshot();
-        Toast("Snapshot armed: press Panel to restore it");
-      }
-    } else if (plain) {
+    if (panel.right_clicked || panel.long_pressed || (panel.pressed && shift_.held)) {
+      ToggleSnapshot();
+    } else if (panel.tapped && !shift_.held) {
       // While a snapshot is armed, Panel has no other use: a plain press restores it.
       if (armed) {
-        engine_->RestoreSnapshot();
-        Toast("Snapshot restored");
+        ToggleSnapshot();
       } else {
         engine_->SetPanel(!engine_->panel());
         Toast(engine_->panel() ? "Panel: sound kept across patterns"
@@ -1898,32 +1895,25 @@ void Faceplate::DrawSequencer() {
 
   // Copy: held with two page buttons, repeats pages; pressed alone, copies to
   // the clipboard (on release).
-  Interaction copy = function_button(12, "##copy", "Copy", copy_held_, theme().amber);
-  if (copy.active && !copy_held_) {
-    copy_used_ = false;
+  Interaction copy = function_button(12, "##copy", "Copy", copy_.held, theme().amber);
+  if (copy_.Update(copy, false, false)) {
+    Copy();
+  }
+  if (!copy_.held) {
     copy_source_page_ = -1;
     copy_source_track_ = -1;
   }
-  if (!copy.active && copy_held_ && !copy_used_) {
-    Copy();
-  }
-  copy_held_ = copy.active;
   if (function_button(13, "##paste", "Paste", false, 0).pressed) {
     Paste();
   }
   // Erase acts on release, so that holding it can combine with a knob.
-  Interaction erase = function_button(14, "##erase", "Erase", erase_held_, theme().red);
-  bool key = !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_Delete);
-  bool held_now = erase.active || key;
-  if (held_now && !erase_held_) {
-    erase_used_ = false;
-  }
-  if (!held_now && erase_held_ && !erase_used_) {
+  Interaction erase = function_button(14, "##erase", "Erase", erase_.held, theme().red);
+  if (erase_.Update(erase, !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_Delete),
+                    false)) {
     Erase();
   }
-  erase_held_ = held_now;
   // Erase + pad while playing: wipe the steps the playhead reaches.
-  if (erase_held_ && engine_->playing()) {
+  if (erase_.held && engine_->playing()) {
     for (int t = 0; t < kNumTracks; ++t) {
       int step = engine_->track_step[t].load();
       if (erase_pad_held_[t] && step >= 0) {
@@ -1931,7 +1921,7 @@ void Faceplate::DrawSequencer() {
       }
     }
   }
-  if (!erase_held_) {
+  if (!erase_.held) {
     erase_wiping_ = false;
     std::fill(erase_pad_held_, erase_pad_held_ + kNumTracks, false);
   }
@@ -1952,7 +1942,7 @@ void Faceplate::DrawSequencer() {
     bool lit = false;
     ImU32 color = theme().led_white;
 
-    if (shift_held_) {
+    if (shift_.held) {
       DrawShiftStep(i, min, max);
       continue;
     }
@@ -2019,7 +2009,7 @@ void Faceplate::DrawSequencer() {
     const Step& step = p.tracks[track].steps[index];
     bool in_range = index < track_length;
 
-    if (last_step_held_) {
+    if (last_step_.held) {
       // Press the last step. In Poly mode it is the selected
       // track's (pressing its current last step again follows the pattern).
       int length = p.poly ? track_length : p.length;
@@ -2029,7 +2019,7 @@ void Faceplate::DrawSequencer() {
       Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
       if (in.pressed) {
         PushUndo();
-        last_step_used_ = true;
+        last_step_.Use();
         char message[64];
         if (p.poly) {
           TrackSequence& sequence = p.tracks[track];
@@ -2063,22 +2053,17 @@ void Faceplate::DrawSequencer() {
     Interaction in = Button(c, id, min, max, face, "", ICON_NONE, lit, color);
     // With a finger, the step toggles when it lifts, unless it was held long
     // enough to select the step instead (the mouse's right click).
-    if (in.pressed) {
-      long_press_fired_ = false;
-    }
     if (in.long_pressed && in_range) {
       // Finger held: edit the step while it is held (the mouse's right click
       // selects it until clicked again).
       held_step_ = index;
       step_held_by_finger_ = true;
-      long_press_fired_ = true;
     }
     if (step_held_by_finger_ && held_step_ == index && !in.active) {
       held_step_ = -1;
       step_held_by_finger_ = false;
     }
-    bool toggle = in.touch ? in.clicked && !long_press_fired_ : in.pressed;
-    if (toggle && in_range) {
+    if (in.tapped && in_range) {
       PushUndo();
       Step& s = p.tracks[track].steps[index];
       s.on = !s.on;
@@ -2161,7 +2146,7 @@ void Faceplate::DrawShiftStep(int i, ImVec2 min, ImVec2 max) {
   if (!in.pressed || !*label) {
     return;
   }
-  shift_used_ = true;
+  shift_.Use();
   if (i < kNumDivisions) {
     p.division = i;
     Toast(std::string("Time division: ") + kDivisionNames[i]);
@@ -2213,7 +2198,7 @@ void Faceplate::DrawPads() {
     bool selected = t == engine_->selected_track;
     bool muted = !engine_->TrackAudible(t);
     bool soloed = engine_->soloed[t];
-    bool in_chord = pad_mode_ == PADS_CHORDS && !shift_held_ && project.chord_type == t;
+    bool in_chord = pad_mode_ == PADS_CHORDS && !shift_.held && project.chord_type == t;
 
     float split = min.y + (max.y - min.y) * 0.5f;
     dl->AddRectFilled(c.P(min.x, min.y + 4), c.P(max.x, max.y + 4), IM_COL32(0, 0, 0, 120), c.S(8));
@@ -2253,7 +2238,7 @@ void Faceplate::DrawPads() {
       // octave pads, and the scales while Shift is held.
       int offset;
       std::string key = "-";
-      if (shift_held_) {
+      if (shift_.held) {
         key = scale(kKeyScaleShortcuts[t]).name;
       } else if (pad_mode_ == PADS_CHORDS) {
         key = chord_shape(t).name;
@@ -2314,7 +2299,7 @@ void Faceplate::DrawPads() {
         break;
       }
       case PADS_CHORDS: {
-        if (shift_held_) {
+        if (shift_.held) {
           function = std::string("Root ") +
               PitchClassName(project.key_root + ScaleDegree(project.key_scale, i));
         } else {
@@ -2326,7 +2311,7 @@ void Faceplate::DrawPads() {
         break;
       }
       case PADS_KEYS:
-        function = shift_held_
+        function = shift_.held
             ? std::string("Root ") + PitchClassName(project.key_root + ScaleDegree(project.key_scale, i))
             : NoteName(TrackNote(engine_->selected_track) + KeyNote(i));
         break;
@@ -3591,13 +3576,16 @@ void Faceplate::HandleKeyboard() {
   }
   if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) TogglePlay();
   if (ImGui::IsKeyPressed(ImGuiKey_Enter, false)) engine_->recording = !engine_->recording;
-  if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-    song_edit_ = false;
-    view_ = VIEW_MAIN;
-    held_step_ = -1;
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) GoBack();
+  // Like the page buttons, a page chosen by hand stops the steps following the playhead.
+  if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+    view_page_ = std::max(0, view_page_ - 1);
+    follow_playhead_ = false;
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) view_page_ = std::max(0, view_page_ - 1);
-  if (ImGui::IsKeyPressed(ImGuiKey_X, false)) view_page_ = std::min(kNumPages - 1, view_page_ + 1);
+  if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+    view_page_ = std::min(kNumPages - 1, view_page_ + 1);
+    follow_playhead_ = false;
+  }
   if (pad_mode_ == PADS_KEYS || pad_mode_ == PADS_CHORDS) {
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) ChangeKey(2, 1);
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) ChangeKey(2, -1);
@@ -3610,7 +3598,10 @@ void Faceplate::HandleKeyboard() {
     ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6, ImGuiKey_7, ImGuiKey_8
   };
   for (int i = 0; i < PAGE_LAST; ++i) {
-    if (ImGui::IsKeyPressed(kPageKeys[i], false)) page_ = static_cast<Page>(i);
+    if (ImGui::IsKeyPressed(kPageKeys[i], false)) {
+      page_ = static_cast<Page>(i);
+      keys_page_ = false;  // Like the page buttons, leaves the Keys settings.
+    }
   }
 }
 

@@ -8,7 +8,7 @@ the [user guide](user-guide.md).
 
 | Faceplate | Mouse | Keyboard |
 |---|---|---|
-| Pads A–H | click = plays and selects the track (Shift = accent); right click = selects it without playing | `Q W E R T Y U I` |
+| Pads A–H | click = plays and selects the track (keyboard Shift = accent, also on the steps and the Slices pads); right click = selects it without playing | `Q W E R T Y U I` |
 | Pads 1–8 | depends on the mode: Chords (chords of the scale), Sounds, Repeats, Keys | `A S D F G H J K` |
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
 | Perform: X/Y pad | drag = moves the point; right click = holds FX, Looper or Macros at that point, right click again to release | |

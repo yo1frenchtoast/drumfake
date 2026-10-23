@@ -202,8 +202,8 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
     then play its new neighbour.
 
   Then:
-  - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (Shift held: full
-    velocity). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With
+  - **Shift + Keys** turns the pads into **Slices**: pads 1–8 play slices 1–8 (keyboard Shift
+    held: full velocity, as on the pads A–H and the steps). **Shift + Slices** goes to the next 8; *Keys* alone goes back to the keyboard. With
     *Rec* on, a pad writes its hit on the step under the playhead, with the slice as a lock.
   - With a step held, a Slices pad sets the slice that step plays.
   - **Col (Slce)** picks a slice for the whole track, and can be locked per step: chop a break
