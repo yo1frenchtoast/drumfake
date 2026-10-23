@@ -403,7 +403,7 @@ keys together (root D: D E F♯ G A B C♯ D), the octave moves them by 12 semit
 ### Mute and Solo
 
 Hold **Mute** or **Solo** and touch pads to mute or isolate tracks, or tap the button to latch
-the mode. *Shift* + Mute or Solo, or a right click on the button, clears them all.
+the mode. *Shift* + Mute or Solo clears them all.
 
 ## 7. MIDI
 

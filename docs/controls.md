@@ -57,7 +57,7 @@ These work with the button held down.
 | Shift | step 1–5 | Time division: 1/8, 1/8T, 1/16, 1/16T, 1/32 |
 | Shift | step 13 / 14 / 15 / 16 | Metronome / At End / steps follow the playing page / Poly |
 | Shift | pad A–H | Select a track without playing it (in Keys mode: choose the scale; Shift + pad 1–8 sets the root) |
-| Shift (or right click) | Mute or Solo | Clear all mutes or solos |
+| Shift | Mute or Solo | Clear all mutes or solos |
 | Shift | Panel (or right click, long press) | Arm the snapshot of all sounds and settings; while it is armed, a plain press of Panel restores it |
 | Last Step | step | Set the last step of the pattern (of the selected track in Poly) |
 | Last Step | page A–D | Set the pattern length to 16, 32, 48 or 64 |

@@ -1007,7 +1007,8 @@ void Faceplate::DrawTopLeft() {
     }
   }
   // Solo and Mute: held + pads toggle tracks; tapped alone, latch the mode;
-  // Shift + button clears all solos or mutes.
+  // Shift + button clears all solos or mutes (only this combination, so that a
+  // stray right click or long press cannot).
   cell(3, &min, &max);
   Interaction solo = Button(c, "##solo", min, max, "Solo", "", ICON_NONE,
                             solo_mode_ || solo_.held, theme().amber);
@@ -1023,8 +1024,6 @@ void Faceplate::DrawTopLeft() {
     if (in.pressed && shift_.held) {
       shift_.Use();
       button->Use();
-    }
-    if ((in.pressed && shift_.held) || in.right_clicked) {
       std::fill(tracks, tracks + kNumTracks, false);
       Toast(cleared);
     }
