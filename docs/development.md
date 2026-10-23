@@ -63,7 +63,14 @@ Every track parameter is a float normalized to [0, 1] in `TrackSound::params`, i
 `FormatValue()` print it on the screen. The first `kNumLockable` parameters can be
 parameter-locked per step and used as modulation destinations. The others (LFO, Envs) are not.
 `ComputeParams()` in `engine.cc` builds the *effective* values of a block: knob value, then
-step lock, then LFOs, Peaks sources and macros.
+step lock, then the routes of the modulation matrix, then macros.
+
+The modulation matrix is `TrackSound::mods[source][param]` (sources: `ModSource`, in
+`src/core/project.h`): one amount per source and lockable parameter, normalized like the Depth
+knobs (0.5 = no route). A source can have any number of routes. The `Dest` parameters of the
+Mods and Envs pages only point to one route (`TrackSound::DestRoute()`), which their Depth or
+Amount knob edits. Kits save the routes as a sparse `"mods"` list; sounds saved without one get
+their routes from `Dest` and `Depth` (`TrackSound::RoutesFromKnobs()`).
 
 Master (`M_*`), assign (`A_*`) and Clouds (`C_*`) parameters are project-wide arrays with the
 same normalized convention.

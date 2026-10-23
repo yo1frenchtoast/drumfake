@@ -137,10 +137,31 @@ bool Pattern::IsEmpty() const {
   return true;
 }
 
+const int kModDestParam[kNumModSources] = { P_LFO1_DEST, P_LFO2_DEST, P_ENV_DEST, P_BALL_DEST };
+const int kModAmountParam[kNumModSources] = {
+  P_LFO1_DEPTH, P_LFO2_DEPTH, P_ENV_AMOUNT, P_BALL_AMOUNT
+};
+
 void TrackSound::Reset() {
   name = "Init";
   for (int i = 0; i < kNumTrackParams; ++i) {
     params[i] = track_param_info(i).default_value;
+  }
+  for (auto& row : mods) {
+    std::fill(row, row + kNumLockable, 0.5f);
+  }
+}
+
+float* TrackSound::DestRoute(int source) {
+  int param = DestinationToParam(params[kModDestParam[source]]);
+  return param >= 0 ? &mods[source][param] : nullptr;
+}
+
+void TrackSound::RoutesFromKnobs() {
+  for (int s = 0; s < kNumModSources; ++s) {
+    if (float* route = DestRoute(s)) {
+      *route = params[kModAmountParam[s]];
+    }
   }
 }
 

@@ -928,24 +928,20 @@ void Engine::ComputeParams(int track, float* params) {
     slide_left_[track] -= std::min(slide_left_[track], kBlockSize);
   }
   std::copy(params, params + kNumLockable, &lock_layer_[track][0]);
-  for (int lfo = 0; lfo < 2; ++lfo) {
-    int base_param = lfo == 0 ? P_LFO1_RATE : P_LFO2_RATE;
-    int destination = DestinationToParam(params[base_param + 3]);
-    if (destination >= 0) {
-      float depth = params[base_param + 2] * 2.0f - 1.0f;
-      params[destination] += depth * LfoValue(track, lfo) * 0.5f;
-    }
-  }
-  // Peaks envelope and bouncing ball, both unipolar: full amount sweeps the
-  // whole range of the destination.
-  const struct { int amount; int dest; float value; } kSources[2] = {
-    { P_ENV_AMOUNT, P_ENV_DEST, mods_[track].envelope() },
-    { P_BALL_AMOUNT, P_BALL_DEST, mods_[track].ball() },
+  // Route matrix: each source on every parameter it is routed to. The LFOs
+  // are bipolar (full depth sweeps half the range each way); the Peaks
+  // envelope and the bouncing ball are unipolar (full amount sweeps it all).
+  const float sources[kNumModSources] = {
+    LfoValue(track, 0) * 0.5f, LfoValue(track, 1) * 0.5f,
+    mods_[track].envelope(), mods_[track].ball(),
   };
-  for (const auto& source : kSources) {
-    int destination = DestinationToParam(params[source.dest]);
-    if (destination >= 0) {
-      params[destination] += (params[source.amount] * 2.0f - 1.0f) * source.value;
+  const TrackSound& sound = project_->sounds[track];
+  for (int s = 0; s < kNumModSources; ++s) {
+    for (int p = 0; p < kNumLockable; ++p) {
+      const float amount = sound.mods[s][p] * 2.0f - 1.0f;
+      if (amount != 0.0f) {
+        params[p] += amount * sources[s];
+      }
     }
   }
   if (xy_mode == XY_MACROS && xy_touched && track == selected_track) {

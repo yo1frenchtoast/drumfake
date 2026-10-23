@@ -245,6 +245,7 @@ class Faceplate {
   bool matrix_open_ = false;  // The Perform pad shows the modulation matrix.
   bool vary_open_ = false;    // The Perform pad sets the pattern's Vary (Shift + Grids).
   int matrix_page_ = 0;       // Destinations shown: Sound, Filter or Track params.
+  int matrix_source_ = -1;    // Row of the selected route (at its source's Dest), or none.
   float xy_touch_x_ = 0.5f;
   float xy_touch_y_ = 0.5f;
   // Hold: the FX, Looper or Macros pad keeps acting at this position after it is

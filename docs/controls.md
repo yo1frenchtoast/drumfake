@@ -13,7 +13,7 @@ the [user guide](user-guide.md).
 | Knobs | drag vertically (Shift = fine), wheel, double-click = default; a bubble shows the name and the value while you hover or touch | |
 | Perform: X/Y pad | drag = moves the point; right click = holds FX, Looper or Macros at that point, right click again to release | |
 | Perform: Shift + Grids | shows Vary on the pad (drag left/right = amount); Shift + Vary = new variations; Grids = back to the drum map | `Alt` + click |
-| Perform: Route | click = shows the modulation matrix in place of the X/Y pad; click a cell to route a source, click the lit cell to clear it | |
+| Perform: Route | click = shows the modulation matrix in place of the X/Y pad; click an empty cell = routes the source there (+50%) and selects it; drag up/down on a cell = its amount; double-click = removes it; encoder = amount of the selected cell. A source can have any number of destinations | |
 | Steps 1–16 | click = on/off; right click = select the step (p-lock) | |
 | Play / Rec | | `Space` / `Enter` |
 | Pages Sound…Assign | | `1`–`8` |

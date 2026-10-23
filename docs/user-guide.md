@@ -237,10 +237,12 @@ drive and crusher, the sends, the choke group, modulations, locks, Chords, Keys 
 
 ### Modulation
 
-Every parameter of the Sound, Filter and Track pages can be a modulation destination. On each
-page below, *Dest* chooses the parameter (*Off* by default) and *Amount* or *Depth* sets how
-far it goes: the middle of the knob means no modulation, the two sides go up or down.
-Modulations are per track, and saved in the kit.
+Every parameter of the Sound, Filter and Track pages can be a modulation destination, and each
+source can modulate as many parameters as you like, each with its own amount (set them in the
+[modulation matrix](#modulation), below). On each page below, *Dest* points to one of the
+source's destinations and *Amount* or *Depth* shows and sets that one's amount: the middle of
+the knob means no modulation, the two sides go up or down. Turning *Depth* away from the middle
+on a new destination adds it. Modulations are per track, and saved in the kit.
 
 - **Mods page: two LFOs.** Rate (from slow to fast, synced to the tempo), shape (sine,
   triangle, saw up, saw down, square, sample and hold), depth, destination.
@@ -255,10 +257,18 @@ Modulations are per track, and saved in the kit.
   selected track at once (chosen on the *Assign* page).
 - **Modulation matrix.** The **Route** button, after *Macros*, swaps the X/Y pad for a grid: one
   row per source (LFO 1, LFO 2, Env, Ball), one column per parameter, on three tabs (Sound,
-  Filter, Track). Tap a cell to send the source there, tap the lit cell to turn it off. The fill
-  of the cell shows the amount (blue-green up, amber down), which you set with the knobs of the
-  Mods and Envs pages. A dot on a tab means a source points to that page. A source has a single
-  destination, so a row lights at most one cell.
+  Filter, Track). A source can light any number of cells in its row: an LFO on the cutoff and,
+  inverted, on the volume, for example.
+  - **Tap an empty cell** to send the source there (+50%) and select it.
+  - **Drag up or down on a cell** to set its amount, from −100% to +100%; the **encoder** sets
+    the selected one by 2%.
+  - **Double tap a cell** to remove it.
+
+  The fill of a cell shows its amount (blue-green up, amber down), and the selected cell has a
+  thicker border. Selecting a cell also points the source's *Dest* knob to it, so its *Depth*
+  or *Amount* knob edits it too. A dot on a tab means that page has a destination. Projects
+  saved before the matrix keep their modulation: each source's *Dest* and *Depth* become one
+  cell.
 
 ### Kits and sounds
 

@@ -587,6 +587,76 @@ void TestEngineCountMigration() {
   fs::remove_all(dir);
 }
 
+// Route matrix: one source on several parameters, each with its own amount.
+void TestRouteMatrix() {
+  namespace fs = std::filesystem;
+  auto engine = MakeEngine();
+  Project& project = engine->project();
+  TrackSound& sound = project.sounds[0];
+  sound.params[P_MORPH] = 0.5f;
+  sound.params[P_TIMBRE] = 0.5f;
+  sound.params[P_CUTOFF] = 0.5f;
+  // Square LFO at full depth on Morph, inverted on Timbre, at 20% on Cutoff.
+  sound.params[P_LFO1_SHAPE] = DiscreteToNormalized(LFO_SQUARE, LFO_SHAPE_LAST);
+  sound.mods[MOD_LFO1][P_MORPH] = 1.0f;
+  sound.mods[MOD_LFO1][P_TIMBRE] = 0.0f;
+  sound.mods[MOD_LFO1][P_CUTOFF] = 0.6f;
+  engine->Play();
+  RenderAndCollect(engine.get(), 0, kBlockSize * 4);
+  const float morph = engine->effective_param[0][P_MORPH].load();
+  const float timbre = engine->effective_param[0][P_TIMBRE].load();
+  const float cutoff = engine->effective_param[0][P_CUTOFF].load();
+  CHECK(std::fabs(morph - 0.5f) > 0.4f);
+  CHECK_NEAR(timbre - 0.5f, -(morph - 0.5f), 1e-5);  // Opposite ways.
+  CHECK_NEAR(cutoff - 0.5f, (morph - 0.5f) * 0.2f, 1e-5);
+  CHECK_NEAR(engine->effective_param[0][P_HARMONICS].load(), sound.params[P_HARMONICS], 1e-6);
+
+  // The Dest knob points at one route: the Depth knob edits that one.
+  sound.params[P_LFO1_DEST] = DiscreteToNormalized(1 + P_CUTOFF, kNumDestinations);
+  CHECK(sound.DestRoute(MOD_LFO1) == &sound.mods[MOD_LFO1][P_CUTOFF]);
+  sound.params[P_LFO1_DEST] = DiscreteToNormalized(0, kNumDestinations);
+  CHECK(sound.DestRoute(MOD_LFO1) == nullptr);
+
+  // Saved and loaded: the routes alone are written, and come back.
+  fs::path dir = fs::temp_directory_path() / "drumfake_route_matrix";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  std::string error;
+  CHECK(SaveProject(project, (dir / "p.json").string(), &error));
+  auto loaded = std::make_unique<Project>();
+  CHECK(LoadProject((dir / "p.json").string(), loaded.get(), &error));
+  int routes = 0;
+  for (int s = 0; s < kNumModSources; ++s) {
+    for (int p = 0; p < kNumLockable; ++p) {
+      routes += loaded->sounds[0].mods[s][p] != 0.5f;
+    }
+  }
+  CHECK(routes == 3);
+  CHECK_NEAR(loaded->sounds[0].mods[MOD_LFO1][P_CUTOFF], 0.6, 1e-6);
+  CHECK_NEAR(loaded->sounds[0].mods[MOD_LFO1][P_TIMBRE], 0.0, 1e-6);
+
+  // A sound saved before the matrix: its Dest and Depth knobs become one route each.
+  std::vector<float> params(kNumTrackParams);
+  TrackSound defaults;
+  defaults.Reset();
+  std::copy(defaults.params, defaults.params + kNumTrackParams, params.begin());
+  params[P_LFO2_DEST] = DiscreteToNormalized(1 + P_DECAY, kNumDestinations);
+  params[P_LFO2_DEPTH] = 0.3f;
+  params[P_BALL_DEST] = DiscreteToNormalized(1 + P_PAN, kNumDestinations);
+  params[P_BALL_AMOUNT] = 0.9f;
+  nlohmann::json legacy = {
+    { "version", 3 }, { "engine_count", kNumEngines },
+    { "sounds", { { { "name", "Old" }, { "params", params } } } },
+  };
+  std::ofstream(dir / "old.json") << legacy.dump();
+  CHECK(LoadProject((dir / "old.json").string(), loaded.get(), &error));
+  const TrackSound& old = loaded->sounds[0];
+  CHECK_NEAR(old.mods[MOD_LFO2][P_DECAY], 0.3, 1e-6);
+  CHECK_NEAR(old.mods[MOD_BALL][P_PAN], 0.9, 1e-6);
+  CHECK_NEAR(old.mods[MOD_LFO1][P_DECAY], 0.5, 1e-6);
+  fs::remove_all(dir);
+}
+
 void TestSamplePool() {
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / "drumfake_sample_pool";
@@ -1555,8 +1625,7 @@ void TestLockFeedback() {
   project.patterns[0].tracks[0].steps[2].on = true;  // No lock.
   // LFO 1 on track B's morph: square, full depth.
   project.sounds[1].params[P_LFO1_SHAPE] = DiscreteToNormalized(LFO_SQUARE, LFO_SHAPE_LAST);
-  project.sounds[1].params[P_LFO1_DEPTH] = 1.0f;
-  project.sounds[1].params[P_LFO1_DEST] = DiscreteToNormalized(1 + P_MORPH, kNumDestinations);
+  project.sounds[1].mods[MOD_LFO1][P_MORPH] = 1.0f;
   engine->Play();
   RenderAndCollect(engine.get(), 0, kSamplesPerStep);
   CHECK(engine->active_lock_mask[0].load() == (1u << P_TIMBRE));
@@ -1848,11 +1917,9 @@ void TestPeaksMods() {
   Project& project = engine->project();
   float* params = project.sounds[0].params;
   params[P_MORPH] = 0.2f;
-  params[P_ENV_DEST] = DiscreteToNormalized(1 + P_MORPH, kNumDestinations);
-  params[P_ENV_AMOUNT] = 0.75f;  // +50%.
+  project.sounds[0].mods[MOD_ENV][P_MORPH] = 0.75f;  // +50%.
   params[P_TIMBRE] = 0.0f;
-  params[P_BALL_DEST] = DiscreteToNormalized(1 + P_TIMBRE, kNumDestinations);
-  params[P_BALL_AMOUNT] = 0.75f;
+  project.sounds[0].mods[MOD_BALL][P_TIMBRE] = 0.75f;
   params[P_BALL_GRAVITY] = 0.6f;
   params[P_BALL_BOUNCE] = 0.3f;  // Higher = more elastic.
 
@@ -2718,6 +2785,7 @@ int main() {
   TestVary();
   TestPatternExtend();
   TestPatternSetLength();
+  TestRouteMatrix();
   TestWavDecoding();
   TestEngineCountMigration();
   TestSamplePool();

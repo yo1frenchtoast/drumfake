@@ -619,7 +619,16 @@ float* Faceplate::KnobTarget(int knob, bool* is_lock) {
     case PAGE_ENVS: param += P_ENV_ATTACK; break;
     default: param += page_ * kKnobsPerPage; break;
   }
-  return &project.sounds[engine_->selected_track].params[param];
+  TrackSound& sound = project.sounds[engine_->selected_track];
+  // Depth and Amount show and set the route their source's Dest points to.
+  for (int s = 0; s < kNumModSources; ++s) {
+    if (param == kModAmountParam[s]) {
+      if (float* route = sound.DestRoute(s)) {
+        return route;
+      }
+    }
+  }
+  return &sound.params[param];
 }
 
 // --- Drawing -------------------------------------------------------------------
@@ -1344,18 +1353,7 @@ void Faceplate::DrawVaryPad(ImVec2 min, ImVec2 max) {
 void Faceplate::DrawModMatrix(ImVec2 min, ImVec2 max) {
   const Canvas& c = canvas_;
   ImDrawList* dl = c.draw_list;
-  struct Source {
-    const char* name;
-    int dest;
-    int amount;
-  };
-  static const Source kSources[] = {
-    { "LFO 1", P_LFO1_DEST, P_LFO1_DEPTH },
-    { "LFO 2", P_LFO2_DEST, P_LFO2_DEPTH },
-    { "Env", P_ENV_DEST, P_ENV_AMOUNT },
-    { "Ball", P_BALL_DEST, P_BALL_AMOUNT },
-  };
-  const int kNumSources = 4;
+  static const char* const kSourceNames[kNumModSources] = { "LFO 1", "LFO 2", "Env", "Ball" };
   static const char* const kTabs[] = { "Sound", "Filter", "Track" };
   TrackSound& sound = engine_->project().sounds[engine_->selected_track];
 
@@ -1378,12 +1376,14 @@ void Faceplate::DrawModMatrix(ImVec2 min, ImVec2 max) {
                 c.S(1));
     c.Text((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, 9, current ? theme().accent : theme().label,
            kTabs[t], true, true);
-    for (int s = 0; s < kNumSources; ++s) {
-      int p = DestinationToParam(sound.params[kSources[s].dest]);
-      if (p >= t * kKnobsPerPage && p < (t + 1) * kKnobsPerPage) {
-        dl->AddCircleFilled(c.P(b.x - 6, a.y + 6), c.S(2.5f), theme().amber);
-        break;
+    bool routed = false;
+    for (int s = 0; s < kNumModSources && !routed; ++s) {
+      for (int p = t * kKnobsPerPage; p < (t + 1) * kKnobsPerPage && !routed; ++p) {
+        routed = sound.mods[s][p] != 0.5f;
       }
+    }
+    if (routed) {
+      dl->AddCircleFilled(c.P(b.x - 6, a.y + 6), c.S(2.5f), theme().amber);
     }
   }
 
@@ -1398,46 +1398,62 @@ void Faceplate::DrawModMatrix(ImVec2 min, ImVec2 max) {
            track_param_info(matrix_page_ * kKnobsPerPage + k).short_name, true, true);
   }
 
+  // A source can be routed to any number of parameters, each with its own
+  // amount. A tap on an empty cell routes it (+50%), a tap selects a route, a
+  // vertical drag sets its amount (the encoder too), a double tap removes it.
+  // The selected route is the one the source's Dest knob points to, so its
+  // Depth (or Amount) knob edits it as well. The cells leave fingers to ImGui,
+  // which follows the drag.
   char readout[64] = "";
-  for (int s = 0; s < kNumSources; ++s) {
+  for (int s = 0; s < kNumModSources; ++s) {
     float y0 = row_y0 + s * row_h;
-    c.Text(min.x + 8.0f, y0 + (row_h - 4) * 0.5f, 9, theme().label, kSources[s].name, false,
+    c.Text(min.x + 8.0f, y0 + (row_h - 4) * 0.5f, 9, theme().label, kSourceNames[s], false,
            true);
-    int dest_param = DestinationToParam(sound.params[kSources[s].dest]);
-    float amount = sound.params[kSources[s].amount] * 2.0f - 1.0f;
     for (int k = 0; k < kKnobsPerPage; ++k) {
       int param = matrix_page_ * kKnobsPerPage + k;
       ImVec2 a(grid_x0 + k * cell_w + 1.5f, y0);
       ImVec2 b(grid_x0 + (k + 1) * cell_w - 1.5f, y0 + row_h - 4.0f);
       char id[24];
       snprintf(id, sizeof(id), "##mcell%d_%d", s, k);
-      Interaction in = HitBox(c, id, a, b);
-      bool lit = dest_param == param;
-      if (in.pressed) {
-        float next = lit ? DiscreteToNormalized(0, kNumDestinations)
-                         : DiscreteToNormalized(param + 1, kNumDestinations);
-        sound.params[kSources[s].dest] = next;
-        lit = !lit;
-        dest_param = lit ? param : -1;
+      Interaction in = HitBox(c, id, a, b, false);
+      float& route = sound.mods[s][param];
+      if (in.double_clicked) {
+        route = 0.5f;
+      } else if (in.pressed) {
+        if (route == 0.5f) {
+          route = 0.75f;
+        }
+        matrix_source_ = s;
+        sound.params[kModDestParam[s]] = DiscreteToNormalized(param + 1, kNumDestinations);
+      } else if (in.active) {
+        // The whole range, -100% to +100%, over 120 points of panel.
+        route = Clamp01(route - ImGui::GetIO().MouseDelta.y / c.scale / 120.0f);
       }
+      const bool routed = route != 0.5f;
+      const bool selected = matrix_source_ == s &&
+          DestinationToParam(sound.params[kModDestParam[s]]) == param;
       dl->AddRectFilled(c.P(a), c.P(b), in.hovered ? theme().panel_edge : theme().panel,
                         c.S(3));
-      dl->AddRect(c.P(a), c.P(b), lit ? theme().accent : theme().panel_edge, c.S(3), 0,
-                  c.S(lit ? 1.5f : 1.0f));
-      if (lit) {
+      dl->AddRect(c.P(a), c.P(b), routed || selected ? theme().accent : theme().panel_edge,
+                  c.S(3), 0, c.S(selected ? 2.5f : (routed ? 1.5f : 1.0f)));
+      if (routed) {
         // Fill from the bottom: how much of the range the source sweeps.
+        const float amount = route * 2.0f - 1.0f;
         float height = (b.y - a.y - 4.0f) * std::fabs(amount);
         ImU32 fill = amount >= 0.0f ? theme().accent : theme().amber;
         dl->AddRectFilled(c.P(a.x + 3, b.y - 2 - height), c.P(b.x - 3, b.y - 2),
                           WithAlpha(fill, 200), c.S(2));
+      }
+      if (selected) {
         snprintf(readout, sizeof(readout), "%c  %s > %s  %s", 'A' + engine_->selected_track,
-                 kSources[s].name, track_param_info(param).name,
-                 FormatValue(track_param_info(kSources[s].amount).format,
-                             sound.params[kSources[s].amount]).c_str());
+                 kSourceNames[s], track_param_info(param).name,
+                 routed ? FormatValue(track_param_info(kModAmountParam[s]).format, route).c_str()
+                        : "off");
       }
     }
   }
-  const char* hint = readout[0] ? readout : "Tap a cell to route a source";
+  const char* hint = readout[0] ? readout
+                                : "Tap: route  Drag: amount  Double tap: remove";
   c.Text(min.x + 8.0f, max.y - 14.0f, 9, theme().label_dim, hint, false);
 }
 
@@ -1474,6 +1490,10 @@ void Faceplate::DrawScreenSection() {
       Step& step = pattern().tracks[track].steps[held_step_];
       step.micro = std::clamp(std::round((step.micro + steps * 0.05f) * 20.0f) / 20.0f,
                               -kMaxMicroTiming, kMaxMicroTiming);
+    } else if (matrix_open_ && matrix_source_ >= 0 && sound.DestRoute(matrix_source_)) {
+      // Route matrix: the amount of the selected route, by 2%.
+      float* route = sound.DestRoute(matrix_source_);
+      *route = Clamp01(std::round((*route + steps * 0.01f) * 100.0f) / 100.0f);
     } else if (keys_page_ && view_ == VIEW_MAIN && held_step_ < 0) {
       ChangeKey(keys_field_, steps);
     } else if (view_ == VIEW_SLICES) {

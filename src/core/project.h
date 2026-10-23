@@ -66,11 +66,28 @@ struct TrackSequence {
   int ClearLocks(int param);
 };
 
+// Modulation sources of a track: the rows of the Route matrix.
+enum ModSource { MOD_LFO1, MOD_LFO2, MOD_ENV, MOD_BALL, MOD_LAST };
+const int kNumModSources = MOD_LAST;
+// Their knobs on the Mods and Envs pages: Dest picks one of the source's
+// routes, and Depth (or Amount) shows and sets that route's amount.
+extern const int kModDestParam[kNumModSources];
+extern const int kModAmountParam[kNumModSources];
+
 struct TrackSound {
   std::string name;
   float params[kNumTrackParams];
+  // Route matrix: the amount of each source on each lockable parameter, like
+  // the Depth knobs: 0.5 = no route, 0 and 1 = -100% and +100%. A source can
+  // modulate any number of parameters.
+  float mods[kNumModSources][kNumLockable];
 
-  void Reset();  // All parameters to their defaults.
+  void Reset();  // All parameters to their defaults, no routes.
+  // The route the Dest knob of `source` points to, or null when it is Off.
+  float* DestRoute(int source);
+  // Sounds saved before the Route matrix: each source's Dest and Depth (or
+  // Amount) become its one route.
+  void RoutesFromKnobs();
 };
 
 struct Pattern {

@@ -17,7 +17,9 @@ using nlohmann::json;
 
 namespace {
 
-const int kFormatVersion = 3;  // 2: one kit per pattern. 3: engine count, sample pool.
+// 2: one kit per pattern. 3: engine count, sample pool. 4: Route matrix (sounds without
+// "mods" get theirs from the Dest and Depth knobs).
+const int kFormatVersion = 4;
 // Files written before they recorded their engine count had the 24 Plaits engines.
 const int kLegacyEngineCount = 24;
 
@@ -56,7 +58,17 @@ void ReadFloatArray(const json& j, float (&values)[N]) {
 json KitToJson(const TrackSound* kit) {
   json j = json::array();
   for (int i = 0; i < kNumTracks; ++i) {
-    j.push_back({ { "name", kit[i].name }, { "params", FloatArray(kit[i].params) } });
+    // The routes alone, as [source, parameter, amount].
+    json mods = json::array();
+    for (int s = 0; s < kNumModSources; ++s) {
+      for (int p = 0; p < kNumLockable; ++p) {
+        if (kit[i].mods[s][p] != 0.5f) {
+          mods.push_back({ s, p, kit[i].mods[s][p] });
+        }
+      }
+    }
+    j.push_back({ { "name", kit[i].name }, { "params", FloatArray(kit[i].params) },
+                  { "mods", mods } });
   }
   return j;
 }
@@ -67,6 +79,20 @@ void KitFromJson(const json& j, TrackSound* kit, int engine_count) {
     kit[i].name = j[i].value("name", "Init");
     ReadFloatArray(j[i]["params"], kit[i].params);
     kit[i].params[P_ENGINE] = RemapEngine(kit[i].params[P_ENGINE], engine_count);
+    if (!j[i].contains("mods")) {
+      kit[i].RoutesFromKnobs();  // Saved before the Route matrix.
+      continue;
+    }
+    for (const json& route : j[i]["mods"]) {
+      if (!route.is_array() || route.size() != 3) {
+        continue;
+      }
+      const int s = route[0].get<int>();
+      const int p = route[1].get<int>();
+      if (s >= 0 && s < kNumModSources && p >= 0 && p < kNumLockable) {
+        kit[i].mods[s][p] = Clamp01(route[2].get<float>());
+      }
+    }
   }
 }
 
@@ -430,7 +456,7 @@ bool SaveKitFile(const std::string& directory, const TrackSound* kit,
     return false;
   }
   json j;
-  j["version"] = 2;  // 2: engine count.
+  j["version"] = 3;  // 2: engine count. 3: Route matrix.
   j["engine_count"] = kNumEngines;
   j["tracks"] = KitToJson(kit);
   file << j.dump(1);
