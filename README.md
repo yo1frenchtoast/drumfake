@@ -44,6 +44,11 @@ Press **Play**, select a track with its pad and press the steps. The project is 
 - Samples are imported by dropping WAV files on the window: desktop and browser, not yet
   Android.
 
+## Acknowledgements
+
+Thanks to Arturia for their work on hardware grooveboxes, which inspired this project.
+Drumfake is an independent project, not affiliated with or endorsed by Arturia.
+
 ## License
 
 Drumfake is distributed under the GNU GPL version 3 (see `LICENSE`).
