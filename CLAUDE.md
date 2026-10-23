@@ -2,8 +2,8 @@
 
 Open-source groovebox (GPLv3) built on Mutable Instruments DSP: Plaits voices, Grids patterns,
 Rings reverb and chorus. Independent project with its own design: no third-party brand or product
-names (other than Mutable Instruments, and the thanks to Arturia in the README) in the UI, the
-docs or the code, and no faceplate copied from an existing machine.
+names (other than Mutable Instruments, the thanks to Arturia and the AI notice in the README) in
+the UI, the docs or the code, and no faceplate copied from an existing machine.
 
 ## Layout
 

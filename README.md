@@ -49,6 +49,14 @@ Press **Play**, select a track with its pad and press the steps. The project is 
 Thanks to Arturia for their work on hardware grooveboxes, which inspired this project.
 Drumfake is an independent project, not affiliated with or endorsed by Arturia.
 
+## Use of AI
+
+Most of the code and the documentation of Drumfake were written with an AI coding assistant
+(Claude Code, by Anthropic), under the direction of the maintainer. The commits made this way say
+so with a `Co-Authored-By` line. The DSP comes from the Mutable Instruments code, used unchanged.
+As with any software under the GPL, Drumfake comes without warranty: report problems in the
+issues.
+
 ## License
 
 Drumfake is distributed under the GNU GPL version 3 (see `LICENSE`).
