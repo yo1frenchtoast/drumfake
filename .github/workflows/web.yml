@@ -37,6 +37,11 @@ jobs:
           mkdir site
           cp build-web/drumfake.html site/index.html
           cp build-web/drumfake.js build-web/drumfake.wasm build-web/drumfake.data site/
+          # Versioned URLs: the browser fetches a new build at once instead of
+          # keeping the old one in its cache (the page passes the version on to
+          # the .wasm and the .data).
+          sed -E -i "s/(src=\"?)drumfake\.js/\1drumfake.js?v=${GITHUB_SHA::8}/" site/index.html
+          grep -q "drumfake.js?v=${GITHUB_SHA::8}" site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

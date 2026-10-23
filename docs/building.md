@@ -92,7 +92,9 @@ Use the `node` of the SDK (`$EMSDK_NODE`) if the system one is too old. The buil
 `drumfake.html`, `.js`, `.wasm` and `.data` (the fonts): serve the four files together, over
 HTTPS or from `localhost` (Web MIDI needs a secure context). `.github/workflows/web.yml` builds
 them on every push to `main` and publishes them on GitHub Pages (repository settings: Pages,
-source *GitHub Actions*).
+source *GitHub Actions*). There the page loads `drumfake.js?v=<commit>`, and `Module.locateFile`
+in `web/shell.html` gives the `.wasm` and the `.data` the same version: after a deploy, a reload
+gets the new build instead of the one in the browser cache.
 
 In the browser:
 

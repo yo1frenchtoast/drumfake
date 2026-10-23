@@ -44,6 +44,12 @@
         status.textContent = text;
       }
     },
+    // The site is published with ?v=<commit> on drumfake.js (see web.yml): the
+    // files it loads get the same, so that a new version never comes from the cache.
+    locateFile: function(path, prefix) {
+      var script = document.querySelector("script[src*='drumfake.js']");
+      return prefix + path + (script ? new URL(script.src).search : "");
+    },
     onRuntimeInitialized: function() {
       var status = document.getElementById("status");
       if (status) {
