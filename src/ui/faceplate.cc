@@ -150,6 +150,7 @@ namespace {
 const int kOctaveDownPad = 6;
 const int kOctaveUpPad = 7;
 const int kKeyScaleShortcuts[kNumTracks] = { 10, 0, 1, 2, 5, 6, 9, 8 };
+const char* const kKeysHint = "Left/Right: octave  Up/Down: root  Tab: scale";
 
 // "Track A" to "Track H", for the messages.
 std::string TrackName(int track) {
@@ -953,19 +954,25 @@ void Faceplate::DrawTopLeft() {
   // Transport, on the same row as the buttons under the screen.
   float w = (layout::kLeftX1 - layout::kLeftX0 - 2 * layout::kGap) / 3.0f;
   auto column = [&](int i) { return layout::kLeftX0 + i * (w + layout::kGap); };
-  if (Button(c, "##rec", ImVec2(column(0), layout::kButtonRowY0),
-             ImVec2(column(0) + w, layout::kButtonRowY1), "", "", ICON_RECORD,
-             engine_->recording, theme().red).pressed) {
+  Interaction rec = Button(c, "##rec", ImVec2(column(0), layout::kButtonRowY0),
+                           ImVec2(column(0) + w, layout::kButtonRowY1), "", "", ICON_RECORD,
+                           engine_->recording, theme().red);
+  ShortcutHint("Enter");
+  if (rec.pressed) {
     engine_->recording = !engine_->recording;
   }
-  if (Button(c, "##stop", ImVec2(column(1), layout::kButtonRowY0),
-             ImVec2(column(1) + w, layout::kButtonRowY1), "", "", ICON_STOP,
-             false, 0).pressed) {
+  Interaction stop = Button(c, "##stop", ImVec2(column(1), layout::kButtonRowY0),
+                            ImVec2(column(1) + w, layout::kButtonRowY1), "", "", ICON_STOP,
+                            false, 0);
+  ShortcutHint("Space");
+  if (stop.pressed) {
     engine_->Stop();
   }
-  if (Button(c, "##play", ImVec2(column(2), layout::kButtonRowY0),
-             ImVec2(column(2) + w, layout::kButtonRowY1), "", "", ICON_PLAY,
-             engine_->playing(), theme().accent).pressed) {
+  Interaction play = Button(c, "##play", ImVec2(column(2), layout::kButtonRowY0),
+                            ImVec2(column(2) + w, layout::kButtonRowY1), "", "", ICON_PLAY,
+                            engine_->playing(), theme().accent);
+  ShortcutHint("Space");
+  if (play.pressed) {
     TogglePlay();
   }
 
@@ -995,8 +1002,12 @@ void Faceplate::DrawTopLeft() {
   for (int i = 0; i < 3; ++i) {
     const ModeButton& m = kPadModes[i];
     cell(i, &min, &max);
-    if (Button(c, m.id, min, max, m.label, "", ICON_NONE, pad_mode_ == m.mode,
-               theme().accent).pressed) {
+    Interaction in = Button(c, m.id, min, max, m.label, "", ICON_NONE, pad_mode_ == m.mode,
+                            theme().accent);
+    if (m.mode == PADS_CHORDS) {
+      ShortcutHint(kKeysHint);
+    }
+    if (in.pressed) {
       if (m.mode == PADS_SOUNDS && pad_mode_ == PADS_SOUNDS) {
         preset_bank_ = 1 - preset_bank_;
         Toast(preset_bank_ ? "Sounds: bank 2" : "Sounds: bank 1");
@@ -1034,8 +1045,10 @@ void Faceplate::DrawTopLeft() {
   // Shift + Keys: Slices mode (pads play the slices of the track's sample);
   // Shift + Slices: the next 8 slices; Keys alone goes back to the keyboard.
   const bool slices_mode = pad_mode_ == PADS_SLICES;
-  if (Button(c, "##keys", min, max, slices_mode ? "Slices" : "Keys", "", ICON_NONE,
-             pad_mode_ == PADS_KEYS || slices_mode, theme().accent).pressed) {
+  Interaction keys = Button(c, "##keys", min, max, slices_mode ? "Slices" : "Keys", "",
+                            ICON_NONE, pad_mode_ == PADS_KEYS || slices_mode, theme().accent);
+  ShortcutHint(kKeysHint);
+  if (keys.pressed) {
     if (shift_.held) {
       shift_.Use();
       const SampleSlices* slices = TrackSlices();
@@ -1059,6 +1072,7 @@ void Faceplate::DrawTopLeft() {
                              ImVec2(layout::kLeftX0 + w3, layout::kPadRow2Y1), "Shift", "",
                              ICON_NONE, shift_.held, theme().shift, false,
                              theme().shift_face);
+  ShortcutHint("Alt (hold)");
   ImGuiIO& io = ImGui::GetIO();
   shift_.Update(shift, !io.WantTextInput &&
                 (ImGui::IsKeyDown(ImGuiKey_LeftAlt) || ImGui::IsKeyDown(ImGuiKey_RightAlt)), true);
@@ -1477,9 +1491,11 @@ void Faceplate::DrawScreenSection() {
     }
   }
 
-  if (Button(c, "##back", ImVec2(encoder_x - 30, layout::kTopY0 + 106),
-             ImVec2(encoder_x + 30, layout::kTopY0 + 134), "", "", ICON_BACK,
-             false, 0).pressed) {
+  Interaction back = Button(c, "##back", ImVec2(encoder_x - 30, layout::kTopY0 + 106),
+                            ImVec2(encoder_x + 30, layout::kTopY0 + 134), "", "", ICON_BACK,
+                            false, 0);
+  ShortcutHint("Esc");
+  if (back.pressed) {
     GoBack();
   }
 
@@ -1557,7 +1573,9 @@ void Faceplate::DrawScreenSection() {
   if (screen_button(3, "##edit", "Edit", ICON_EDIT, view_ == VIEW_EDIT, theme().accent).pressed) {
     view_ = view_ == VIEW_EDIT ? VIEW_MAIN : VIEW_EDIT;
   }
-  if (screen_button(4, "##save", "Save", ICON_SAVE, false, 0).pressed) {
+  Interaction save = screen_button(4, "##save", "Save", ICON_SAVE, false, 0);
+  ShortcutHint("Ctrl+S");
+  if (save.pressed) {
     Save();
   }
 }
@@ -1665,20 +1683,35 @@ void Faceplate::DrawSoundKnobs() {
 
 void Faceplate::DrawKnobReadout(ImVec2 center, float radius, const char* name,
                                 const std::string& value) {
+  std::string text = std::string(name) + "  " + value;
+  DrawBubble(center.x, center.y - radius - 20.0f, text.c_str());
+}
+
+void Faceplate::DrawBubble(float x, float y, const char* text) {
   Canvas c = canvas_;
   c.draw_list = ImGui::GetForegroundDrawList();
-  std::string text = std::string(name) + "  " + value;
   const float size = 11.0f;
-  ImVec2 extent = c.bold->CalcTextSizeA(c.S(size), FLT_MAX, 0.0f, text.c_str());
+  ImVec2 extent = c.bold->CalcTextSizeA(c.S(size), FLT_MAX, 0.0f, text);
   float half_w = extent.x / c.scale * 0.5f + 8.0f;
-  float y = center.y - radius - 20.0f;
   // Keep the bubble inside the panel.
-  float x = ImClamp(center.x, half_w + 2.0f, kPanelWidth - half_w - 2.0f);
+  x = ImClamp(x, half_w + 2.0f, kPanelWidth - half_w - 2.0f);
   c.draw_list->AddRectFilled(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
                              theme().screen, c.S(4.0f));
   c.draw_list->AddRect(c.P(x - half_w, y - 9.0f), c.P(x + half_w, y + 9.0f),
                        theme().panel_edge, c.S(4.0f));
-  c.Text(x, y, size, theme().screen_text, text.c_str(), true, true);
+  c.Text(x, y, size, theme().screen_text, text, true, true);
+}
+
+void Faceplate::ShortcutHint(const char* keys) {
+  if (ImGui::GetIO().MouseSource == ImGuiMouseSource_TouchScreen || ImGui::IsAnyMouseDown() ||
+      !ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_NoSharedDelay)) {
+    return;
+  }
+  const Canvas& c = canvas_;
+  ImVec2 min = ImGui::GetItemRectMin();
+  ImVec2 max = ImGui::GetItemRectMax();
+  DrawBubble(((min.x + max.x) * 0.5f - c.origin.x) / c.scale,
+             (min.y - c.origin.y) / c.scale - 14.0f, keys);
 }
 
 void Faceplate::DrawKeyKnobs() {
@@ -1731,9 +1764,12 @@ void Faceplate::DrawPageButtons() {
     float x0 = layout::kSoundX0 + i * (w + layout::kGap);
     char id[16];
     snprintf(id, sizeof(id), "##page_%d", i);
-    if (Button(c, id, ImVec2(x0, layout::kButtonRowY0), ImVec2(x0 + w, layout::kButtonRowY1),
-               page_name(page), "", kPageIcons[i], !keys_page_ && page_ == page,
-               theme().accent).pressed) {
+    Interaction in = Button(c, id, ImVec2(x0, layout::kButtonRowY0),
+                            ImVec2(x0 + w, layout::kButtonRowY1), page_name(page), "",
+                            kPageIcons[i], !keys_page_ && page_ == page, theme().accent);
+    const char key[2] = { static_cast<char>('1' + i), 0 };
+    ShortcutHint(key);
+    if (in.pressed) {
       page_ = page;
       keys_page_ = false;
     }
@@ -1807,7 +1843,9 @@ void Faceplate::DrawSequencer() {
       lit = true;
       color = theme().amber;
     }
-    if (function_button(2 + i, id, kPageLabels[i], lit, color).pressed) {
+    Interaction page = function_button(2 + i, id, kPageLabels[i], lit, color);
+    ShortcutHint("Z / X");
+    if (page.pressed) {
       if (last_step_.held) {
         PushUndo();
         p.length = (i + 1) * kStepsPerPage;
@@ -1858,6 +1896,7 @@ void Faceplate::DrawSequencer() {
   // track in Poly mode); a page button sets it to 16, 32, 48 or 64.
   Interaction last = function_button(8, "##last", "Last Step", last_step_.held,
                                      theme().accent);
+  ShortcutHint("L (hold)");
   // A right click (or a long press) locks it, until a step or a page is used or the
   // button is pressed again.
   if (last_step_.Update(last, !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_L),
@@ -1895,6 +1934,7 @@ void Faceplate::DrawSequencer() {
   // Copy: held with two page buttons, repeats pages; pressed alone, copies to
   // the clipboard (on release).
   Interaction copy = function_button(12, "##copy", "Copy", copy_.held, theme().amber);
+  ShortcutHint("Ctrl+C");
   if (copy_.Update(copy, false, false)) {
     Copy();
   }
@@ -1902,11 +1942,14 @@ void Faceplate::DrawSequencer() {
     copy_source_page_ = -1;
     copy_source_track_ = -1;
   }
-  if (function_button(13, "##paste", "Paste", false, 0).pressed) {
+  Interaction paste = function_button(13, "##paste", "Paste", false, 0);
+  ShortcutHint("Ctrl+V");
+  if (paste.pressed) {
     Paste();
   }
   // Erase acts on release, so that holding it can combine with a knob.
   Interaction erase = function_button(14, "##erase", "Erase", erase_.held, theme().red);
+  ShortcutHint("Delete");
   if (erase_.Update(erase, !ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_Delete),
                     false)) {
     Erase();
@@ -1924,7 +1967,9 @@ void Faceplate::DrawSequencer() {
     erase_wiping_ = false;
     std::fill(erase_pad_held_, erase_pad_held_ + kNumTracks, false);
   }
-  if (function_button(15, "##undo", "Undo", false, 0).pressed) {
+  Interaction undo = function_button(15, "##undo", "Undo", false, 0);
+  ShortcutHint("Ctrl+Z");
+  if (undo.pressed) {
     Undo();
   }
 
@@ -2142,6 +2187,9 @@ void Faceplate::DrawShiftStep(int i, ImVec2 min, ImVec2 max) {
     lit = p.poly;
   }
   Interaction in = Button(c, id, min, max, label, "", ICON_NONE, lit, theme().amber);
+  if (i == 15) {
+    ShortcutHint("P");
+  }
   if (!in.pressed || !*label) {
     return;
   }
@@ -2181,6 +2229,7 @@ void Faceplate::DrawPads() {
     char id[16];
     snprintf(id, sizeof(id), "##pad%d", t);
     Interaction in = HitBox(c, id, min, max, false);
+    ShortcutHint(ImGui::GetKeyName(kTrackPadKeys[t]));
     touch_targets_.push_back({ TOUCH_TRACK_PAD, t, 0, min, max });
     if (in.pressed) {
       TrackPadDown(t);
@@ -2266,6 +2315,7 @@ void Faceplate::DrawPads() {
     char id[16];
     snprintf(id, sizeof(id), "##lower%d", i);
     Interaction in = HitBox(c, id, min, max, false);
+    ShortcutHint(ImGui::GetKeyName(kLowerPadKeys[i]));
     touch_targets_.push_back({ TOUCH_LOWER_PAD, i, 0, min, max });
     if (in.pressed) {
       LowerPadDown(i);

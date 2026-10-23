@@ -28,6 +28,9 @@ the [user guide](user-guide.md).
 | Shift + Freeze | resample one loop of the pattern into a new sample (again: cancel) | |
 | Shift + Keys | Slices mode: pads 1–8 play the slices of the track's sample; Shift + Slices: next 8; Keys: back to the keyboard | |
 
+Rest the mouse on a button or a pad that has a keyboard shortcut: after a moment, a bubble
+above it shows the shortcut.
+
 The eight pages, in order: **Sound**, **Filter**, **Track**, **Master**, **Mods**, **Envs**,
 **Clouds**, **Assign**.
 

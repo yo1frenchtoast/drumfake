@@ -75,6 +75,11 @@ class Faceplate {
   // Name and value bubble above a knob being touched or hovered (works for fingers,
   // unlike ImGui tooltips). Drawn on the foreground list so nothing covers it.
   void DrawKnobReadout(ImVec2 center, float radius, const char* name, const std::string& value);
+  // A bubble centered on (x, y), panel coordinates, kept inside the panel.
+  void DrawBubble(float x, float y, const char* text);
+  // The keyboard shortcut of the item just submitted, in a bubble above it once the
+  // mouse has rested on it a moment (not for fingers, nor while a button is down).
+  void ShortcutHint(const char* keys);
   void DrawKeyKnobs();
   void DrawPageButtons();
   ImVec2 SoundKnobCenter(int knob) const;
