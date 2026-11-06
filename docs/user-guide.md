@@ -37,6 +37,15 @@ project is opened.
 (the app's private storage on Android). It is reloaded at startup. *Undo* reverts the last
 edit of the current pattern, up to 32 times.
 
+**Export and import.** *Edit* → *Export...* writes the whole project (patterns, kits, song,
+master, settings of the project) and the samples of its pool into one `.zip` file, to move it
+to another machine (desktop, tablet, browser) or keep a copy. A dialog asks where to save it;
+in a browser the file is downloaded. *Edit* → *Import...* opens such a file, and dropping a
+`.zip` on the window does the same. The imported project replaces the one playing, and its
+samples join the samples folder (a sample whose name is taken by another file is renamed, as
+when importing a WAV). It is not written to disk until *Save*: *Reload saved* goes back to the
+project saved before. The kit library and the theme are not in the archive.
+
 ## 2. Sequencing
 
 ### Steps and pages

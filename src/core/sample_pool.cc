@@ -11,15 +11,13 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool SameContent(const fs::path& a, const fs::path& b) {
+bool SameContent(const std::string& data, const fs::path& file) {
   std::error_code ec;
-  if (fs::file_size(a, ec) != fs::file_size(b, ec) || ec) {
+  if (fs::file_size(file, ec) != data.size() || ec) {
     return false;
   }
-  std::ifstream fa(a, std::ios::binary);
-  std::ifstream fb(b, std::ios::binary);
-  return std::equal(std::istreambuf_iterator<char>(fa), std::istreambuf_iterator<char>(),
-                    std::istreambuf_iterator<char>(fb));
+  std::ifstream in(file, std::ios::binary);
+  return std::equal(data.begin(), data.end(), std::istreambuf_iterator<char>(in));
 }
 
 }  // namespace
@@ -32,31 +30,43 @@ bool CopyIntoSampleDirectory(const std::string& source, const std::string& direc
                              std::string* file_name, std::string* error) {
   std::error_code ec;
   fs::path from(source);
-  if (!fs::is_regular_file(from, ec)) {
+  std::ifstream in(from, std::ios::binary);
+  if (!fs::is_regular_file(from, ec) || !in) {
     *error = "cannot read " + source;
     return false;
   }
+  std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return WriteIntoSampleDirectory(from.filename().string(), data, directory, file_name, error);
+}
+
+bool WriteIntoSampleDirectory(const std::string& name, const std::string& data,
+                              const std::string& directory, std::string* file_name,
+                              std::string* error) {
+  std::error_code ec;
   fs::create_directories(directory, ec);
+  fs::path from(name);
   std::string stem = from.stem().string();
   std::string extension = from.extension().string();
   if (stem.empty()) {
     stem = "sample";
   }
   for (int n = 1; n < 1000; ++n) {
-    std::string name = stem + (n > 1 ? " " + std::to_string(n) : "") + extension;
-    fs::path target = fs::path(directory) / name;
+    std::string candidate = stem + (n > 1 ? " " + std::to_string(n) : "") + extension;
+    fs::path target = fs::path(directory) / candidate;
     if (fs::exists(target, ec)) {
-      if (SameContent(from, target)) {
-        *file_name = name;  // Already there.
+      if (SameContent(data, target)) {
+        *file_name = candidate;  // Already there.
         return true;
       }
       continue;
     }
-    if (!fs::copy_file(from, target, ec) || ec) {
-      *error = "cannot copy " + source + " to " + directory;
+    std::ofstream out(target, std::ios::binary);
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+    if (!out) {
+      *error = "cannot write " + candidate + " in " + directory;
       return false;
     }
-    *file_name = name;
+    *file_name = candidate;
     return true;
   }
   *error = "too many files named " + stem + extension;

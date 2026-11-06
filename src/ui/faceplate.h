@@ -32,7 +32,8 @@ class Faceplate {
   void FingerMove(uint64_t finger, ImVec2 position);
   void FingerUp(uint64_t finger);
   // A file dropped on the window at `position` (display coordinates): a WAV is
-  // imported onto the pad under it, or onto the selected track. Takes the lock.
+  // imported onto the pad under it, or onto the selected track; a .zip
+  // project archive replaces the project. Takes the lock.
   void DropFile(const std::string& path, ImVec2 position);
 
  private:
@@ -157,6 +158,12 @@ class Faceplate {
   };
   std::vector<PendingImport> pending_imports_;
   bool reload_samples_ = false;
+  // Project archives (.zip): exported from a copy of the project taken after
+  // drawing, imported from a file chosen in a dialog or dropped on the window.
+  bool export_requested_ = false;
+  std::vector<std::string> pending_project_imports_;
+  void ExportProject();
+  void ImportProject(const std::string& path);
   void DoFileWork();
   void DrawPanel();
 

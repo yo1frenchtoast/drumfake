@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 
 #include <nlohmann/json.hpp>
@@ -160,7 +161,7 @@ void StepFromJson(const json& j, Step* s, int engine_count) {
 
 }  // namespace
 
-bool SaveProject(const Project& project, const std::string& path, std::string* error) {
+std::string ProjectToJson(const Project& project) {
   json j;
   j["version"] = kFormatVersion;
   j["engine_count"] = kNumEngines;
@@ -223,7 +224,10 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
     }
     j["patterns"].push_back(jp);
   }
+  return j.dump(1);
+}
 
+bool SaveProject(const Project& project, const std::string& path, std::string* error) {
   std::error_code ec;
   std::filesystem::path p(path);
   if (p.has_parent_path()) {
@@ -234,19 +238,23 @@ bool SaveProject(const Project& project, const std::string& path, std::string* e
     *error = "cannot write " + path;
     return false;
   }
-  out << j.dump(1);
+  out << ProjectToJson(project);
   return static_cast<bool>(out);
 }
 
 bool LoadProject(const std::string& path, Project* project, std::string* error) {
-  std::ifstream in(path);
+  std::ifstream in(path, std::ios::binary);
   if (!in) {
     *error = "cannot read " + path;
     return false;
   }
-  json j;
+  std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return ProjectFromJson(text, project, error);
+}
+
+bool ProjectFromJson(const std::string& text, Project* project, std::string* error) {
   try {
-    in >> j;
+    json j = json::parse(text);
     auto loaded_ptr = std::make_unique<Project>();
     Project& loaded = *loaded_ptr;
     loaded.Init();

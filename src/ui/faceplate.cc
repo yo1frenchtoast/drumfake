@@ -1,17 +1,20 @@
 #include "ui/faceplate.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 
 #include "audio/sample_loader.h"
 #include "core/presets.h"
+#include "core/project_archive.h"
 #include "core/sample_pool.h"
 #include "core/project_io.h"
 #include "core/settings.h"
 #include "core/scales.h"
 #include "imgui_internal.h"
+#include "ui/file_picker.h"
 
 namespace drumfake {
 
@@ -725,10 +728,83 @@ void Faceplate::DoFileWork() {
     fprintf(stderr, "Import %s: %s\n", imported ? "done" : "failed", message.c_str());
     Toast(message);
   }
+
+  FilePickerResults picked = TakeFilePickerResults();
+  for (const std::string& message : picked.messages) {
+    fprintf(stderr, "%s\n", message.c_str());
+    Toast(message);
+  }
+  std::vector<std::string> projects;
+  projects.swap(pending_project_imports_);
+  projects.insert(projects.end(), picked.opened.begin(), picked.opened.end());
+  for (const std::string& path : projects) {
+    ImportProject(path);
+  }
+  if (export_requested_) {
+    export_requested_ = false;
+    ExportProject();
+  }
+}
+
+void Faceplate::ExportProject() {
+  // A copy taken under the lock; the samples are read without it.
+  auto project = std::make_unique<Project>();
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    // As for Save: outside Panel mode the kit playing belongs to the pattern.
+    if (!engine_->panel()) {
+      engine_->StoreKit();
+    }
+    *project = engine_->project();
+  }
+  std::vector<std::string> problems;
+  std::string zip = WriteProjectArchive(*project, SampleDirectory(project_path_), &problems);
+  for (const std::string& problem : problems) {
+    fprintf(stderr, "Export: %s\n", problem.c_str());
+  }
+  if (!problems.empty()) {
+    Toast("Exporting without " + std::to_string(problems.size()) + " missing sample(s)");
+  }
+  SaveZipAs(ArchiveFileName(), std::move(zip));
+}
+
+void Faceplate::ImportProject(const std::string& path) {
+  // Reading the file and writing its samples happen without the lock.
+  std::string zip;
+  std::string error;
+  auto project = std::make_unique<Project>();
+  std::vector<std::string> problems;
+  if (!ReadWholeFile(path, &zip, &error) ||
+      !ReadProjectArchive(zip, SampleDirectory(project_path_), project.get(), &problems,
+                          &error)) {
+    fprintf(stderr, "Import failed: %s\n", error.c_str());
+    Toast("Import failed: " + error);
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(engine_->mutex());
+    engine_->project() = *project;
+    engine_->DropSnapshot();
+    engine_->ReloadKit();
+  }
+  reload_samples_ = true;
+  for (const std::string& problem : problems) {
+    fprintf(stderr, "Import: %s\n", problem.c_str());
+  }
+  Toast(problems.empty() ? std::string("Project imported: Save keeps it")
+                         : "Project imported, " + std::to_string(problems.size()) +
+                               " sample(s) missing");
 }
 
 void Faceplate::DropFile(const std::string& path, ImVec2 position) {
   std::lock_guard<std::mutex> lock(engine_->mutex());
+  std::string extension = std::filesystem::path(path).extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  if (extension == ".zip") {
+    pending_project_imports_.push_back(path);
+    return;
+  }
   int track = engine_->selected_track;
   ImVec2 panel = ToPanel(position);
   for (const TouchTarget& t : touch_targets_) {
@@ -2754,6 +2830,15 @@ void Faceplate::DrawEditView(ImVec2 min, ImVec2 max) {
     PushUndo();
     MakeDemoPattern(&p);
     Toast("Demo pattern");
+  }
+  // Project archives: the dialogs answer later, DoFileWork does the work.
+  ImGui::SetCursorScreenPos(c.P(x1 + 84, min.y + 86));
+  if (ImGui::Button("Export...")) {
+    export_requested_ = true;
+  }
+  ImGui::SetCursorScreenPos(c.P(x1 + 84, min.y + 108));
+  if (ImGui::Button("Import...")) {
+    PickZipToOpen();
   }
   ImGui::SetCursorScreenPos(c.P(x1, min.y + 108));
   if (ImGui::Button("Reload saved")) {

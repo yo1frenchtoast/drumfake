@@ -23,6 +23,10 @@ std::string SampleDirectory(const std::string& project_path);
 // one with the same name is kept, and the copy gets " 2", " 3"...
 bool CopyIntoSampleDirectory(const std::string& source, const std::string& directory,
                              std::string* file_name, std::string* error);
+// The same for a file given by its content: `name` is the wanted name.
+bool WriteIntoSampleDirectory(const std::string& name, const std::string& data,
+                              const std::string& directory, std::string* file_name,
+                              std::string* error);
 
 // Slot holding `file`, or -1.
 int FindSampleSlot(const Project& project, const std::string& file);

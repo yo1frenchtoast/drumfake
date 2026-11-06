@@ -12,6 +12,9 @@ namespace drumfake {
 
 bool SaveProject(const Project& project, const std::string& path, std::string* error);
 bool LoadProject(const std::string& path, Project* project, std::string* error);
+// The same, as text: what SaveProject writes and LoadProject reads.
+std::string ProjectToJson(const Project& project);
+bool ProjectFromJson(const std::string& text, Project* project, std::string* error);
 
 // Kit library: one JSON file per kit (the 8 sounds of a pattern), in a
 // directory shared by all projects.

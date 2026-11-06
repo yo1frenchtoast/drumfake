@@ -20,6 +20,7 @@ the [user guide](user-guide.md).
 | Step pages A–D | | `Z` / `X` |
 | Last Step (held) / Poly / Shift (held) | right click or long press on Shift or Last Step locks it until a combination is used (or the button is pressed again) | `L` / `P` / `Alt` |
 | Save, Undo, Copy, Paste, Erase | | `Ctrl+S`, `Ctrl+Z`, `Ctrl+C`, `Ctrl+V`, `Delete` (acts on release) |
+| Edit: Export... / Import... | writes the project and its samples into a `.zip` file / replaces the project with one (also by dropping a `.zip` on the window) | |
 | Edit: Theme | switches the look (Midnight, Cream, Sage, Plum, Fake), saved for the machine | |
 | Back (↺) | closes Edit, Browse and other screens; releases the selected step | `Esc` |
 | WAV file dropped on the window | imports it onto the pad under it (A–H), or the selected track | |

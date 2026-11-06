@@ -18,6 +18,7 @@
 #include "core/grids_gen.h"
 #include "core/midi_parser.h"
 #include "core/presets.h"
+#include "core/project_archive.h"
 #include "core/project_io.h"
 #include "core/sample_file.h"
 #include "core/sample_pool.h"
@@ -720,6 +721,72 @@ void TestSamplePool() {
   for (int slot = 0; slot < kNumSampleSlots; ++slot) {
     CHECK(SampleSlot(SampleSlotToAux(slot)) == slot);
   }
+  fs::remove_all(dir);
+}
+
+void TestProjectArchive() {
+  namespace fs = std::filesystem;
+  // Zip: the CRC of a known string, and entries read back as written.
+  CHECK(Crc32("123456789") == 0xcbf43926u);
+  std::vector<ZipEntry> entries = { { "a.txt", "hello" }, { "dir/b.bin", std::string("\0\1\2", 3) } };
+  std::vector<ZipEntry> read;
+  std::string error;
+  CHECK(ReadZip(MakeZip(entries), &read, &error));
+  CHECK(read.size() == 2 && read[0].name == "a.txt" && read[0].data == "hello");
+  CHECK(read[1].name == "dir/b.bin" && read[1].data == entries[1].data);
+  CHECK(!ReadZip("not a zip at all, but long enough", &read, &error));
+  std::string damaged = MakeZip(entries);
+  damaged[30 + 5 + 1] ^= 1;  // In the data of a.txt: the CRC no longer matches.
+  CHECK(!ReadZip(damaged, &read, &error));
+
+  fs::path dir = fs::temp_directory_path() / "drumfake_archive";
+  fs::remove_all(dir);
+  fs::create_directories(dir / "from" / "samples");
+  fs::create_directories(dir / "to" / "samples");
+  auto write = [](const fs::path& path, const std::string& data) {
+    std::ofstream(path, std::ios::binary) << data;
+  };
+  write(dir / "from" / "samples" / "kick.wav", "KICK");
+  write(dir / "from" / "samples" / "snare.wav", "SNARE");
+  // On the importing side, a different file already has the name of the kick.
+  write(dir / "to" / "samples" / "kick.wav", "OTHER");
+  write(dir / "to" / "samples" / "snare.wav", "SNARE");
+
+  auto project = std::make_unique<Project>();
+  project->Init();
+  project->bpm = 133.0f;
+  project->patterns[5].tracks[2].steps[7].on = true;
+  project->samples[0] = "kick.wav";
+  project->samples[1] = "snare.wav";
+  project->samples[4] = "kick.wav";  // Twice in the pool: once in the archive.
+  project->samples[6] = "gone.wav";
+  std::vector<std::string> problems;
+  std::string zip = WriteProjectArchive(*project, (dir / "from" / "samples").string(), &problems);
+  CHECK(problems.size() == 1);  // gone.wav.
+  CHECK(ReadZip(zip, &read, &error));
+  CHECK(read.size() == 3 && read[0].name == "project.json" && read[1].name == "samples/kick.wav");
+
+  auto imported = std::make_unique<Project>();
+  imported->Init();
+  problems.clear();
+  CHECK(ReadProjectArchive(zip, (dir / "to" / "samples").string(), imported.get(), &problems,
+                           &error));
+  CHECK(problems.size() == 1);
+  CHECK_NEAR(imported->bpm, 133.0, 1e-4);
+  CHECK(imported->patterns[5].tracks[2].steps[7].on);
+  CHECK(imported->samples[0] == "kick 2.wav" && imported->samples[4] == "kick 2.wav");
+  CHECK(imported->samples[1] == "snare.wav");  // Same content: reused.
+  CHECK(imported->samples[6] == "gone.wav");
+  std::ifstream kick(dir / "to" / "samples" / "kick 2.wav");
+  std::string content((std::istreambuf_iterator<char>(kick)), std::istreambuf_iterator<char>());
+  CHECK(content == "KICK");
+  CHECK(!fs::exists(dir / "to" / "samples" / "snare 2.wav"));
+
+  // An archive without a project is refused and changes nothing.
+  CHECK(!ReadProjectArchive(MakeZip(entries), (dir / "to" / "samples").string(), imported.get(),
+                            &problems, &error));
+  CHECK_NEAR(imported->bpm, 133.0, 1e-4);
+  CHECK(ArchiveFileName().size() == std::string("drumfake-2026-11-06-1432.zip").size());
   fs::remove_all(dir);
 }
 
@@ -2789,6 +2856,7 @@ int main() {
   TestWavDecoding();
   TestEngineCountMigration();
   TestSamplePool();
+  TestProjectArchive();
   TestSamplePlayer();
   TestSampleTracks();
   TestGrainEngines();

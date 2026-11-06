@@ -155,6 +155,11 @@ core/slicing        SampleSlices (up to 48 starts per pool slot, Project::slices
                     the pool), equal slices, attack detection (spectral flux of 1024-point
                     frames, running-median threshold), Colour <-> slice mapping
 audio/sample_loader LoadProjectSamples, ImportSample, ApplySampleDefaults (engine glue)
+core/project_archive project.json + samples/<name> in a stored .zip (Export / Import), with
+                    its own zip writer and reader (no compression, CRC-32 checked)
+ui/file_picker      the dialogs: SDL_ShowOpen/SaveFileDialog on the desktop (portal) and Android
+                    (Storage Access Framework, content:// URIs read with SDL_LoadFile), a file
+                    input and a download in the browser; answers are picked up by DoFileWork
 ```
 
 - The audio lives in `Engine::samples_` (`shared_ptr<const SampleData>` per slot). Every block,
@@ -261,4 +266,7 @@ versions (same pattern, same seed), or to measure the CPU load in a script.
 - `web/pre.js` mounts `/persist` (IndexedDB) before `main()` runs and writes it back every three
   seconds and when the page is hidden. The project is `/persist/project.json`.
 - MIDI: `src/io/midi_web.cc` asks for Web MIDI access and hands each message to `DeliverMidi`.
+- Files: SDL has no file dialog in the browser. `src/ui/file_picker.cc` opens a hidden file input
+  (the chosen archive is copied to `/tmp/drumfake-import.zip`, then `drumfake_web_file_opened`
+  is called) and downloads exported archives through a link.
 - The fonts are the Android ones, preloaded into `/fonts`.

@@ -79,6 +79,7 @@ add_library(drumfake_core STATIC
   src/core/settings.cc
   src/core/project.cc
   src/core/project_io.cc
+  src/core/project_archive.cc
   src/core/grids_gen.cc
   src/core/marbles_gen.cc
   src/core/midi_parser.cc
@@ -163,7 +164,8 @@ if(ANDROID OR EMSCRIPTEN OR DRUMFAKE_GUI)
     src/io/midi_common.cc
     src/ui/widgets.cc
     src/ui/theme.cc
-    src/ui/faceplate.cc)
+    src/ui/faceplate.cc
+    src/ui/file_picker.cc)
   if(ANDROID)
     list(APPEND APP_SOURCES src/io/midi_android.cc)
   elseif(EMSCRIPTEN)
